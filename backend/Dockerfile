@@ -10,15 +10,18 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install faster-whisper and FastAPI dependencies
-RUN pip3 install faster-whisper fastapi uvicorn python-multipart
+# Set environment variable for model cache
+ENV HF_HOME=/app/model-cache
 
-# Copy application files
-COPY test_whisper.py .
-COPY api_server.py .
+# Install dependencies, including loguru
+RUN pip3 install faster-whisper fastapi 'uvicorn[standard]' python-multipart loguru
 
-# Expose port 9989
-EXPOSE 9989
+# Copy all files from the build context (the 'backend' directory)
+COPY . .
 
-# Run the API server by default
-CMD ["python3", "api_server.py"]
+# Declare and use a build-time argument for the API port
+ARG API_PORT=9989
+EXPOSE ${API_PORT}
+
+# Run the API server using uvicorn, sourcing the port from the runtime environment
+CMD uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT}

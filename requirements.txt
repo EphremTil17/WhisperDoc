@@ -1,0 +1,6 @@
+python-dotenv
+websockets
+requests
+ruff
+pytest
+loguru

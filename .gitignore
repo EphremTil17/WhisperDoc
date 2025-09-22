@@ -2,9 +2,11 @@
 __pycache__/
 *.py[cod]
 *.so
+*.pyc  
 
 # Virtual environments
 venv/*
+.venv/*
 .env/*
 
 # Environment configuration (keep .env.example)
@@ -38,3 +40,7 @@ Thumbs.db
 
 # Docker
 .dockerignore
+node_modules
+package-lock.json
+model-cache/
+package.json

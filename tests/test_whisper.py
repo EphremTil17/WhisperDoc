@@ -61,7 +61,7 @@ try:
     for segment in segments_list:
         print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
     
-    print("\n🎉 SUCCESS: faster-whisper working correctly with GPU!")
+    print("\n SUCCESS: faster-whisper working correctly with GPU!")
     
 except Exception as e:
     print(f"❌ ERROR: {e}")

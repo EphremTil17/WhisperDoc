@@ -7,14 +7,14 @@ A minimal but production-ready speech-to-text system that combines faster-whispe
 ### Option 1: Automated Setup (Recommended)
 
 ```bash
-# Run the setup script
+# Run the setup script to install dependencies and create config files
 ./setup.sh
 
-# Follow the instructions to build and start
+# Build and start the backend service
 sudo docker compose build whisper-backend
 sudo docker compose up -d whisper-backend
 
-# Test the API
+# Test the API from your local machine
 python3 test_api.py --health-only
 ```
 
@@ -22,11 +22,11 @@ python3 test_api.py --health-only
 
 1. **Configure Environment**
    ```bash
-   # Copy environment template
-   cp .env.example .env
+   # Create .env file
+   cp .env.template .env
    
-   # Edit configuration (optional)
-   nano .env
+   # Install local dependencies for testing
+   pip install -r requirements.txt
    ```
 
 2. **Start the Backend API**
@@ -41,15 +41,11 @@ python3 test_api.py --health-only
 
 3. **Test the API**
    ```bash
-   # Test health endpoint
+   # Test health endpoint from your local machine
    python3 test_api.py --health-only
    
    # Test transcription with an audio file
    python3 test_api.py --file your_audio.wav --verbose
-   
-   # Test with curl
-   curl http://localhost:9989/health
-   curl -X POST -F "file=@your_audio.wav" http://localhost:9989/transcribe
    ```
 
 ## Current Status
@@ -59,124 +55,101 @@ python3 test_api.py --health-only
 - [x] FastAPI server with `/health` and `/transcribe` endpoints  
 - [x] GPU acceleration verified (CUDA support)
 - [x] HTTP API endpoints working
-- [x] Model: medium.en loaded successfully (~62s initial load)
-- [x] Test client with CLI arguments support
+- [x] Model: medium.en loaded successfully
+- [x] Test clients for API and WebSocket endpoints
 
 **API Endpoints:**
 - `GET /health` - Check API status and model readiness
 - `POST /transcribe` - Upload audio file for transcription
-
-**Supported Audio Formats:** WAV, MP3, M4A, FLAC, OGG
+- `GET /ws` - WebSocket connection for real-time streaming
 
 ## Architecture
 
-- **Backend**: Docker containerized FastAPI server with faster-whisper + CUDA
-- **API**: HTTP endpoints for health checks and file transcription
-- **Model**: Whisper medium.en optimized for GPU acceleration
-- **Port**: 9989
+- **Backend**: Docker containerized FastAPI server with `faster-whisper` and CUDA acceleration.
+- **API**: RESTful HTTP and WebSocket endpoints.
+- **Configuration-Driven**: The entire system is configured via a central `.env` file. This includes ports, model names, and log levels. There are no hardcoded values.
+- **Persistent Model Caching**: The `faster-whisper` model is downloaded on the first run and then cached in the `./model-cache` directory on the host machine, preventing re-downloads on subsequent starts.
 
-## Testing
-
-### Test Client Usage
-```bash
-# Health check only
-python3 test_api.py --health-only
-
-# Transcribe audio file
-python3 test_api.py --file audio.wav
-
-# Verbose output with detailed logs
-python3 test_api.py --file audio.wav --verbose
-
-# Custom API endpoint
-python3 test_api.py --url http://localhost:9989 --file audio.wav
+## Project Structure
+```
+WhisperDoc/
+├── README.md
+├── spec.md
+├── docker-compose.yml
+├── setup.sh
+├── requirements.txt
+├── test_api.py
+├── test_websocket.py
+├── backend/
+│   ├── Dockerfile
+│   ├── api_server.py
+│   └── logging_config.py
+└── tests/
+    ├── test_logging.py
+    └── test_whisper.py
 ```
 
-### Docker Commands
+## Testing Strategy
+
+The project uses a two-category testing strategy:
+
+### 1. API / End-to-End Tests
+These tests act as external clients to verify the public-facing API. They should be run from your **local machine** against the running backend container.
+
+**Test Files:** `test_api.py`, `test_websocket.py`
+
 ```bash
-# View logs
+# Ensure you have installed local dependencies
+# pip install -r requirements.txt
+
+# Test the HTTP API (health check)
+python3 test_api.py --health-only
+
+# Test the HTTP API (transcription)
+python3 test_api.py --file assets/jfk.flac --verbose
+
+# Test the WebSocket echo server
+python3 test_websocket.py
+```
+
+### 2. Internal / Unit Tests
+These tests check the internal functionality of backend components. They are run inside dedicated Docker services to provide the correct environment.
+
+**Test Files:** `tests/test_whisper.py`, `tests/test_logging.py`
+
+```bash
+# Run the internal whisper model test using its dedicated service
+sudo docker compose run --rm whisper-test
+
+# Run the internal logging test against the running backend service
+sudo docker compose cp tests/test_logging.py whisper-backend:/app/test_logging.py
+sudo docker compose exec whisper-backend python3 test_logging.py
+```
+
+## Docker Commands
+```bash
+# View logs of the main backend service
 sudo docker compose logs -f whisper-backend
 
-# Stop the service
+# Stop all services
 sudo docker compose down
 
-# Rebuild after changes
-sudo docker compose build whisper-backend
-sudo docker compose up -d whisper-backend
+# Rebuild and restart the backend after changes
+sudo docker compose build whisper-backend && sudo docker compose up -d --force-recreate whisper-backend
 ```
 
 ## Performance
 
-- **Model Loading**: ~62 seconds (one-time on startup)
-- **Transcription**: ~0.6s for 3-second audio file
-- **GPU Acceleration**: CUDA-enabled for faster processing
-- **Memory**: Optimized for RTX 3060TI (8GB VRAM)
+- **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
+- **Transcription**: ~1s for a 10-second audio file on an RTX 3060TI.
+- **GPU Acceleration**: CUDA-enabled for faster processing.
 
 ## Next Steps (Future Phases)
 
-### **Phase 2: WebSocket Streaming (Planned)**
-- [ ] Add WebSocket endpoint for real-time streaming
-- [ ] Implement chunked audio processing
-- [ ] Add push-to-talk session management
+See `spec.md` for detailed specifications on upcoming features.
 
-### **Phase 3: Windows Client (Planned)**
-- [ ] PyQt6 floating window UI
-- [ ] Global hotkey registration (PTT functionality)
-- [ ] Real-time audio capture with sounddevice
-- [ ] System tray integration
-- [ ] Audio recording storage (last 10 files)
+- **Phase 2: WebSocket Streaming**
+- **Phase 3: Centralized Logging**
+- **Phase 4: Windows Client**
+- **Phase 5: Dynamic Model Loading**
 
-## Development
-
-### Project Structure
-```
-WhisperDoc/
-├── README.md                    # This file
-├── docker-compose.yml           # Docker orchestration
-├── test_api.py                  # API test client
-├── backend/                     # Containerized transcription service
-│   ├── Dockerfile              # CUDA + faster-whisper + FastAPI
-│   ├── api_server.py           # FastAPI server (main file)
-│   └── test_whisper.py         # Original GPU validation script
-└── assets/                     # Audio files storage
-```
-
-### Requirements
-- Docker with NVIDIA runtime support
-- CUDA-compatible GPU (tested on RTX 3060TI)
-- Python 3 with requests library (for test client)
-
-## API Response Format
-
-### Health Check Response
-```json
-{
-  "status": "healthy",
-  "model_loaded": true,
-  "device": "cuda",
-  "timestamp": 1758441478.17
-}
-```
-
-### Transcription Response
-```json
-{
-  "text": "Your transcribed text here",
-  "language": "en",
-  "language_probability": 1.0,
-  "duration": 3.0,
-  "segments": [
-    {
-      "start": 0.0,
-      "end": 2.0,
-      "text": "Your transcribed text here"
-    }
-  ],
-  "processing_time": 0.64,
-  "timestamp": 1758441478.17
-}
-```
-
----
-
-**Status**: ✅ **Phase 1 Complete** - Working backend API with GPU acceleration
