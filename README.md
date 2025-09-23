@@ -48,19 +48,10 @@ python3 test_api.py --health-only
    python3 test_api.py --file your_audio.wav --verbose
    ```
 
-## Current Status
-
-### ✅ **Phase 1: Backend Core (COMPLETED)**
-- [x] Docker CUDA environment with faster-whisper
-- [x] FastAPI server with `/health` and `/transcribe` endpoints  
-- [x] GPU acceleration verified (CUDA support)
-- [x] HTTP API endpoints working
-- [x] Model: medium.en loaded successfully
-- [x] Test clients for API and WebSocket endpoints
-
 **API Endpoints:**
 - `GET /health` - Check API status and model readiness
 - `POST /transcribe` - Upload audio file for transcription
+- `POST /log` - Ingest a batch of logs from a remote client
 - `GET /ws` - WebSocket connection for real-time streaming
 
 ## Architecture
@@ -69,6 +60,7 @@ python3 test_api.py --health-only
 - **API**: RESTful HTTP and WebSocket endpoints.
 - **Configuration-Driven**: The entire system is configured via a central `.env` file. This includes ports, model names, and log levels. There are no hardcoded values.
 - **Persistent Model Caching**: The `faster-whisper` model is downloaded on the first run and then cached in the `./model-cache` directory on the host machine, preventing re-downloads on subsequent starts.
+- **Centralized Logging**: The system uses `loguru` for structured, colorful logging. All logs are standardized to UTC. A `POST /log` endpoint allows any client to send a batch of logs to the server for centralized storage and analysis. Client-side loggers are designed to be asynchronous, sending batches in the background to ensure high performance.
 
 ## Project Structure
 ```
@@ -102,10 +94,10 @@ These tests act as external clients to verify the public-facing API. They should
 # Ensure you have installed local dependencies
 # pip install -r requirements.txt
 
-# Test the HTTP API (health check)
+# Test the HTTP API and remote logging (health check)
 python3 test_api.py --health-only
 
-# Test the HTTP API (transcription)
+# Test transcription and remote logging
 python3 test_api.py --file assets/jfk.flac --verbose
 
 # Test the WebSocket echo server
@@ -122,8 +114,7 @@ These tests check the internal functionality of backend components. They are run
 sudo docker compose run --rm whisper-test
 
 # Run the internal logging test against the running backend service
-sudo docker compose cp tests/test_logging.py whisper-backend:/app/test_logging.py
-sudo docker compose exec whisper-backend python3 test_logging.py
+sudo docker compose exec whisper-backend python3 -m tests.test_logging
 ```
 
 ## Docker Commands
@@ -149,7 +140,6 @@ sudo docker compose build whisper-backend && sudo docker compose up -d --force-r
 See `spec.md` for detailed specifications on upcoming features.
 
 - **Phase 2: WebSocket Streaming**
-- **Phase 3: Centralized Logging**
 - **Phase 4: Windows Client**
 - **Phase 5: Dynamic Model Loading**
 

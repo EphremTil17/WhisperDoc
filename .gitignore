@@ -44,3 +44,7 @@ node_modules
 package-lock.json
 model-cache/
 package.json
+terminal.txt
+.specify/*
+.gemini/*
+specs/

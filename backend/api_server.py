@@ -6,9 +6,11 @@ Uses faster-whisper with GPU acceleration
 
 import os
 import time
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import uvicorn
 from faster_whisper import WhisperModel
 import tempfile
@@ -16,6 +18,17 @@ import shutil
 
 # Import the configured logger
 from logging_config import log
+
+# --- Pydantic Models for Log Ingestion ---
+class RemoteLogRecord(BaseModel):
+    source: str
+    level: str
+    message: str
+    timestamp: str
+
+class LogBatch(BaseModel):
+    logs: List[RemoteLogRecord]
+
 
 # Load configuration from environment variables
 API_PORT = int(os.getenv('API_PORT', '9989'))
@@ -155,6 +168,21 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 log.debug(f"Cleaned up temp file: {temp_path}")
             except Exception as e:
                 log.warn(f"Could not clean up temp file {temp_path}: {e}")
+
+@app.post("/log")
+async def ingest_logs(batch: LogBatch):
+    """Receive and process a batch of log records from a remote client."""
+    log.info(f"Received log batch with {len(batch.logs)} records.")
+    for record in batch.logs:
+        # Convert timestamp to datetime object
+        client_time = datetime.fromisoformat(record.timestamp)
+        
+        # Use opt(record=...) to properly override the record's time
+        log.opt(record={"time": client_time}).bind(source=record.source).log(
+            record.level, 
+            record.message
+        )
+    return {"status": "ok"}
 
 
 @app.websocket("/ws")
