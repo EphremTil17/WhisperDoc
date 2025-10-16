@@ -38,8 +38,12 @@ MODEL_DEVICE = os.getenv('MODEL_DEVICE', 'cuda')
 MODEL_COMPUTE_TYPE = os.getenv('MODEL_COMPUTE_TYPE', 'float16')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
+# Import the WebSocket handler
+from websocket_handler import ConnectionManager
+
 # Global model instance
 model: Optional[WhisperModel] = None
+manager: Optional[ConnectionManager] = None
 
 app = FastAPI(
     title="WhisperDoc API",
@@ -49,8 +53,8 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """Load the Whisper model on startup"""
-    global model
+    """Load the Whisper model and initialize the connection manager on startup"""
+    global model, manager
     log.info("Starting WhisperDoc API server...")
     
     try:
@@ -59,6 +63,7 @@ async def startup_event():
         
         # Load model with configuration from environment
         model = WhisperModel(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
+        manager = ConnectionManager(model)
         
         load_time = time.time() - start_time
         log.success(f"Model loaded successfully in {load_time:.2f}s")
@@ -70,10 +75,12 @@ async def startup_event():
         try:
             log.info("Attempting CPU fallback...")
             model = WhisperModel(MODEL_NAME, device="cpu")
+            manager = ConnectionManager(model)
             log.success("Model loaded on CPU")
         except Exception as cpu_error:
             log.error(f"CPU fallback also failed: {cpu_error}")
             model = None
+            manager = None
 
 @app.get("/health")
 async def health_check():
@@ -188,13 +195,24 @@ async def ingest_logs(batch: LogBatch):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time transcription"""
-    await websocket.accept()
-    log.info("WebSocket client connected")
+    if not manager:
+        log.error("WebSocket connection failed: ConnectionManager not initialized.")
+        await websocket.close(code=1011)
+        return
+
+    await manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            log.info(f"Received message: {data}")
-            await websocket.send_text(f"Message text was: {data}")
+            # Receive both text and bytes
+            message = await websocket.receive()
+            if 'text' in message:
+                await manager.handle_message(websocket, message['text'])
+            elif 'bytes' in message:
+                await manager.handle_message(websocket, message['bytes'])
+
     except WebSocketDisconnect:
-        log.info("WebSocket client disconnected")
+        manager.disconnect(websocket)
+    except Exception as e:
+        log.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
 
