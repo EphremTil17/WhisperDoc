@@ -6,6 +6,7 @@ Uses faster-whisper with GPU acceleration
 
 import os
 import time
+import asyncio
 from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
@@ -86,7 +87,7 @@ async def startup_event():
 async def health_check():
     """Health check endpoint"""
     if model is None:
-        log.warn("Health check failed: model not loaded.")
+        log.warning("Health check failed: model not loaded.")
         return JSONResponse(
             status_code=503,
             content={
@@ -116,7 +117,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         # Also accept common audio file extensions
         allowed_extensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
         if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
-            log.warn(f"Invalid file type received: {file.content_type}")
+            log.warning(f"Invalid file type received: {file.content_type}")
             raise HTTPException(
                 status_code=400, 
                 detail=f"Invalid file type. Expected audio file, got: {file.content_type}"
@@ -133,12 +134,14 @@ async def transcribe_audio(file: UploadFile = File(...)):
             
             log.debug(f"Saved to temp file: {temp_path}")
             
-            # Transcribe
+            # Transcribe in a thread pool to avoid blocking the event loop
             start_time = time.time()
-            segments, info = model.transcribe(temp_path, language="en")
             
-            # Collect all segments
-            segments_list = list(segments)
+            def run_transcription():
+                segments, info = model.transcribe(temp_path, language="en")
+                return list(segments), info
+
+            segments_list, info = await asyncio.to_thread(run_transcription)
             transcribe_time = time.time() - start_time
             
             # Build response
@@ -174,7 +177,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 os.unlink(temp_path)
                 log.debug(f"Cleaned up temp file: {temp_path}")
             except Exception as e:
-                log.warn(f"Could not clean up temp file {temp_path}: {e}")
+                log.warning(f"Could not clean up temp file {temp_path}: {e}")
 
 @app.post("/log")
 async def ingest_logs(batch: LogBatch):

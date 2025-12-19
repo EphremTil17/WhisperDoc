@@ -10,16 +10,13 @@ import os
 from logging_config import log
 
 # --- Configuration ---
-# Max buffer size (in bytes) for 60 seconds of 16kHz, 16-bit mono audio
-# 16000 samples/sec * 2 bytes/sample * 60 seconds = 1,920,000 bytes
-MAX_BUFFER_SIZE = 1920000
-INACTIVITY_TIMEOUT = 30  # seconds
-
+# Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
+# 16000 samples/sec * 2 bytes/sample * 300 seconds = 9,600,000 bytes
+MAX_BUFFER_SIZE = 9600000
 class ConnectionManager:
     def __init__(self, model: WhisperModel):
         self.active_connections = {}
         self.model = model
-        self.cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -33,7 +30,7 @@ class ConnectionManager:
 
     async def handle_message(self, websocket: WebSocket, message):
         if websocket not in self.active_connections:
-            log.warn(f"Received message from unknown client: {websocket.client}")
+            log.warning(f"Received message from unknown client: {websocket.client}")
             return
 
         self.active_connections[websocket]["last_activity"] = time.time()
@@ -43,21 +40,21 @@ class ConnectionManager:
                 log.info(f"Received end-of-stream from {websocket.client}")
                 await self.transcribe_and_send(websocket)
             else:
-                log.warn(f"Received invalid text message from {websocket.client}: {message}")
+                log.warning(f"Received invalid text message from {websocket.client}: {message}")
                 await websocket.send_text("Invalid message")
         elif isinstance(message, bytes):
             buffer = self.active_connections[websocket]["buffer"]
             if len(buffer) < MAX_BUFFER_SIZE:
                 buffer.extend(message)
             else:
-                log.warn(f"Audio buffer limit reached for client {websocket.client}. Closing connection.")
+                log.warning(f"Audio buffer limit reached for client {websocket.client}. Closing connection.")
                 await websocket.close(code=1009, reason="Audio buffer limit reached")
                 self.disconnect(websocket)
 
     async def transcribe_and_send(self, websocket: WebSocket):
         connection_data = self.active_connections.get(websocket)
         if not connection_data or not connection_data["buffer"]:
-            log.warn(f"No audio data received from {websocket.client} before transcription request.")
+            log.warning(f"No audio data received from {websocket.client} before transcription request.")
             await websocket.send_text('{"error": "No audio data received."}')
             return
 
@@ -77,11 +74,12 @@ class ConnectionManager:
             
             log.info(f"Transcribing {len(audio_data)} bytes of audio from {websocket.client} saved to {temp_path}")
 
-            # Transcribe
-            segments, info = self.model.transcribe(temp_path, language="en")
-            
-            # Collect all segments
-            segments_list = list(segments)
+            # Transcribe in a thread pool to avoid blocking the event loop
+            def run_transcription():
+                segments, info = self.model.transcribe(temp_path, language="en")
+                return list(segments), info
+
+            segments_list, info = await asyncio.to_thread(run_transcription)
             full_text = " ".join([segment.text.strip() for segment in segments_list])
 
             log.success(f"Transcription successful for {websocket.client}: {full_text[:50]}...")
@@ -102,16 +100,14 @@ class ConnectionManager:
                 os.unlink(temp_path)
                 log.debug(f"Cleaned up temp file: {temp_path}")
 
-    async def _cleanup_inactive_connections(self):
-        while True:
-            await asyncio.sleep(10)  # Check every 10 seconds
-            now = time.time()
-            inactive_clients = []
-            for websocket, data in self.active_connections.items():
-                if now - data["last_activity"] > INACTIVITY_TIMEOUT:
-                    inactive_clients.append(websocket)
-            
-            for websocket in inactive_clients:
-                log.warn(f"Closing inactive connection for client {websocket.client}")
-                await websocket.close(code=1000, reason="Inactivity timeout")
-                self.disconnect(websocket)
+        def disconnect(self, websocket: WebSocket):
+
+            if websocket in self.active_connections:
+
+                del self.active_connections[websocket]
+
+                log.info(f"WebSocket client disconnected: {websocket.client}")
+
+    
+
+    
