@@ -8,13 +8,14 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     curl \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variable for model cache
 ENV HF_HOME=/app/model-cache
 
-# Install dependencies, including loguru
-RUN pip3 install faster-whisper fastapi 'uvicorn[standard]' python-multipart loguru
+# Install dependencies, including loguru and numpy for testing
+RUN pip3 install faster-whisper fastapi 'uvicorn[standard]' python-multipart loguru numpy
 
 # Copy all files from the build context (the 'backend' directory)
 COPY . .

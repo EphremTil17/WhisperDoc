@@ -20,6 +20,7 @@ services:
     volumes:
       - ./model-cache:/app/model-cache
       - ./assets:/app/assets
+      - ./tests:/app/tests
     restart: unless-stopped
     env_file:
       - .env

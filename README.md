@@ -2,21 +2,43 @@
 
 A minimal but production-ready speech-to-text system that combines faster-whisper GPU acceleration with a clean client-server architecture.
 
+## Prerequisites
+
+Before starting, ensure your system meets the following requirements:
+
+### Standard Requirements
+- **Linux/Ubuntu** (Tested on Ubuntu 22.04/24.04)
+- **Python 3.8+** and `pip`
+- **Docker** and **Docker Compose**
+
+### GPU Requirements (Optional, but Recommended)
+For high-performance transcription, an NVIDIA GPU is required:
+- **NVIDIA Drivers** (Run `nvidia-smi` to verify)
+- **NVIDIA Container Toolkit**: Required for Docker to access the GPU.
+  - [Installation Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+  - After installing, run: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
+
 ## Quick Start
 
 ### Option 1: Automated Setup (Recommended)
 
-```bash
-# Run the setup script to install dependencies and create config files
-./setup.sh
-
-# Build and start the backend service
-sudo docker compose build whisper-backend
-sudo docker compose up -d whisper-backend
-
-# Test the API from your local machine
-python3 test_api.py --health-only
-```
+1. **Check Prerequisites**: Ensure Docker and (optionally) NVIDIA drivers are installed.
+2. **Run Setup**:
+   ```bash
+   # Run the setup script to check dependencies and create config files
+   ./setup.sh
+   ```
+3. **Build and Start**:
+   ```bash
+   # Build and start the backend service
+   sudo docker compose build whisper-backend
+   sudo docker compose up -d whisper-backend
+   ```
+4. **Verify**:
+   ```bash
+   # Test the API from your local machine
+   python3 test_api.py --health-only
+   ```
 
 ### Option 2: Manual Setup
 
@@ -62,24 +84,6 @@ python3 test_api.py --health-only
 - **Persistent Model Caching**: The `faster-whisper` model is downloaded on the first run and then cached in the `./model-cache` directory on the host machine, preventing re-downloads on subsequent starts.
 - **Centralized Logging**: The system uses `loguru` for structured, colorful logging. All logs are standardized to UTC. A `POST /log` endpoint allows any client to send a batch of logs to the server for centralized storage and analysis. Client-side loggers are designed to be asynchronous, sending batches in the background to ensure high performance.
 
-## Project Structure
-```
-WhisperDoc/
-├── README.md
-├── spec.md
-├── docker-compose.yml
-├── setup.sh
-├── requirements.txt
-├── test_api.py
-├── test_websocket.py
-├── backend/
-│   ├── Dockerfile
-│   ├── api_server.py
-│   └── logging_config.py
-└── tests/
-    ├── test_logging.py
-    └── test_whisper.py
-```
 
 ## Testing Strategy
 
@@ -105,16 +109,16 @@ python3 test_websocket.py
 ```
 
 ### 2. Internal / Unit Tests
-These tests check the internal functionality of backend components. They are run inside dedicated Docker services to provide the correct environment.
+These tests check the internal functionality of backend components (like the Whisper model and logging configuration). 
+
+**IMPORTANT:** These tests should **only** be run inside the Docker container. They require specific system dependencies (CUDA, CUDNN) and Python packages (`faster-whisper`) that are pre-configured in the Docker image. Running them directly on your host machine will likely result in `ModuleNotFoundError` or CUDA initialization errors.
 
 **Test Files:** `tests/test_whisper.py`, `tests/test_logging.py`
 
 ```bash
 # Run the internal whisper model test using its dedicated service
+# This verifies that the GPU is accessible and the model can transcribe
 sudo docker compose run --rm whisper-test
-
-# Run the internal logging test against the running backend service
-sudo docker compose exec whisper-backend python3 -m tests.test_logging
 ```
 
 ## Docker Commands
@@ -134,6 +138,18 @@ sudo docker compose build whisper-backend && sudo docker compose up -d --force-r
 - **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
 - **Transcription**: ~1s for a 10-second audio file on an RTX 3060TI.
 - **GPU Acceleration**: CUDA-enabled for faster processing.
+
+## Troubleshooting
+
+### Error: "unknown or invalid runtime name: nvidia"
+This means Docker cannot find the NVIDIA runtime.
+1. Ensure the **NVIDIA Container Toolkit** is installed.
+2. Configure Docker to use the toolkit:
+   ```bash
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+3. If you do not have a GPU, remove `runtime: nvidia` from `docker-compose.yml` and change `MODEL_DEVICE` to `cpu` in your `.env` file.
 
 ## Next Steps (Future Phases)
 

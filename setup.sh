@@ -28,15 +28,17 @@ else
 fi
 
 # --- Python Dependencies ---
-echo -e "\n${YELLOW}[STEP 2]${NC} Installing Python dependencies..."
+echo -e "\n${YELLOW}[STEP 2]${NC} Checking Python 3..."
 if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}[ERROR]${NC} python3 could not be found. Please install Python 3."
+    echo -e "${RED}[ERROR]${NC} python3 could not be found."
+    echo "Please install Python 3 and pip before continuing."
     exit 1
 fi
 
 if [ -z "$VIRTUAL_ENV" ]; then
     echo -e "${YELLOW}[WARN]${NC} You are not in a Python virtual environment (venv)."
-    read -p "Install dependencies globally? (y/N): " -n 1 -r
+    echo -e "Recommendation: python3 -m venv venv && source venv/bin/activate"
+    read -p "Install dependencies globally anyway? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}[INFO]${NC} Skipping dependency installation. Please install them manually using: pip install -r requirements.txt"
@@ -49,8 +51,25 @@ else
     echo -e "${GREEN}[OK]${NC} Dependencies installed in your virtual environment."
 fi
 
+# --- GPU / NVIDIA Setup ---
+echo -e "\n${YELLOW}[STEP 3]${NC} Checking for GPU support (NVIDIA Container Toolkit)..."
+if command -v nvidia-smi &> /dev/null; then
+    echo -e "${GREEN}[OK]${NC} NVIDIA GPU detected."
+    if ! command -v nvidia-ctk &> /dev/null; then
+        echo -e "${RED}[ERROR]${NC} NVIDIA Container Toolkit (nvidia-ctk) not found."
+        echo "This is required for Docker to access the GPU."
+        echo "Please follow official instructions: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+        echo "After installation, remember to run: sudo nvidia-ctk runtime configure --runtime=docker"
+    else
+        echo -e "${GREEN}[OK]${NC} NVIDIA Container Toolkit is installed."
+    fi
+else
+    echo -e "${YELLOW}[INFO]${NC} No NVIDIA GPU detected or drivers not installed."
+    echo -e "      The system will fall back to CPU transcription."
+fi
+
 # --- Docker Setup ---
-echo -e "\n${YELLOW}[STEP 3]${NC} Docker setup..."
+echo -e "\n${YELLOW}[STEP 4]${NC} Docker setup..."
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}[ERROR]${NC} Docker could not be found. Please install Docker and ensure it is running."
     exit 1

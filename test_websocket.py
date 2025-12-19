@@ -9,6 +9,18 @@ import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import asyncio
+import websockets
+import logging
+import argparse
+import os
+import json
+import wave
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 async def test_websocket_transcription(audio_path: str):
     uri = "ws://localhost:9989/ws"
 
@@ -20,15 +32,30 @@ async def test_websocket_transcription(audio_path: str):
         async with websockets.connect(uri) as websocket:
             logger.info(f"Connected to {uri}")
 
-            # Read audio file and stream it in chunks
-            with open(audio_path, 'rb') as audio_file:
-                logger.info(f"Streaming audio file: {audio_path}")
-                while True:
-                    chunk = audio_file.read(4096)
-                    if not chunk:
-                        break
-                    await websocket.send(chunk)
-                    await asyncio.sleep(0.02) # Simulate real-time streaming
+            if audio_path.lower().endswith('.wav'):
+                logger.info(f"Streaming PCM frames from WAV: {audio_path}")
+                with wave.open(audio_path, 'rb') as wf:
+                    # Verify it matches server expectations (16kHz, Mono, 16-bit)
+                    if wf.getnchannels() != 1 or wf.getframerate() != 16000 or wf.getsampwidth() != 2:
+                        logger.warning("WAV file format doesn't match server expectations (16kHz, Mono, S16LE).")
+                        logger.warning("Transcription might fail or be inaccurate.")
+                    
+                    while True:
+                        data = wf.readframes(1024)
+                        if not data:
+                            break
+                        await websocket.send(data)
+                        await asyncio.sleep(0.01) # Simulate real-time
+            else:
+                logger.warning(f"Sending raw bytes from non-WAV file: {audio_path}")
+                logger.warning("If this is a compressed format (FLAC, MP3), transcription WILL fail.")
+                with open(audio_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(4096)
+                        if not chunk:
+                            break
+                        await websocket.send(chunk)
+                        await asyncio.sleep(0.01)
 
             # Send end-of-stream message
             await websocket.send('{"event": "end-of-stream"}')

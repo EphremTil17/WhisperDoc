@@ -8,21 +8,29 @@ def configure_logging():
     
     logger.remove()  # Remove default handler
 
-    # Add a new level for SUCCESS, but don't fail if it already exists
-    try:
-        logger.level("SUCCESS", no=25, color="<green><bold>", icon="✅")
-    except ValueError:
-        pass  # Level already exists
+    # Update colors for standard levels
+    # We only pass 'color' because these levels already exist in loguru
+    logger.level("TRACE", color="<cyan><dim>")
+    logger.level("DEBUG", color="<magenta><dim>")
+    logger.level("INFO", color="<light-blue>")
+    logger.level("SUCCESS", color="<green>")
+    logger.level("WARNING", color="<yellow>")
+    logger.level("ERROR", color="<red>")
+    logger.level("CRITICAL", color="<red><reverse>")
 
     # Get log level from environment variable, default to INFO
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
+    # Determine if we should force colorization (useful for docker exec)
+    # If COLORIZE_LOGS is not set, we let loguru decide based on TTY detection
+    force_color = os.getenv("COLORIZE_LOGS", "true").lower() == "true"
 
     # Console logger
     logger.add(
         sys.stderr,
         level=log_level,
         format="<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        colorize=True
+        colorize=force_color
     )
 
     # File logger (always logs from DEBUG level up)
