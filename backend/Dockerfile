@@ -1,56 +1,57 @@
 # --- STAGE 1: Builder ---
-# We use the same base for the builder to ensure CUDA compatibility during install
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04 AS builder
+FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
-# Install pip and system build tools
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y python3 python3-pip
+# Install basic build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --upgrade pip
 
-# Copy only requirements to build the environment
+ENV PATH=/root/.local/bin:$PATH
+
+# Copy only requirements
 COPY requirements.txt .
 
 # Install dependencies to a local folder
 # We use cache mounts to reuse downloaded wheels across builds
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --user --no-cache-dir -r requirements.txt
+    pip3 install --user -r requirements.txt
 
 
-# --- STAGE 2: Runner (Production Image) ---
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04 AS runner
+# --- STAGE 2: Runner ---
+FROM python:3.10-slim AS runner
 
 WORKDIR /app
 
-# 1. Performance and Logging Tweaks
+# 1. Environment & Performance Settings
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/app/model-cache
 ENV PATH=/root/.local/bin:$PATH
 
-# 2. Install ONLY runtime system dependencies
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
+# The "Secret Sauce": Tell the system where the CUDA libs are hidden in Python site-packages
+ENV LD_LIBRARY_PATH=/root/.local/lib/python3.10/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+
+# 2. Install ONLY runtime essentials (ffmpeg is mandatory for audio)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Copy only the installed python packages from the builder stage
+# 3. Copy the 7.5GB of dependencies from the builder stage
 COPY --from=builder /root/.local /root/.local
 
-# 4. Explicitly copy application code (Avoids context bloat)
+# 4. Copy application code
 COPY api_server.py websocket_handler.py logging_config.py .env.template ./
 COPY tests/ ./tests/
 
-# 5. Network and Execution
+# 5. Network & Execution
 ARG API_PORT=9989
 EXPOSE ${API_PORT}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${API_PORT}/health || exit 1
+    CMD curl -f http://localhost:9989/health || exit 1
 
-CMD uvicorn api_server:app --host 0.0.0.0 --port 9989
+CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "9989"]

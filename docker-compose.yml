@@ -16,7 +16,15 @@ services:
       - MODEL_DEVICE=${MODEL_DEVICE:-cuda}
       - MODEL_COMPUTE_TYPE=${MODEL_COMPUTE_TYPE:-float16}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    runtime: nvidia  # Requires nvidia-docker2
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     volumes:
       - ./model-cache:/app/model-cache
       - ./assets:/app/assets
@@ -31,7 +39,13 @@ services:
       dockerfile: Dockerfile
     environment:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-    runtime: nvidia  # Requires nvidia-docker2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     volumes:
       - ./assets:/app/assets
       - ./tests:/app/tests

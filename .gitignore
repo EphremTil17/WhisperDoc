@@ -5,12 +5,12 @@ __pycache__/
 *.pyc  
 
 # Virtual environments
-venv/*
-.venv/*
-.env/*
+**/venv
+**/.venv
+**/.env
 
 # Environment configuration (keep .env.example)
-.env
+**/.env
 
 # Logs and temp files
 *.log
@@ -24,11 +24,8 @@ venv/*
 *.ogg
 test_audio.*
 
-# Assets and recordings
-assets/recordings/*
-assets/*.wav
-assets/*.mp3
-assets/*.flac
+#Assets Folder
+**/assets
 
 # OS-specific
 .DS_Store
