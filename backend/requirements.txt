@@ -1,12 +1,18 @@
+# Heavy Libraries (Least frequent changes)
+torch
+faster-whisper
+ctranslate2>=4.4.0
+
+# Framework & IO
 fastapi
 uvicorn
-faster-whisper
-python-dotenv
-torch
-ctranslate2>=4.4.0
-pytest
-pytest-asyncio
-loguru
+python-multipart
 websockets
 requests
-python-multipart
+python-dotenv
+
+# Utilities & Testing
+loguru
+pytest
+pytest-asyncio
+

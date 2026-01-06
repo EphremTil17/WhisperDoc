@@ -18,11 +18,11 @@ echo -e "${YELLOW}[STEP 1]${NC} Setting up environment file..."
 if [ -f ".env" ]; then
     echo -e "${GREEN}[OK]${NC} .env file already exists."
 else
-    if [ -f ".env.template" ]; then
-        cp .env.template .env
-        echo -e "${GREEN}[OK]${NC} Created .env from template."
+    if [ -f "backend/.env.template" ]; then
+        cp backend/.env.template .env
+        echo -e "${GREEN}[OK]${NC} Created .env from backend/.env.template."
     else
-        echo -e "${RED}[ERROR]${NC} .env.template not found!"
+        echo -e "${RED}[ERROR]${NC} backend/.env.template not found!"
         exit 1
     fi
 fi
