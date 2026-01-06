@@ -1,7 +1,7 @@
-# Client-side dependencies
-sounddevice
-pynput
 websockets
-python-dotenv
-pyperclip
+sounddevice
 numpy
+pynput
+loguru
+pyperclip
+python-dotenv

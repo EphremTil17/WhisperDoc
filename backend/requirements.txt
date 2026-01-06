@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+faster-whisper
+python-dotenv
+torch
+ctranslate2>=4.4.0
+pytest
+pytest-asyncio
+loguru
+websockets
+requests

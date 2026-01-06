@@ -135,27 +135,98 @@ class DictationClient:
 
     async def run_ws(self):
         import websockets
+        ws = None
+        last_activity = time.time()
+        IDLE_TIMEOUT = 300  # 5 minutes
+
         while True:
             try:
-                async with websockets.connect(WS_URI) as ws:
-                    logger.success(f"Connected to Server. Hotkey: {RECORD_HOTKEY}")
-                    while True:
-                        if not self.is_recording:
-                            await asyncio.sleep(0.1)
+                # Wait for recording to start if we don't have a connection
+                if not ws:
+                    if not self.is_recording:
+                        await asyncio.sleep(0.1)
+                        continue
+                    
+                    # Wake up & Handshake
+                    logger.info(f"Connecting to {WS_URI}...")
+                    ws = await websockets.connect(WS_URI)
+                    
+                    # 1. Wait for Server Hello
+                    hello_msg = json.loads(await ws.recv())
+                    if hello_msg.get("event") == "hello":
+                        server_ver = hello_msg.get("version")
+                        status = hello_msg.get("status")
+                        logger.success(f"Connected to {hello_msg.get('server')} (v{server_ver}) [Status: {status}]")
+                        
+                        # 2. Send Client Hello
+                        await ws.send(json.dumps({
+                            "event": "hello",
+                            "client": "terminal_client",
+                            "version": "1.1.0"
+                        }))
+                    else:
+                        logger.warning("Protocol mismatch: No hello received.")
+                    
+                    last_activity = time.time()
+
+                # If we are recording, drain the queue and send
+                if self.is_recording:
+                    while self.is_recording or not self.audio_queue.empty():
+                        try:
+                            # Get audio chunk with small timeout so we can check is_recording
+                            chunk = await asyncio.wait_for(self.audio_queue.get(), 0.05)
+                            await ws.send(chunk)
+                            last_activity = time.time()
+                        except asyncio.TimeoutError:
+                            if not self.is_recording: break
                             continue
-                        while self.is_recording:
-                            try:
-                                chunk = await asyncio.wait_for(self.audio_queue.get(), 0.1)
-                                await ws.send(chunk)
-                            except asyncio.TimeoutError: continue
-                        await ws.send(json.dumps({"event": "end-of-stream"}))
-                        resp = json.loads(await ws.recv())
-                        if "text" in resp: self.paste(resp["text"])
-                        elif "error" in resp: logger.error(resp["error"])
-                        while not self.audio_queue.empty(): self.audio_queue.get_nowait()
+                    
+                    # Done recording session - send signal
+                    # Use EXACT spacing expected by backend: '{"event": "end-of-stream"}'
+                    await ws.send('{"event": "end-of-stream"}')
+                    
+                    # Wait for response
+                    while True:
+                        resp_raw = await ws.recv()
+                        resp = json.loads(resp_raw)
+                        
+                        # Handle Status Updates (e.g. Model Loading)
+                        if resp.get("event") == "status":
+                            logger.info(f"Server Status: {resp.get('message')}")
+                            continue # Wait for next message (transcription)
+                            
+                        # Handle Transcription
+                        if "text" in resp: 
+                            self.paste(resp["text"])
+                            break
+                        
+                        # Handle Errors
+                        elif resp.get("event") == "error":
+                            logger.error(f"Server Error [{resp.get('code')}]: {resp.get('message')}")
+                            break
+                        elif "error" in resp: # Legacy
+                            logger.error(resp["error"])
+                            break
+                            
+                    last_activity = time.time()
+
+                # Idle check
+                if ws and time.time() - last_activity > IDLE_TIMEOUT:
+                    logger.info("Session idle for 5m. Closing connection.")
+                    await ws.close()
+                    ws = None
+                
+                await asyncio.sleep(0.1)
+
             except Exception as e:
-                logger.error(f"Connection error: {e}. Retrying...")
-                await asyncio.sleep(5)
+                logger.error(f"WebSocket Error: {e}. Session reset.")
+                if ws:
+                    try: await ws.close()
+                    except: pass
+                ws = None
+                # Clear queue on error
+                while not self.audio_queue.empty(): self.audio_queue.get_nowait()
+                await asyncio.sleep(1)
 
     def _parse_hk(self, s):
         mods, vk = 0, 0

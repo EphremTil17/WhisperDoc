@@ -1,6 +1,10 @@
-python-dotenv
-websockets
-requests
+# WhisperDoc Developer Tooling
+# ------------------------------
+# These tools are for project maintenance and code quality.
+# To run the actual code, use the requirements.txt in the sub-directories.
+
+# 1. Formatting & Linting
 ruff
-pytest
-loguru
+
+# 2. Environment Management
+python-dotenv

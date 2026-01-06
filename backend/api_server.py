@@ -59,58 +59,59 @@ async def startup_event():
     log.info("Starting WhisperDoc API server...")
     
     try:
-        log.info(f"Loading Whisper model ({MODEL_NAME})...")
-        start_time = time.time()
+        log.info(f"Initializing Model Manager ({MODEL_NAME})...")
         
-        # Load model with configuration from environment
-        model = WhisperModel(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
-        manager = ConnectionManager(model)
+        # Initialize ModelManager (which handles loading/unloading)
+        from websocket_handler import ModelManager
+        model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
         
-        load_time = time.time() - start_time
-        log.success(f"Model loaded successfully in {load_time:.2f}s")
-        log.info(f"Model device: {model.model.device}")
+        # Pass manager to ConnectionManager
+        manager = ConnectionManager(model_manager)
+        
+        # We no longer set 'model' globally as it's dynamic now
+        model = None 
+        
+        log.success(f"System initialized successfully.")
         
     except Exception as e:
-        log.error(f"Failed to load model: {e}")
-        # Try CPU fallback
-        try:
-            log.info("Attempting CPU fallback...")
-            model = WhisperModel(MODEL_NAME, device="cpu")
-            manager = ConnectionManager(model)
-            log.success("Model loaded on CPU")
-        except Exception as cpu_error:
-            log.error(f"CPU fallback also failed: {cpu_error}")
-            model = None
-            manager = None
+        log.error(f"Failed to initialize backend: {e}")
+        model = None
+        manager = None
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    if model is None:
-        log.warning("Health check failed: model not loaded.")
+    if manager is None or manager.model_manager is None:
+        log.warning("Health check failed: system not initialized.")
         return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "message": "Whisper model not loaded",
-                "timestamp": time.time()
-            }
+             status_code=503,
+             content={"status": "unhealthy", "message": "System not initialized"}
         )
     
-    log.info("Health check passed.")
+    # Check if model is loaded (don't force load)
+    is_loaded = manager.model_manager.model is not None
+    
+    log.info(f"Health check passed. Model loaded: {is_loaded}")
     return {
         "status": "healthy",
-        "model_loaded": True,
-        "device": str(model.model.device) if hasattr(model.model, 'device') else "unknown",
+        "model_loaded": is_loaded,
+        "device": str(manager.model_manager.device),
         "timestamp": time.time()
     }
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
     """Transcribe uploaded audio file"""
-    if model is None:
-        log.error("Transcription failed: model not available.")
-        raise HTTPException(status_code=503, detail="Whisper model not available")
+    """Transcribe uploaded audio file"""
+    if manager is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+    
+    # Load model if needed
+    try:
+        model, _ = manager.model_manager.get_model()
+    except Exception as e:
+        log.error(f"Failed to load model for HTTP request: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load model")
     
     # Validate file type
     if not file.content_type or not file.content_type.startswith('audio/'):
@@ -215,7 +216,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+    except RuntimeError:
+        # Happens when server closes the connection while loop is waiting for receive()
+        manager.disconnect(websocket)
     except Exception as e:
-        log.error(f"WebSocket error: {e}")
+        log.error(f"Unexpected WebSocket error: {e}")
         manager.disconnect(websocket)
 
