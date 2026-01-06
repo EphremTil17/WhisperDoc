@@ -9,3 +9,4 @@ pytest-asyncio
 loguru
 websockets
 requests
+python-multipart

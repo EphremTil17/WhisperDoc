@@ -44,30 +44,29 @@ For high-performance transcription, an NVIDIA GPU is required:
 
 1. **Configure Environment**
    ```bash
-   # Create .env file
+   # Create .env file from template
    cp .env.template .env
    
-   # Install local dependencies for testing
+   # Install local dependencies (Terminal Client & Dev Tools)
    pip install -r requirements.txt
+   pip install -r client/requirements.txt
    ```
 
 2. **Start the Backend API**
    ```bash
    # Build and start the backend service
-   sudo docker compose build whisper-backend
-   sudo docker compose up -d whisper-backend
-   
-   # Check if it's running
-   sudo docker compose ps
+   docker compose build whisper-backend
+   docker compose up -d whisper-backend
    ```
 
 3. **Test the API**
    ```bash
-   # Test health endpoint from your local machine
-   python3 test_api.py --health-only
+   # Use the integrated backend tests
+   cd backend
+   python tests/test_api.py --health-only
    
    # Test transcription with an audio file
-   python3 test_api.py --file your_audio.wav --verbose
+   python tests/test_api.py --file ../assets/jfk.flac --verbose
    ```
 
 **API Endpoints:**
@@ -79,46 +78,47 @@ For high-performance transcription, an NVIDIA GPU is required:
 ## Architecture
 
 - **Backend**: Docker containerized FastAPI server with `faster-whisper` and CUDA acceleration.
-- **API**: RESTful HTTP and WebSocket endpoints.
-- **Configuration-Driven**: The entire system is configured via a central `.env` file. This includes ports, model names, and log levels. There are no hardcoded values.
-- **Persistent Model Caching**: The `faster-whisper` model is downloaded on the first run and then cached in the `./model-cache` directory on the host machine, preventing re-downloads on subsequent starts.
-- **Centralized Logging**: The system uses `loguru` for structured, colorful logging. All logs are standardized to UTC. A `POST /log` endpoint allows any client to send a batch of logs to the server for centralized storage and analysis. Client-side loggers are designed to be asynchronous, sending batches in the background to ensure high performance.
+- **Dynamic Resource Scaling**: The backend includes an intelligent `ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
+- **Session-Based WebSockets**: Connections are established only when recording starts and are automatically closed after 5 minutes of idle time.
+- **Protocol Handshake**: A versioned `hello` event system ensures clients and server are synchronized on versioning and readiness states before data starts flowing.
+- **Centralized Logging**: The system uses `loguru` for structured, colorful logging. All logs are standardized to UTC. A `POST /log` endpoint allows any client (Flutter/Python) to send a batch of logs to the server.
+- **Decoupled Requirements**: Dependencies are split into modular `requirements.txt` files (backend, client, tests) to minimize bloat on client machines.
 
 
 ## Testing Strategy
 
 The project uses a two-category testing strategy:
 
-### 1. API / End-to-End Tests
-These tests act as external clients to verify the public-facing API. They should be run from your **local machine** against the running backend container.
+### 1. Integration & Protocol Tests
+These tests verify the public-facing API and the WebSocket handshake protocol. They can be run against a live server.
 
-**Test Files:** `test_api.py`, `test_websocket.py`
+**Location**: `backend/tests/test_api.py`, `backend/tests/test_websocket.py`
 
 ```bash
-# Ensure you have installed local dependencies
-# pip install -r requirements.txt
+# Run from within the backend directory
+cd backend
 
-# Test the HTTP API and remote logging (health check)
-python3 test_api.py --health-only
+# Test the HTTP API
+python tests/test_api.py --health-only
 
-# Test transcription and remote logging
-python3 test_api.py --file assets/jfk.flac --verbose
-
-# Test the WebSocket echo server
-python3 test_websocket.py
+# Test the WebSocket Handshake and Streaming
+# Requires a running server at localhost:9989
+python tests/test_websocket.py
 ```
 
-### 2. Internal / Unit Tests
-These tests check the internal functionality of backend components (like the Whisper model and logging configuration). 
+### 2. Logic & Hardware Tests (PyTest)
+These tests check internal components and verify GPU/CPU availability.
 
-**IMPORTANT:** These tests should **only** be run inside the Docker container. They require specific system dependencies (CUDA, CUDNN) and Python packages (`faster-whisper`) that are pre-configured in the Docker image. Running them directly on your host machine will likely result in `ModuleNotFoundError` or CUDA initialization errors.
-
-**Test Files:** `tests/test_whisper.py`, `tests/test_logging.py`
+**Location**: `backend/tests/test_backend_logic.py`, `backend/tests/test_whisper.py`
 
 ```bash
-# Run the internal whisper model test using its dedicated service
-# This verifies that the GPU is accessible and the model can transcribe
-sudo docker compose run --rm whisper-test
+cd backend
+
+# Run the full test suite (Zero-Config)
+pytest
+
+# To verify GPU hardware specifically:
+python tests/test_whisper.py
 ```
 
 ## Docker Commands
@@ -155,7 +155,7 @@ This means Docker cannot find the NVIDIA runtime.
 
 See `spec.md` for detailed specifications on upcoming features.
 
-- **Phase 2: WebSocket Streaming**
-- **Phase 4: Windows Client**
-- **Phase 5: Dynamic Model Loading**
+- **Phase 2: WebSocket Streaming [COMPLETED]**
+- **Phase 4: Windows Client [IN PROGRESS]**
+- **Phase 5: Dynamic Model Loading [COMPLETED]**
 

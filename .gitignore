@@ -39,7 +39,6 @@ Thumbs.db
 .idea/
 
 # Docker
-.dockerignore
 node_modules
 package-lock.json
 model-cache/

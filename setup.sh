@@ -28,28 +28,37 @@ else
 fi
 
 # --- Python Dependencies ---
-echo -e "\n${YELLOW}[STEP 2]${NC} Checking Python 3..."
+echo -e "\n${YELLOW}[STEP 2]${NC} Setting up Python dependencies..."
 if ! command -v python3 &> /dev/null; then
     echo -e "${RED}[ERROR]${NC} python3 could not be found."
-    echo "Please install Python 3 and pip before continuing."
     exit 1
 fi
 
-if [ -z "$VIRTUAL_ENV" ]; then
-    echo -e "${YELLOW}[WARN]${NC} You are not in a Python virtual environment (venv)."
-    echo -e "Recommendation: python3 -m venv venv && source venv/bin/activate"
-    read -p "Install dependencies globally anyway? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}[INFO]${NC} Skipping dependency installation. Please install them manually using: pip install -r requirements.txt"
-    else
+echo "Which components would you like to set up?"
+echo "1) Full Developer Environment (Everything)"
+echo "2) Backend Only (Faster-Whisper + API)"
+echo "3) Client Only (Terminal Transcription Script)"
+read -p "Selection (1-3): " -n 1 -r
+echo
+case $REPLY in
+    1)
         pip install -r requirements.txt
-        echo -e "${GREEN}[OK]${NC} Dependencies installed globally."
-    fi
-else
-    pip install -r requirements.txt
-    echo -e "${GREEN}[OK]${NC} Dependencies installed in your virtual environment."
-fi
+        pip install -r backend/requirements.txt
+        pip install -r client/requirements.txt
+        echo -e "${GREEN}[OK]${NC} Full environment installed."
+        ;;
+    2)
+        pip install -r backend/requirements.txt
+        echo -e "${GREEN}[OK]${NC} Backend dependencies installed."
+        ;;
+    3)
+        pip install -r client/requirements.txt
+        echo -e "${GREEN}[OK]${NC} Client dependencies installed."
+        ;;
+    *)
+        echo -e "${YELLOW}[INFO]${NC} Skipping automated installation."
+        ;;
+esac
 
 # --- GPU / NVIDIA Setup ---
 echo -e "\n${YELLOW}[STEP 3]${NC} Checking for GPU support (NVIDIA Container Toolkit)..."
@@ -91,9 +100,10 @@ echo ""
 echo -e "${GREEN}Setup complete!${NC}"
 echo "--------------------"
 echo -e "${YELLOW}Next Steps:${NC}"
-echo "1. (Optional) Edit your .env file:"
-echo "   nano .env"
+echo "1. (Optional) Edit your .env file: nano .env"
 echo "2. Build and start the backend service:"
-echo "   sudo docker compose build whisper-backend && sudo docker compose up -d whisper-backend"
-echo "3. Check the server logs:"
-echo "   sudo docker compose logs -f whisper-backend"
+echo "   docker compose build whisper-backend && docker compose up -d whisper-backend"
+echo "3. Run your first integration test:"
+echo "   cd backend && python tests/test_api.py --health-only"
+echo "4. Check the server logs:"
+echo "   docker compose logs -f whisper-backend"

@@ -3,19 +3,22 @@ FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies with cache mount
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     curl \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg
 
 # Set environment variable for model cache
 ENV HF_HOME=/app/model-cache
 
-# Install dependencies, including loguru and numpy for testing
-RUN pip3 install faster-whisper fastapi 'uvicorn[standard]' python-multipart loguru numpy
+# Copy requirements first to leverage caching
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install -r requirements.txt
 
 # Copy all files from the build context (the 'backend' directory)
 COPY . .
