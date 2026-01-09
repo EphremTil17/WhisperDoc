@@ -24,11 +24,11 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     volumes:
       - ./model-cache:/app/model-cache
       - ./assets:/app/assets
-      - ./tests:/app/tests
+      - ./backend/tests:/app/tests
     restart: unless-stopped
     env_file:
       - .env
@@ -45,11 +45,12 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     volumes:
       - ./assets:/app/assets
-      - ./tests:/app/tests
-    command: ["python3", "tests/test_whisper.py"]
+      - ./backend/tests:/app/tests
+    command: [ "python3", "tests/test_whisper.py" ]
+
     profiles:
       - test
     env_file:

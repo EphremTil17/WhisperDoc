@@ -33,9 +33,16 @@ def configure_logging():
         colorize=force_color
     )
 
+    # Determine log path dynamically
+    # Use LOG_DIR env var if set, otherwise fallback to local 'logs' folder
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.getenv("LOG_DIR", os.path.join(base_dir, "logs"))
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "backend.log")
+
     # File logger (always logs from DEBUG level up)
     logger.add(
-        "/app/logs/backend.log",
+        log_file,
         level="DEBUG",
         rotation="10 MB",  # Rotate log file when it reaches 10 MB
         retention="7 days", # Keep logs for 7 days

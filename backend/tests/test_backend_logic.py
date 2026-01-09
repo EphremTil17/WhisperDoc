@@ -16,15 +16,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 import sys
 import os
 
-# Mock faster_whisper (heavy lib)
-sys.modules["faster_whisper"] = MagicMock()
-sys.modules["torch"] = MagicMock()
-sys.modules["torch.cuda"] = MagicMock()
-
-# We actulaly WANT the real logging_config to load if possible, 
-# or we just rely on the path being correct.
-# If we mock it, we must ensure it has the exact attributes needed.
-# For now, let's try importing the real one since we are setting sys.path
+# We rely on local patching in fixtures instead of global sys.modules hijacking.
 from websocket_handler import ModelManager, ConnectionManager
 
 @pytest.fixture

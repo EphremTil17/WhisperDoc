@@ -51,10 +51,23 @@ For high-performance transcription, an NVIDIA GPU is required:
    ```
 
 3. **Test the API**
-   ```bash
-   # Run the test suite using pytest
-   pytest backend/tests
-   ```
+
+You can run the test suite locally or directly inside the running Docker container.
+
+**Run Locally:**
+```bash
+# Ensure you are using the backend venv and have all dependencies
+pytest backend/tests
+```
+**Run Inside Docker (Recommended for Environment Consistency):**
+```bash
+# Run all tests inside the active container
+docker compose exec whisper-backend pytest tests/
+
+# To run a specific test file:
+docker compose exec whisper-backend pytest tests/test_api.py
+```
+
 
 **API Endpoints:**
 - `GET /health` - Check API status and model readiness

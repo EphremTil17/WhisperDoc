@@ -14,8 +14,9 @@ async def run_websocket_test(audio_path=None):
     print(f"\n[INIT] Attempting connection to {WS_URI}...")
     
     try:
-        # 5 second timeout for connection
-        async with asyncio.wait_for(websockets.connect(WS_URI), timeout=5.0) as websocket:
+        # Connect first, then use as context manager
+        websocket = await asyncio.wait_for(websockets.connect(WS_URI), timeout=5.0)
+        async with websocket:
             print("✅ Socket Open. Starting Handshake...")
             
             # 1. Handshake: Server Hello
