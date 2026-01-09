@@ -25,12 +25,12 @@ class LoggingService {
     _webSocketService = service;
   }
 
-  void info(String message, {bool sendToServer = true}) {
+  void info(String message, {bool sendToServer = false}) {
     _logger.i(message);
     if (sendToServer) _sendLogToServer('INFO', message);
   }
 
-  void warning(String message, {bool sendToServer = true}) {
+  void warning(String message, {bool sendToServer = false}) {
     _logger.w(message);
     if (sendToServer) _sendLogToServer('WARNING', message);
   }
@@ -39,7 +39,7 @@ class LoggingService {
     String message, {
     dynamic error,
     StackTrace? stackTrace,
-    bool sendToServer = true,
+    bool sendToServer = false,
   }) {
     _logger.e(message, error: error, stackTrace: stackTrace);
     if (sendToServer) _sendLogToServer('ERROR', '$message ${error ?? ''}');

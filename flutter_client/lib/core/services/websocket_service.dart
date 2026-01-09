@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 import 'logging_service.dart';
+import 'settings_service.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected }
 
-class WebSocketService {
-  final String url;
+class WebSocketService extends ChangeNotifier {
+  final SettingsService _settingsService;
   WebSocketChannel? _channel;
   final StreamController<ConnectionStatus> _statusController =
       StreamController<ConnectionStatus>.broadcast();
@@ -24,71 +26,160 @@ class WebSocketService {
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
 
   Timer? _reconnectTimer;
+  Timer? _idleTimer;
   bool _isIntentionalDisconnect = false;
+  bool _isConnecting = false;
 
-  WebSocketService({this.url = 'ws://localhost:9989/ws'}) {
+  // High-performance buffer for audio chunks captured while connecting
+  final List<Uint8List> _pendingAudioBuffer = [];
+
+  // 5 Minute Idle Timeout
+  static const Duration idleTimeout = Duration(minutes: 5);
+
+  WebSocketService(this._settingsService) {
+    // Listen for settings changes to reconnect if URI changes
+    _settingsService.addListener(_onSettingsChanged);
     // Attach self to the logger so it can send logs out
     LoggingService().attachWebSocket(this);
   }
 
-  void connect() {
+  void _resetIdleTimer() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(idleTimeout, () {
+      _logger.info(
+        'Idle timeout reached (5m). Closing connection to save resources.',
+        sendToServer: false,
+      );
+      disconnect();
+    });
+  }
+
+  void _flushPendingBuffer() {
+    if (_pendingAudioBuffer.isEmpty) return;
+    _logger.info(
+      'Flushing ${_pendingAudioBuffer.length} buffered chunks to server...',
+      sendToServer: false,
+    );
+
+    for (final chunk in _pendingAudioBuffer) {
+      _channel?.sink.add(chunk);
+    }
+    _pendingAudioBuffer.clear();
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _settingsService.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    // Simple logic: if connected, reconnect with new URI
+    // Refinement: Only reconnect if URI actually changed is handled by SettingsService logic usually,
+    // but here we just ensure we are using the new one.
     if (_status == ConnectionStatus.connected ||
         _status == ConnectionStatus.connecting) {
-      return;
+      LoggingService().info('Settings changed, reconnecting...');
+      disconnect();
+      // We don't auto-reconnect here, let the next interaction handle it
     }
+  }
 
+  Future<bool> connect() async {
+    if (_status == ConnectionStatus.connected) return true;
+    if (_isConnecting) return false;
+
+    _isConnecting = true;
     _isIntentionalDisconnect = false;
     _updateStatus(ConnectionStatus.connecting);
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
+      final uri = Uri.parse(_settingsService.serverUri);
+      _logger.info('Connecting to WebSocket: $uri', sendToServer: false);
+
+      _channel = IOWebSocketChannel.connect(uri);
+
+      // Handle connection success
+      final connected = await _channel!.ready
+          .then((_) {
+            _isConnecting = false;
+            _updateStatus(ConnectionStatus.connected);
+            _logger.info('WebSocket Connected', sendToServer: false);
+            _resetIdleTimer();
+            _flushPendingBuffer();
+            return true;
+          })
+          .catchError((e) {
+            _isConnecting = false;
+            _logger.error(
+              'WebSocket connection failed: $e',
+              sendToServer: false,
+            );
+            _handleDisconnect();
+            return false;
+          });
 
       _channel!.stream.listen(
         (data) {
-          _updateStatus(ConnectionStatus.connected);
+          _resetIdleTimer();
           if (data is String) {
-            try {
-              final json = jsonDecode(data);
-              _messageController.add(json);
-            } catch (e) {
-              _logger.error(
-                'JSON Parse Error: $e',
+            final trimmed = data.trim();
+            if (trimmed.startsWith('{')) {
+              try {
+                final json = jsonDecode(data);
+                _messageController.add(json);
+              } catch (e) {
+                _logger.error('JSON Parse Error: $e', sendToServer: false);
+              }
+            } else {
+              _logger.warning(
+                'Received non-JSON text from server: $data',
                 sendToServer: false,
-              ); // Don't send socket errors to socket
+              );
             }
           }
         },
         onError: (error) {
+          _isConnecting = false;
           _logger.error('WebSocket Error: $error', sendToServer: false);
           _handleDisconnect();
         },
         onDone: () {
+          _isConnecting = false;
           _logger.warning('WebSocket Closed', sendToServer: false);
           _handleDisconnect();
         },
       );
+
+      return connected;
     } catch (e) {
+      _isConnecting = false;
       _logger.error('Connection failed: $e', sendToServer: false);
       _handleDisconnect();
+      return false;
     }
   }
 
   void _handleDisconnect() {
     _updateStatus(ConnectionStatus.disconnected);
     _channel = null;
+    _idleTimer?.cancel();
+    _isConnecting = false;
 
-    if (!_isIntentionalDisconnect) {
+    // Reconnect if we were in the middle of something and it wasn't intentional
+    if (!_isIntentionalDisconnect && _status != ConnectionStatus.disconnected) {
       _scheduleReconnect();
     }
   }
 
   void _scheduleReconnect() {
-    if (_reconnectTimer != null && _reconnectTimer!.isActive) {
-      return;
-    }
+    if (_reconnectTimer?.isActive ?? false) return;
 
-    _logger.info('Scheduling reconnect in 3 seconds...', sendToServer: false);
+    _logger.info('Reconnect scheduled...', sendToServer: false);
     _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      // ignore: discarded_futures
       connect();
     });
   }
@@ -97,8 +188,18 @@ class WebSocketService {
     if (_status == ConnectionStatus.connected && _channel != null) {
       try {
         _channel!.sink.add(data);
+        _resetIdleTimer();
       } catch (e) {
         _logger.error('Failed to send audio: $e', sendToServer: false);
+      }
+    } else {
+      // Buffer the audio if we are still connecting
+      _pendingAudioBuffer.add(data);
+
+      // Auto-trigger connection if we aren't already
+      if (!_isConnecting && _status == ConnectionStatus.disconnected) {
+        // ignore: discarded_futures
+        connect();
       }
     }
   }
@@ -106,7 +207,8 @@ class WebSocketService {
   void sendEndSignal() {
     if (_status == ConnectionStatus.connected && _channel != null) {
       try {
-        _channel!.sink.add(jsonEncode({'event': 'end-of-stream'}));
+        _channel!.sink.add('{"event": "end-of-stream"}');
+        _resetIdleTimer();
       } catch (e) {
         _logger.error('Failed to send end signal: $e', sendToServer: false);
       }
