@@ -70,6 +70,9 @@ class HotkeyService {
     // Commands Stream
     receivePort.listen((message) {
       if (message is _HotkeyCommand) {
+        // Always try to unregister first to avoid 1409
+        UnregisterHotKey(NULL, message.id);
+
         final result = RegisterHotKey(
           NULL,
           message.id,

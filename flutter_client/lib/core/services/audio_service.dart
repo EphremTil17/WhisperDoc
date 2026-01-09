@@ -12,6 +12,10 @@ class AudioService extends ChangeNotifier {
   final StreamController<Uint8List> _audioStreamController =
       StreamController<Uint8List>.broadcast();
 
+  final StreamController<double> _amplitudeController =
+      StreamController<double>.broadcast();
+  Stream<double> get amplitudeStream => _amplitudeController.stream;
+
   Stream<Uint8List> get audioStream => _audioStreamController.stream;
 
   bool _isRecording = false;
@@ -37,6 +41,7 @@ class AudioService extends ChangeNotifier {
       _recordSubscription = stream.listen(
         (data) {
           _audioStreamController.add(data);
+          _calculateAmplitude(data);
         },
         onError: (e) {
           LoggingService().error('Audio recording error', error: e);
@@ -52,6 +57,29 @@ class AudioService extends ChangeNotifier {
     }
   }
 
+  void _calculateAmplitude(Uint8List data) {
+    if (data.isEmpty) return;
+
+    // PCM 16-bit Mono: Each sample is 2 bytes
+    double total = 0;
+    final int sampleCount = data.length ~/ 2;
+
+    for (int i = 0; i < data.length - 1; i += 2) {
+      // Convert 2 bytes to a 16-bit signed integer (Little Endian)
+      final sample = ByteData.sublistView(
+        data,
+        i,
+        i + 2,
+      ).getInt16(0, Endian.little);
+      total += sample.abs();
+    }
+
+    final average = total / sampleCount;
+    // Normalize to 0.0 - 1.0 (Approximate max for 16-bit is 32767)
+    final normalized = (average / 32768.0).clamp(0.0, 1.0);
+    _amplitudeController.add(normalized);
+  }
+
   Future<void> stopRecording() async {
     if (!_isRecording) return;
 
@@ -60,14 +88,11 @@ class AudioService extends ChangeNotifier {
     _recordSubscription = null;
 
     _isRecording = false;
+    _amplitudeController.add(0.0); // Reset
     notifyListeners();
 
     LoggingService().info('Audio recording stopped');
   }
-
-  // Aliases for compatibility if needed, or remove if direct calls used
-  Future<void> start() => startRecording();
-  Future<void> stop() => stopRecording();
 
   @override
   Future<void> dispose() async {

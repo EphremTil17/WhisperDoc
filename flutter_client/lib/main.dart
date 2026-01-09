@@ -14,8 +14,7 @@ void main() async {
 
   // Window Options
   const WindowOptions windowOptions = WindowOptions(
-    size: Size(450, 800),
-    minimumSize: Size(350, 600),
+    size: Size(420, 600),
     center: true,
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
@@ -26,6 +25,7 @@ void main() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();
     await windowManager.focus();
+    await windowManager.setResizable(false); // Disable resizing
   });
 
   // Initialize Services
