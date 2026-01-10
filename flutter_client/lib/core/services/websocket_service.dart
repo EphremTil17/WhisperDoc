@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
-import 'logging_service.dart';
-import 'settings_service.dart';
+import 'package:flutter_client/core/services/logging_service.dart';
+import 'package:flutter_client/core/services/settings_service.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected }
 
@@ -36,7 +36,11 @@ class WebSocketService extends ChangeNotifier {
   // 5 Minute Idle Timeout
   static const Duration idleTimeout = Duration(minutes: 5);
 
-  WebSocketService(this._settingsService) {
+  // Track last known URI for selective reconnect
+  String _lastKnownUri;
+
+  WebSocketService(this._settingsService)
+    : _lastKnownUri = _settingsService.serverUri {
     // Listen for settings changes to reconnect if URI changes
     _settingsService.addListener(_onSettingsChanged);
     // Attach self to the logger so it can send logs out
@@ -72,16 +76,21 @@ class WebSocketService extends ChangeNotifier {
     _idleTimer?.cancel();
     _reconnectTimer?.cancel();
     _settingsService.removeListener(_onSettingsChanged);
+    unawaited(_statusController.close());
+    unawaited(_messageController.close());
     super.dispose();
   }
 
   void _onSettingsChanged() {
-    // Simple logic: if connected, reconnect with new URI
-    // Refinement: Only reconnect if URI actually changed is handled by SettingsService logic usually,
-    // but here we just ensure we are using the new one.
+    final currentUri = _settingsService.serverUri;
+    if (currentUri == _lastKnownUri) {
+      return; // No URI change, ignore other settings
+    }
+    _lastKnownUri = currentUri;
+
     if (_status == ConnectionStatus.connected ||
         _status == ConnectionStatus.connecting) {
-      LoggingService().info('Settings changed, reconnecting...');
+      LoggingService().info('Server URI changed, reconnecting...');
       disconnect();
       // We don't auto-reconnect here, let the next interaction handle it
     }

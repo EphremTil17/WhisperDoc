@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
-import 'logging_service.dart';
+import 'package:flutter_client/core/services/logging_service.dart';
 
 /// Service to capture raw audio chunks.
 /// Configured for 16kHz, Mono, 16-bit PCM.
@@ -99,6 +99,7 @@ class AudioService extends ChangeNotifier {
     await stopRecording();
     await _audioRecorder.dispose();
     await _audioStreamController.close();
+    await _amplitudeController.close();
     super.dispose();
   }
 }

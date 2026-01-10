@@ -1,7 +1,7 @@
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
-import 'logging_service.dart';
+import 'package:flutter_client/core/services/logging_service.dart';
 
 class ClipboardService {
   static Future<void> copyToClipboard(String text) async {
@@ -53,51 +53,57 @@ class ClipboardService {
     }
   }
 
-  /// Simulates Ctrl+V on Windows using the SendInput API.
+  /// Simulates Ctrl+V on Windows using scan codes to avoid Flutter's
+  /// HardwareKeyboard intercepting the events and causing state conflicts.
+  /// Skips simulation if WhisperDoc itself is the foreground window.
   static Future<void> simulatePaste() async {
+    // Check if our app is the foreground window - if so, skip paste
+    // to avoid keyboard state conflicts with Flutter
+    final ourWindow = GetActiveWindow();
+    final foregroundWindow = GetForegroundWindow();
+
+    if (ourWindow == foregroundWindow) {
+      LoggingService().info(
+        'Skipping paste simulation (WhisperDoc is focused)',
+        sendToServer: false,
+      );
+      return;
+    }
+
     LoggingService().info(
-      'Simulating Ctrl+V via SendInput...',
+      'Simulating Ctrl+V via SendInput (scan codes)...',
       sendToServer: false,
     );
 
-    final inputs = calloc<INPUT>(1);
+    final inputs = calloc<INPUT>(4);
     try {
-      // Helper function to send a single key event
-      void sendKey(int vKey, bool isKeyUp) {
-        inputs[0].type = INPUT_KEYBOARD;
-        inputs[0].ki.wVk = vKey;
-        inputs[0].ki.dwFlags = isKeyUp ? KEYEVENTF_KEYUP : 0;
-        SendInput(1, inputs, sizeOf<INPUT>());
-      }
+      // Use scan codes to bypass Flutter's virtual key tracking
+      // Ctrl scan code: 0x1D, V scan code: 0x2F
+      const ctrlScanCode = 0x1D;
+      const vScanCode = 0x2F;
 
-      // 1. Force release all possible modifiers to ensure Ctrl+V isn't blocked
-      const modifiers = [
-        VK_SHIFT,
-        VK_LSHIFT,
-        VK_RSHIFT,
-        VK_MENU,
-        VK_LMENU,
-        VK_RMENU,
-        VK_LWIN,
-        VK_RWIN,
-        VK_CONTROL,
-        VK_LCONTROL,
-        VK_RCONTROL,
-      ];
+      // Ctrl Down
+      inputs[0].type = INPUT_KEYBOARD;
+      inputs[0].ki.wScan = ctrlScanCode;
+      inputs[0].ki.dwFlags = KEYEVENTF_SCANCODE;
 
-      for (var mod in modifiers) {
-        sendKey(mod, true);
-      }
-      await Future.delayed(const Duration(milliseconds: 10));
+      // V Down
+      inputs[1].type = INPUT_KEYBOARD;
+      inputs[1].ki.wScan = vScanCode;
+      inputs[1].ki.dwFlags = KEYEVENTF_SCANCODE;
 
-      // 2. Perform Paste Sequence: Ctrl Down -> V Down -> V Up -> Ctrl Up
-      sendKey(VK_CONTROL, false);
-      await Future.delayed(const Duration(milliseconds: 10));
-      sendKey(0x56, false); // V down
-      await Future.delayed(const Duration(milliseconds: 10));
-      sendKey(0x56, true); // V up
-      await Future.delayed(const Duration(milliseconds: 10));
-      sendKey(VK_CONTROL, true);
+      // V Up
+      inputs[2].type = INPUT_KEYBOARD;
+      inputs[2].ki.wScan = vScanCode;
+      inputs[2].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+
+      // Ctrl Up
+      inputs[3].type = INPUT_KEYBOARD;
+      inputs[3].ki.wScan = ctrlScanCode;
+      inputs[3].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+
+      // Send all 4 inputs at once for atomicity
+      SendInput(4, inputs, sizeOf<INPUT>());
 
       LoggingService().info('Paste simulation complete', sendToServer: false);
     } catch (e) {

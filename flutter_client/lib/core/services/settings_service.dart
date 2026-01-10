@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'logging_service.dart';
+import 'package:flutter_client/core/services/logging_service.dart';
 
 class SettingsService extends ChangeNotifier {
   static const String _keyServerUri = 'server_uri';
@@ -119,15 +119,6 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
     LoggingService().info(
       'Global hotkey updated to: $display (Mods: $modifiers, Key: $vKey)',
-    );
-  }
-
-  Future<void> setGlobalHotkey(String hotkey) async {
-    // Legacy support or fallback
-    await setHotkey(
-      display: hotkey,
-      modifiers: _hotkeyModifiers,
-      vKey: _hotkeyVKey,
     );
   }
 

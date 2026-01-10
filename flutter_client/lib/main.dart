@@ -5,6 +5,8 @@ import 'core/services/websocket_service.dart';
 import 'core/services/audio_service.dart';
 import 'core/services/hotkey_service.dart';
 import 'core/services/settings_service.dart';
+import 'core/services/automation_service.dart';
+import 'ui/features/recording/recording_controller.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/screens/home_screen.dart';
 
@@ -36,6 +38,13 @@ void main() async {
   final audioService = AudioService();
   final hotkeyService = HotkeyService();
 
+  final automationService = AutomationService(settingsService);
+  final recordingController = RecordingController(
+    audioService: audioService,
+    wsService: wsService,
+    automationService: automationService,
+  );
+
   // Initial connection - removed to avoid idle jitter
   // wsService.connect();
 
@@ -45,7 +54,9 @@ void main() async {
         ChangeNotifierProvider.value(value: settingsService),
         ChangeNotifierProvider.value(value: wsService),
         ChangeNotifierProvider.value(value: audioService),
+        ChangeNotifierProvider.value(value: recordingController),
         Provider.value(value: hotkeyService),
+        Provider.value(value: automationService),
       ],
       child: const WhisperDocApp(),
     ),

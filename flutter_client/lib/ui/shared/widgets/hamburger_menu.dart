@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_client/ui/screens/settings_screen.dart';
 
-import 'package:flutter_client/ui/components/refined_icon_button.dart';
+import 'package:flutter_client/ui/shared/widgets/refined_icon_button.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class HamburgerMenu extends StatelessWidget {

@@ -48,4 +48,14 @@ class AppTheme {
       ),
     ],
   );
+
+  static TextStyle get sectionTitleStyle => const TextStyle(
+    color: Colors.white54,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 1.0,
+  );
+
+  static TextStyle get subtitleStyle =>
+      const TextStyle(fontSize: 11, color: Colors.white38);
 }

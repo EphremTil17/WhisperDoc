@@ -4,7 +4,7 @@ import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
-import 'logging_service.dart';
+import 'package:flutter_client/core/services/logging_service.dart';
 
 class HotkeyService {
   static final HotkeyService _instance = HotkeyService._internal();
