@@ -17,7 +17,13 @@ class HotkeyService {
   Stream<int> get onHotkeyPressed => _hotkeyStreamController.stream;
 
   Future<void> start() async {
-    if (_isolateSendPort != null) return;
+    if (_isolateSendPort != null) {
+      LoggingService().debug(
+        'HotkeyService already started, isolate exists',
+        sendToServer: false,
+      );
+      return;
+    }
 
     LoggingService().info('Starting HotkeyService...', sendToServer: false);
 
@@ -30,6 +36,10 @@ class HotkeyService {
       if (message is SendPort) {
         if (!completer.isCompleted) completer.complete(message);
       } else if (message is int) {
+        LoggingService().debug(
+          'Hotkey message from isolate: $message',
+          sendToServer: false,
+        );
         _hotkeyStreamController.add(message);
       } else if (message is _HotkeyLog) {
         if (message.isError) {

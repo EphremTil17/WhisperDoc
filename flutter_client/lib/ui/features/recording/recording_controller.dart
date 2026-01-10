@@ -16,8 +16,9 @@ class RecordingController extends ChangeNotifier {
   StreamSubscription? _audioSubscription;
   StreamSubscription? _messageSubscription;
 
-  // Buffer of transcription segments
+  // Buffer of transcription segments (limited to prevent memory issues)
   final List<TranscriptionEntry> _history = [];
+  static const int _maxHistorySize = 50;
 
   // Current active transcription buffer (accumulating text)
   String _currentBuffer = '';
@@ -25,6 +26,9 @@ class RecordingController extends ChangeNotifier {
 
   // Single source of truth for recording state
   bool _isRecording = false;
+
+  // Incognito mode - when ON, transcriptions are not saved to history
+  bool _incognitoMode = false;
 
   RecordingController({
     required AudioService audioService,
@@ -41,7 +45,29 @@ class RecordingController extends ChangeNotifier {
   // Getters
   String get currentText => _currentBuffer;
   bool get isRecording => _isRecording;
+  bool get incognitoMode => _incognitoMode;
   List<TranscriptionEntry> get history => List.unmodifiable(_history);
+
+  /// Enables incognito mode and clears existing history
+  void enableIncognitoMode() {
+    _incognitoMode = true;
+    _history.clear();
+    LoggingService().info('Incognito mode enabled - history cleared');
+    notifyListeners();
+  }
+
+  /// Disables incognito mode (history recording resumes)
+  void disableIncognitoMode() {
+    _incognitoMode = false;
+    LoggingService().info('Incognito mode disabled');
+    notifyListeners();
+  }
+
+  /// Clears all transcription history
+  void clearHistory() {
+    _history.clear();
+    notifyListeners();
+  }
 
   void _onAudioStateChanged() {
     if (_isRecording != _audioService.isRecording) {
@@ -145,7 +171,14 @@ class RecordingController extends ChangeNotifier {
     if (text.isNotEmpty) {
       final entry = TranscriptionEntry(text: text, timestamp: DateTime.now());
 
-      _history.add(entry);
+      // Only add to history if not in incognito mode
+      if (!_incognitoMode) {
+        _history.add(entry);
+        // Enforce max history size
+        if (_history.length > _maxHistorySize) {
+          _history.removeAt(0);
+        }
+      }
       await _automationService.runAutomation(entry);
 
       // NOTE: We no longer clear the buffer here so users can see/copy the text.
