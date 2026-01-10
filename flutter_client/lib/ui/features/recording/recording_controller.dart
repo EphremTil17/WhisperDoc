@@ -87,7 +87,11 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> toggleRecording() async {
-    if (_audioService.isRecording) {
+    LoggingService().debug(
+      'toggleRecording called - isRecording: $_isRecording, audioService.isRecording: ${_audioService.isRecording}',
+    );
+
+    if (_isRecording) {
       await stopRecording();
     } else {
       await startRecording();
@@ -95,20 +99,34 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> startRecording() async {
-    _currentBuffer = ''; // Clear buffer for new recording
+    LoggingService().info('Starting recording session...');
+
+    _currentBuffer = '';
     _awaitingFinalTranscription = false;
     notifyListeners();
 
-    if (_wsService.status != ConnectionStatus.connected) {
-      await _wsService.connect();
+    try {
+      // Connect to server if not already connected
+      if (_wsService.status != ConnectionStatus.connected) {
+        LoggingService().info('Connecting to WebSocket server...');
+        final connected = await _wsService.connect();
+        if (!connected) {
+          LoggingService().error('Failed to connect to WebSocket server');
+          return;
+        }
+      }
+
+      await _audioService.startRecording();
+
+      // Pipe audio to websocket
+      _audioSubscription = _audioService.audioStream.listen((data) {
+        _wsService.sendAudioChunk(data);
+      });
+    } catch (e) {
+      LoggingService().error('Failed to start recording', error: e);
+      _isRecording = false;
+      notifyListeners();
     }
-
-    await _audioService.startRecording();
-
-    // Pipe audio to websocket
-    _audioSubscription = _audioService.audioStream.listen((data) {
-      _wsService.sendAudioChunk(data);
-    });
   }
 
   Future<void> stopRecording() async {

@@ -11,6 +11,7 @@ import 'package:flutter_client/ui/shared/widgets/refined_icon_button.dart';
 import 'package:flutter_client/ui/shared/widgets/transcribed_text_area.dart';
 import 'package:flutter_client/ui/shared/widgets/audio_visualizer.dart';
 import 'package:flutter_client/ui/screens/settings_screen.dart';
+import 'package:flutter_client/ui/screens/log_viewer_dialog.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -143,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           TranscribedTextArea(text: controller.currentText),
 
                           const SizedBox(height: 12),
-                          // Footer with Settings and Status in one row
+                          // Footer with Settings, Status, and Log viewer
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -162,6 +163,20 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(width: 16),
                               const StatusBar(),
+                              const SizedBox(width: 16),
+                              RefinedIconButton(
+                                icon: Icons.terminal_outlined,
+                                iconColor: Colors.white38,
+                                iconSize: 16,
+                                onTap: () {
+                                  unawaited(
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => const LogViewerDialog(),
+                                    ),
+                                  );
+                                },
+                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
