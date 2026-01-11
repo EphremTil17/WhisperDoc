@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/core/models/transcription_entry.dart';
-import 'package:flutter_client/ui/features/recording/recording_controller.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/core/controllers/recording_controller.dart';
+import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -19,122 +19,49 @@ class HistoryDialog extends StatelessWidget {
     final controller = context.watch<RecordingController>();
     final history = controller.history;
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(16),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 500),
-        decoration: AppTheme.glassDecoration.copyWith(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-        ),
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.1),
-                  ),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return GlassDialog(
+      title: 'Transcription History',
+      titleTrailing: controller.incognitoMode
+          ? const DialogBadge(text: 'INCOGNITO')
+          : null,
+      body: history.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Transcription History',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: GoogleFonts.lexend().fontFamily,
-                        ),
-                      ),
-                      if (controller.incognitoMode) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.orangeAccent.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'INCOGNITO',
-                            style: TextStyle(
-                              color: Colors.orangeAccent,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  Icon(
+                    controller.incognitoMode
+                        ? Icons.visibility_off
+                        : Icons.history,
+                    color: Colors.white24,
+                    size: 48,
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white54,
-                      size: 18,
+                  const SizedBox(height: 12),
+                  Text(
+                    controller.incognitoMode
+                        ? 'Incognito mode active\nHistory is disabled'
+                        : 'No transcriptions yet',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      fontFamily: GoogleFonts.lexend().fontFamily,
                     ),
-                    splashRadius: 16,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: history.length,
+              itemBuilder: (context, index) {
+                final entry = history[index];
+                return _HistoryEntryTile(
+                  entry: entry,
+                  timestamp: _formatTimestamp(entry.timestamp),
+                );
+              },
             ),
-            // History entries
-            Expanded(
-              child: history.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            controller.incognitoMode
-                                ? Icons.visibility_off
-                                : Icons.history,
-                            color: Colors.white24,
-                            size: 48,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            controller.incognitoMode
-                                ? 'Incognito mode active\nHistory is disabled'
-                                : 'No transcriptions yet',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white38,
-                              fontSize: 12,
-                              fontFamily: GoogleFonts.lexend().fontFamily,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: history.length,
-                      itemBuilder: (context, index) {
-                        final entry = history[index];
-                        return _HistoryEntryTile(
-                          entry: entry,
-                          timestamp: _formatTimestamp(entry.timestamp),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

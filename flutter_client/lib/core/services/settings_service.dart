@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
+import 'package:flutter_client/core/constants/app_constants.dart';
 
 class SettingsService extends ChangeNotifier {
   static const String _keyServerUri = 'server_uri';
@@ -11,11 +12,12 @@ class SettingsService extends ChangeNotifier {
   static const String _keyAutoCopy = 'auto_copy';
   static const String _keyAutoPaste = 'auto_paste';
 
-  // Default Values
-  static const String _defaultServerUri = 'ws://localhost:9989/ws';
-  static const String _defaultGlobalHotkey = 'Ctrl+Alt+W';
-  static const int _defaultHotkeyModifiers = 3; // MOD_CONTROL(2) | MOD_ALT(1)
-  static const int _defaultHotkeyVKey = 0x57; // W
+  // Default Values (from AppConstants)
+  static const String _defaultServerUri = AppConstants.defaultServerUri;
+  static const String _defaultGlobalHotkey = AppConstants.defaultHotkeyDisplay;
+  static const int _defaultHotkeyModifiers =
+      AppConstants.defaultHotkeyModifiers;
+  static const int _defaultHotkeyVKey = AppConstants.defaultHotkeyVKey;
   static const bool _defaultAutoCopy = true;
   static const bool _defaultAutoPaste = false;
 

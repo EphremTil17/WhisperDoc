@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
-import 'core/services/websocket_service.dart';
-import 'core/services/audio_service.dart';
-import 'core/services/hotkey_service.dart';
-import 'core/services/settings_service.dart';
-import 'core/services/automation_service.dart';
-import 'ui/features/recording/recording_controller.dart';
-import 'ui/theme/app_theme.dart';
-import 'ui/screens/home_screen.dart';
+import 'package:flutter_client/core/di/service_locator.dart';
+import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/audio_service.dart';
+import 'package:flutter_client/core/services/hotkey_service.dart';
+import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/core/services/automation_service.dart';
+import 'package:flutter_client/core/controllers/recording_controller.dart';
+import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/ui/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // Window Options
-  const WindowOptions windowOptions = WindowOptions(
-    size: Size(420, 600),
+  // Window Configuration
+  const windowOptions = WindowOptions(
+    size: Size(420, 600), // AppConstants.windowWidth x windowHeight
     center: true,
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
@@ -27,36 +28,22 @@ void main() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();
     await windowManager.focus();
-    await windowManager.setResizable(false); // Disable resizing
+    await windowManager.setResizable(false);
   });
 
-  // Initialize Services
-  final settingsService = SettingsService();
-  await settingsService.load();
-
-  final wsService = WebSocketService(settingsService);
-  final audioService = AudioService();
-  final hotkeyService = HotkeyService();
-
-  final automationService = AutomationService(settingsService);
-  final recordingController = RecordingController(
-    audioService: audioService,
-    wsService: wsService,
-    automationService: automationService,
-  );
-
-  // Initial connection - removed to avoid idle jitter
-  // wsService.connect();
+  // Initialize all services via Service Locator
+  await setupServices();
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: settingsService),
-        ChangeNotifierProvider.value(value: wsService),
-        ChangeNotifierProvider.value(value: audioService),
-        ChangeNotifierProvider.value(value: recordingController),
-        Provider.value(value: hotkeyService),
-        Provider.value(value: automationService),
+        // Expose services to widget tree via Provider (for context.read/watch)
+        ChangeNotifierProvider.value(value: getIt<SettingsService>()),
+        ChangeNotifierProvider.value(value: getIt<WebSocketService>()),
+        ChangeNotifierProvider.value(value: getIt<AudioService>()),
+        ChangeNotifierProvider.value(value: getIt<RecordingController>()),
+        Provider.value(value: getIt<HotkeyService>()),
+        Provider.value(value: getIt<AutomationService>()),
       ],
       child: const WhisperDocApp(),
     ),

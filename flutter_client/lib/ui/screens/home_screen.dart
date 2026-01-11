@@ -35,34 +35,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void _initHotkeys() {
     final hotkeyService = context.read<HotkeyService>();
     final settings = context.read<SettingsService>();
-    // Note: Checking mounted before using context in async callbacks is good practice,
-    // but here we are in initState.
 
     // Ensure controller is available
     final controller = context.read<RecordingController>();
 
-    // Start hotkey service (may already be running after hot reload)
-    // Always re-register the hotkey to ensure it works after hot reload
-    unawaited(
-      hotkeyService.start().then((_) {
-        if (!mounted) return;
-        LoggingService().debug('Re-registering hotkey after start()');
-        _registerCurrentHotkey(hotkeyService, settings);
-      }),
-    );
+    // Start with current settings
+    // The new service automagically handles restarts if we call start() again
+    unawaited(_restartHotkeyService(hotkeyService, settings));
 
     _hotkeySubscription = hotkeyService.onHotkeyPressed.listen((event) {
-      LoggingService().debug('Hotkey event received: $event');
-      if (event == 1) {
-        // 1 is our hotkey ID
-        LoggingService().info(
-          'Hotkey ID 1 pressed - triggering toggleRecording',
-        );
-        unawaited(controller.toggleRecording());
-      }
+      LoggingService().info('Hotkey triggered - toggling recording');
+      unawaited(controller.toggleRecording());
     });
 
-    // Handle hotkey changes from settings
+    // Handle settings changes
     settings.addListener(_onSettingsChanged);
   }
 
@@ -70,21 +56,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final hotkeyService = context.read<HotkeyService>();
     final settings = context.read<SettingsService>();
 
-    _registerCurrentHotkey(hotkeyService, settings);
-    // Note: Removed setState() - UI rebuilds via RecordingController.notifyListeners
-    // and HotkeyHint watching SettingsService directly
+    // Simply restart the service with new settings
+    // The service handles the "kill and respawn" logic internally
+    unawaited(_restartHotkeyService(hotkeyService, settings));
   }
 
-  void _registerCurrentHotkey(HotkeyService service, SettingsService settings) {
-    unawaited(
-      service.unregisterHotkey(1).then((_) {
-        return service.registerHotkey(
-          id: 1,
-          modifiers: settings.hotkeyModifiers,
-          vKey: settings.hotkeyVKey,
-        );
-      }),
-    );
+  Future<void> _restartHotkeyService(
+    HotkeyService service,
+    SettingsService settings,
+  ) async {
+    try {
+      await service.start(
+        id: 1,
+        modifiers: settings.hotkeyModifiers,
+        vKey: settings.hotkeyVKey,
+      );
+    } catch (e) {
+      LoggingService().error('Failed to start/restart hotkey service: $e');
+    }
   }
 
   void _toggleIncognitoMode(

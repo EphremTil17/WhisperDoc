@@ -3,7 +3,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/core/services/audio_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
-import 'package:flutter_client/ui/features/recording/recording_controller.dart';
+import 'package:flutter_client/core/controllers/recording_controller.dart';
 
 // Mock classes
 class MockAudioService extends Mock implements AudioService {}

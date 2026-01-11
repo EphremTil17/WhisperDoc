@@ -115,6 +115,34 @@ sudo docker compose build whisper-backend && sudo docker compose up -d --force-r
 - **Transcription**: ~1s for a 10-second audio file on an RTX 3060TI.
 - **GPU Acceleration**: CUDA-enabled for faster processing.
 
+## Clients
+
+### Flutter Client (Windows)
+
+A native Windows desktop application with a modern glassmorphic UI. Features include:
+- **Global Hotkey** for hands-free recording (default: Ctrl+Alt+E)
+- **Deep Sleep Resilience** - Hotkeys work reliably even after system sleep
+- **Auto Copy/Paste** - Transcriptions go straight to your cursor
+- **Incognito Mode** - Temporarily disable history recording
+
+📖 **[Flutter Client Documentation](flutter_client/README.md)**
+
+```bash
+cd flutter_client
+flutter pub get
+flutter run -d windows
+```
+
+### Python Terminal Client
+
+A lightweight terminal-based client for quick testing and scripting.
+
+```bash
+cd client
+pip install -r requirements.txt
+python whisper_client.py
+```
+
 ## Common Troubleshooting
 
 ### Error: "unknown or invalid runtime name: nvidia"
@@ -127,8 +155,13 @@ This means Docker cannot find the NVIDIA runtime.
    ```
 3. If you do not have a GPU, remove `runtime: nvidia` from `docker-compose.yml` and change `MODEL_DEVICE` to `cpu` in your `.env` file.
 
-## Next Steps (Future Phases)
-- **Phase 2: WebSocket Streaming [COMPLETED]**
-- **Phase 4: Windows Client [IN PROGRESS]**
-- **Phase 5: Dynamic Model Loading [COMPLETED]**
+## Project Phases
 
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Core Backend & REST API | ✅ Complete |
+| Phase 2 | WebSocket Streaming | ✅ Complete |
+| Phase 3 | Terminal Client | ✅ Complete |
+| Phase 4 | Flutter Windows Client | ✅ Complete |
+| Phase 5 | Dynamic Model Loading | ✅ Complete |
+| Phase 6 | Architecture Refactoring | ✅ Complete |

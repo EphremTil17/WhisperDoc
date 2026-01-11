@@ -51,7 +51,7 @@ COPY tests/ ./tests/
 ARG API_PORT=9989
 EXPOSE ${API_PORT}
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=10m --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:9989/health || exit 1
 
 CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "9989"]

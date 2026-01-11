@@ -30,28 +30,26 @@ void main() {
   });
 
   group('HotkeyService Registration', () {
-    // Note: These tests document expected behavior
-    // Full testing requires Win32 API mocking which is complex
-
-    test('registerHotkey accepts valid parameters', () {
+    test('start() accepts valid parameters', () {
       final service = HotkeyService();
 
-      // This should not throw even if isolate isn't started
-      // The command is just queued
+      // This will assume the native calls work or fail gracefully in a test environment
+      // Since we can't easily mock FFI in a unit test without a wrapper,
+      // we expect this to likely throw or return normal depending on how Isolate.spawn behaves in test.
+      // But for API compliance check:
+
       expect(
-        () => service.registerHotkey(
-          id: 1,
-          modifiers: 2, // MOD_CONTROL
-          vKey: 0x45, // VK_E
-        ),
+        () => service.start(id: 1, modifiers: 2, vKey: 0x45),
+        // Isolate.spawn might fail in some test environments or succeed.
+        // We mainly want to ensure the method signature is correct and it compiles.
+        // Accepting any result here as we are not testing FFI binding behavior
         returnsNormally,
       );
     });
 
-    test('unregisterHotkey accepts valid id', () {
+    test('stop() returns normally', () {
       final service = HotkeyService();
-
-      expect(() => service.unregisterHotkey(1), returnsNormally);
+      expect(() => service.stop(), returnsNormally);
     });
   });
 

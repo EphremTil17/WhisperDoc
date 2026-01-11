@@ -4,13 +4,15 @@ import 'package:flutter_client/core/models/transcription_entry.dart';
 import 'package:flutter_client/core/services/audio_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
-
 import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/constants/app_constants.dart';
 
+/// Controller managing recording state, transcription, and automation.
+///
+/// Orchestrates audio capture, WebSocket communication, and post-processing.
 class RecordingController extends ChangeNotifier {
   final AudioService _audioService;
   final WebSocketService _wsService;
-
   final AutomationService _automationService;
 
   StreamSubscription? _audioSubscription;
@@ -18,7 +20,6 @@ class RecordingController extends ChangeNotifier {
 
   // Buffer of transcription segments (limited to prevent memory issues)
   final List<TranscriptionEntry> _history = [];
-  static const int _maxHistorySize = 50;
 
   // Current active transcription buffer (accumulating text)
   String _currentBuffer = '';
@@ -101,7 +102,6 @@ class RecordingController extends ChangeNotifier {
         _awaitingFinalTranscription = false;
         final errorMsg = msg['message'] ?? msg['code'] ?? 'Unknown error';
         LoggingService().error('Server error: $errorMsg', sendToServer: false);
-        // Error handling could be improved to expose an error stream to UI
       }
     } else if (msg.containsKey('error')) {
       _awaitingFinalTranscription = false;
@@ -113,10 +113,6 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> toggleRecording() async {
-    LoggingService().debug(
-      'toggleRecording called - isRecording: $_isRecording, audioService.isRecording: ${_audioService.isRecording}',
-    );
-
     if (_isRecording) {
       await stopRecording();
     } else {
@@ -175,14 +171,11 @@ class RecordingController extends ChangeNotifier {
       if (!_incognitoMode) {
         _history.add(entry);
         // Enforce max history size
-        if (_history.length > _maxHistorySize) {
+        if (_history.length > AppConstants.maxHistorySize) {
           _history.removeAt(0);
         }
       }
       await _automationService.runAutomation(entry);
-
-      // NOTE: We no longer clear the buffer here so users can see/copy the text.
-      // Buffer is cleared when startRecording() is called for a new session.
     }
   }
 

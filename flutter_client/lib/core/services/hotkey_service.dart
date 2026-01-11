@@ -11,126 +11,149 @@ class HotkeyService {
   factory HotkeyService() => _instance;
   HotkeyService._internal();
 
-  SendPort? _isolateSendPort;
+  // The thread ID of the running isolate (needed to wake it up)
+  int? _isolateThreadId;
+  Isolate? _isolate;
+
   final StreamController<int> _hotkeyStreamController =
       StreamController<int>.broadcast();
   Stream<int> get onHotkeyPressed => _hotkeyStreamController.stream;
 
-  Future<void> start() async {
-    if (_isolateSendPort != null) {
-      LoggingService().debug(
-        'HotkeyService already started, isolate exists',
-        sendToServer: false,
-      );
-      return;
-    }
+  bool get isRunning => _isolate != null;
 
-    LoggingService().info('Starting HotkeyService...', sendToServer: false);
-
-    final receivePort = ReceivePort();
-    await Isolate.spawn(_isolateEntry, receivePort.sendPort);
-
-    // Wait for the isolate to send back its SendPort
-    final completer = Completer<SendPort>();
-    receivePort.listen((message) {
-      if (message is SendPort) {
-        if (!completer.isCompleted) completer.complete(message);
-      } else if (message is int) {
-        LoggingService().debug(
-          'Hotkey message from isolate: $message',
-          sendToServer: false,
-        );
-        _hotkeyStreamController.add(message);
-      } else if (message is _HotkeyLog) {
-        if (message.isError) {
-          LoggingService().error(message.message, sendToServer: false);
-        } else {
-          LoggingService().info(message.message, sendToServer: false);
-        }
-      }
-    });
-
-    _isolateSendPort = await completer.future;
-    LoggingService().info(
-      'HotkeyService started successfully.',
-      sendToServer: false,
-    );
-  }
-
-  /// vKey: Virtual Key Code (e.g. VK_F9 is 0x78)
-  /// modifiers: MOD_ALT (1), MOD_CONTROL (2), MOD_SHIFT (4), MOD_WIN (8)
-  Future<void> registerHotkey({
+  /// Starts the hotkey listener with the given configuration.
+  /// If already running, it restarts the service (kill & respawn).
+  Future<void> start({
     required int id,
     required int modifiers,
     required int vKey,
   }) async {
-    _isolateSendPort?.send(_HotkeyCommand(id, modifiers, vKey));
-  }
+    if (isRunning) {
+      await stop();
+    }
 
-  Future<void> unregisterHotkey(int id) async {
-    _isolateSendPort?.send(_HotkeyUnregister(id));
-  }
+    LoggingService().info(
+      'Starting HotkeyService (Native Blocking Loop)...',
+      sendToServer: false,
+    );
 
-  static void _isolateEntry(SendPort mainSendPort) {
     final receivePort = ReceivePort();
-    mainSendPort.send(receivePort.sendPort);
 
-    // Keep references to registered hotkeys if needed
+    // Spawn the isolate with the configuration
+    _isolate = await Isolate.spawn(
+      _isolateEntry,
+      _HotkeyConfig(receivePort.sendPort, id, modifiers, vKey),
+    );
 
-    // Commands Stream
+    // Watch for unexpected crashes
+    _isolate!.addOnExitListener(receivePort.sendPort, response: 'EXIT');
+
+    final completer = Completer<void>();
+
+    // Listen for messages from the isolate
     receivePort.listen((message) {
-      if (message is _HotkeyCommand) {
-        // Always try to unregister first to avoid 1409
-        UnregisterHotKey(NULL, message.id);
-
-        final result = RegisterHotKey(
-          NULL,
-          message.id,
-          message.modifiers,
-          message.vKey,
-        );
-        if (result == 0) {
-          mainSendPort.send(
-            _HotkeyLog(
-              'Isolate: Failed to register hotkey ${message.id} (Error ${GetLastError()})',
-              isError: true,
-            ),
-          );
-        }
-      } else if (message is _HotkeyUnregister) {
-        UnregisterHotKey(NULL, message.id);
+      if (message is int) {
+        // This is the Thread ID sent during initialization
+        _isolateThreadId = message;
+        if (!completer.isCompleted) completer.complete();
+      } else if (message == 'HOTKEY') {
+        // Hotkey pressed!
+        _hotkeyStreamController.add(1); // We only use ID 1 for now
+      } else if (message == 'EXIT') {
+        // Isolate exited (crash or manual stop)
+        LoggingService().warning('Hotkey isolate exited.');
+        _isolateThreadId = null;
+        _isolate = null;
+        receivePort.close();
+      } else if (message is String && message.startsWith('ERROR:')) {
+        LoggingService().error('Hotkey Isolate: $message');
       }
     });
 
-    // Message Loop via Timer (Polling)
-    final msg = calloc<MSG>();
+    await completer.future;
+    LoggingService().info('HotkeyService started successfully.');
+  }
 
-    Timer.periodic(const Duration(milliseconds: 10), (timer) {
-      while (PeekMessage(msg, NULL, 0, 0, PM_REMOVE) != 0) {
+  /// Stops the hotkey listener by posting a Quit message to the thread.
+  Future<void> stop() async {
+    if (_isolateThreadId != null) {
+      // WM_QUIT = 0x0012
+      // PostThreadMessage puts a message in the thread's queue, waking up GetMessage
+      final result = PostThreadMessage(_isolateThreadId!, WM_QUIT, 0, 0);
+      if (result == 0) {
+        LoggingService().error(
+          'Failed to post WM_QUIT to isolate thread: ${GetLastError()}',
+        );
+        // Fallback to hard kill
+        _isolate?.kill(priority: Isolate.immediate);
+      }
+    }
+
+    // Allow some time for graceful shutdown
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    if (_isolate != null) {
+      // Ensure it's dead if graceful shutdown failed
+      _isolate?.kill(priority: Isolate.immediate);
+      _isolate = null;
+    }
+    _isolateThreadId = null;
+    LoggingService().info('HotkeyService stopped.');
+  }
+
+  // --- Static Isolate Entry Point ---
+  static void _isolateEntry(_HotkeyConfig config) {
+    try {
+      // 1. Register Hotkey
+      // This function call creates the message queue for the thread if it doesn't exist
+      final result = RegisterHotKey(
+        NULL,
+        config.id,
+        config.modifiers,
+        config.vKey,
+      );
+
+      if (result == 0) {
+        final error = GetLastError();
+        config.sendPort.send('ERROR: Failed to register hotkey (Error $error)');
+        return;
+      }
+
+      // 2. Send Thread ID back to main isolate so it can wake us up later
+      final threadId = GetCurrentThreadId();
+      config.sendPort.send(threadId);
+
+      // 3. Enter Blocking Message Loop (Deep Sleep Proof)
+      final msg = calloc<MSG>();
+
+      // GetMessage blocks until a message arrives.
+      // Returns > 0 for normal messages
+      // Returns 0 for WM_QUIT
+      // Returns -1 for error
+      while (GetMessage(msg, NULL, 0, 0) > 0) {
         if (msg.ref.message == WM_HOTKEY) {
-          mainSendPort.send(msg.ref.wParam);
+          config.sendPort.send('HOTKEY');
         }
+
         TranslateMessage(msg);
         DispatchMessage(msg);
       }
-    });
+
+      // 4. Cleanup
+      UnregisterHotKey(NULL, config.id);
+      free(msg);
+    } catch (e) {
+      config.sendPort.send('ERROR: Isolate Crash: $e');
+    }
   }
 }
 
-class _HotkeyCommand {
+/// Configuration object passed to the isolate
+class _HotkeyConfig {
+  final SendPort sendPort;
   final int id;
   final int modifiers;
   final int vKey;
-  _HotkeyCommand(this.id, this.modifiers, this.vKey);
-}
 
-class _HotkeyUnregister {
-  final int id;
-  _HotkeyUnregister(this.id);
-}
-
-class _HotkeyLog {
-  final String message;
-  final bool isError;
-  _HotkeyLog(this.message, {this.isError = false});
+  _HotkeyConfig(this.sendPort, this.id, this.modifiers, this.vKey);
 }

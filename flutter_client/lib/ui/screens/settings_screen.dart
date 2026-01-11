@@ -278,7 +278,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _showHotkeyRecorder(BuildContext context) {
     final hotkeyService = context.read<HotkeyService>();
-    unawaited(hotkeyService.unregisterHotkey(1));
+    // Stop the global hotkey so it doesn't interfere with recording
+    unawaited(hotkeyService.stop());
 
     unawaited(
       showDialog(
@@ -296,10 +297,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
       ).then((_) {
+        // We don't need to manually restart here because SettingsService.setHotkey
+        // notifies listeners, and HomeScreen (which is still mounted)
+        // will pick up the change and restart the service automatically.
+        // However, if the user cancelled (no change), we might need to ensure it's running.
+        // But since we only called stop(), and setHotkey calls start via HomeScreen,
+        // if the user cancelled, setHotkey wasn't called.
+
+        // So we should verify if it's running, or just force start it with current settings.
         if (!context.mounted) return;
         final settings = context.read<SettingsService>();
+
+        // This is safe to call even if HomeScreen also calls it (it handles idempotency/restart)
         unawaited(
-          hotkeyService.registerHotkey(
+          hotkeyService.start(
             id: 1,
             modifiers: settings.hotkeyModifiers,
             vKey: settings.hotkeyVKey,

@@ -6,6 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/core/constants/app_constants.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected }
 
@@ -33,8 +34,8 @@ class WebSocketService extends ChangeNotifier {
   // High-performance buffer for audio chunks captured while connecting
   final List<Uint8List> _pendingAudioBuffer = [];
 
-  // 5 Minute Idle Timeout
-  static const Duration idleTimeout = Duration(minutes: 5);
+  // Idle Timeout (from AppConstants)
+  static const Duration idleTimeout = AppConstants.wsIdleTimeout;
 
   // Track last known URI for selective reconnect
   String _lastKnownUri;
@@ -172,22 +173,40 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void _handleDisconnect() {
+    // Check if we *were* connected or connecting before updating status
+    // This fixes the bug where checking _status after update always failed
+    final wasActive = _status != ConnectionStatus.disconnected;
+
     _updateStatus(ConnectionStatus.disconnected);
     _channel = null;
     _idleTimer?.cancel();
     _isConnecting = false;
 
     // Reconnect if we were in the middle of something and it wasn't intentional
-    if (!_isIntentionalDisconnect && _status != ConnectionStatus.disconnected) {
+    if (!_isIntentionalDisconnect && wasActive) {
       _scheduleReconnect();
     }
   }
 
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectDelay = 30; // Seconds
+
   void _scheduleReconnect() {
     if (_reconnectTimer?.isActive ?? false) return;
 
-    _logger.info('Reconnect scheduled...', sendToServer: false);
-    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+    // Exponential backoff: 3, 6, 12, 24, 30...
+    int delaySeconds = 3 * (1 << _reconnectAttempts);
+    if (delaySeconds > _maxReconnectDelay) {
+      delaySeconds = _maxReconnectDelay;
+    }
+
+    _logger.info(
+      'Reconnect scheduled in ${delaySeconds}s (Attempt ${_reconnectAttempts + 1})...',
+      sendToServer: false,
+    );
+
+    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
+      _reconnectAttempts++;
       // ignore: discarded_futures
       connect();
     });
@@ -207,6 +226,8 @@ class WebSocketService extends ChangeNotifier {
 
       // Auto-trigger connection if we aren't already
       if (!_isConnecting && _status == ConnectionStatus.disconnected) {
+        // Reset attempts on new user interaction
+        _reconnectAttempts = 0;
         // ignore: discarded_futures
         connect();
       }
@@ -243,6 +264,7 @@ class WebSocketService extends ChangeNotifier {
   void disconnect() {
     _isIntentionalDisconnect = true;
     _reconnectTimer?.cancel();
+    _reconnectAttempts = 0; // Reset attempts on intentional disconnect
     // ignore: discarded_futures
     _channel?.sink.close();
     _channel = null;
