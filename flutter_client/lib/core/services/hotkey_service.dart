@@ -11,9 +11,12 @@ class HotkeyService {
   factory HotkeyService() => _instance;
   HotkeyService._internal();
 
-  // The thread ID of the running isolate (needed to wake it up)
+  // Isolate state
   int? _isolateThreadId;
   Isolate? _isolate;
+  ReceivePort? _receivePort;
+  StreamSubscription? _portSubscription;
+  Completer<void>? _exitCompleter;
 
   final StreamController<int> _hotkeyStreamController =
       StreamController<int>.broadcast();
@@ -28,6 +31,7 @@ class HotkeyService {
     required int modifiers,
     required int vKey,
   }) async {
+    // Stop any existing isolate first
     if (isRunning) {
       await stop();
     }
@@ -37,67 +41,90 @@ class HotkeyService {
       sendToServer: false,
     );
 
-    final receivePort = ReceivePort();
+    // Create fresh state for this session
+    _receivePort = ReceivePort();
+    _exitCompleter = Completer<void>();
+    final startCompleter = Completer<void>();
 
-    // Spawn the isolate with the configuration
-    _isolate = await Isolate.spawn(
-      _isolateEntry,
-      _HotkeyConfig(receivePort.sendPort, id, modifiers, vKey),
-    );
-
-    // Watch for unexpected crashes
-    _isolate!.addOnExitListener(receivePort.sendPort, response: 'EXIT');
-
-    final completer = Completer<void>();
-
-    // Listen for messages from the isolate
-    receivePort.listen((message) {
+    // Set up listener BEFORE spawning isolate
+    _portSubscription = _receivePort!.listen((message) {
       if (message is int) {
         // This is the Thread ID sent during initialization
         _isolateThreadId = message;
-        if (!completer.isCompleted) completer.complete();
+        if (!startCompleter.isCompleted) startCompleter.complete();
       } else if (message == 'HOTKEY') {
         // Hotkey pressed!
-        _hotkeyStreamController.add(1); // We only use ID 1 for now
+        _hotkeyStreamController.add(1);
       } else if (message == 'EXIT') {
-        // Isolate exited (crash or manual stop)
-        LoggingService().warning('Hotkey isolate exited.');
-        _isolateThreadId = null;
-        _isolate = null;
-        receivePort.close();
+        // Isolate exited - signal the exitCompleter
+        if (_exitCompleter != null && !_exitCompleter!.isCompleted) {
+          _exitCompleter!.complete();
+        }
       } else if (message is String && message.startsWith('ERROR:')) {
         LoggingService().error('Hotkey Isolate: $message');
       }
     });
 
-    await completer.future;
-    LoggingService().info('HotkeyService started successfully.');
+    // Spawn the isolate
+    _isolate = await Isolate.spawn(
+      _isolateEntry,
+      _HotkeyConfig(_receivePort!.sendPort, id, modifiers, vKey),
+    );
+
+    // Watch for unexpected crashes
+    _isolate!.addOnExitListener(_receivePort!.sendPort, response: 'EXIT');
+
+    // Wait for thread ID (indicates successful start)
+    await startCompleter.future.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () {
+        LoggingService().error('HotkeyService start timed out');
+      },
+    );
+
+    if (_isolateThreadId != null) {
+      LoggingService().info('HotkeyService started successfully.');
+    }
   }
 
   /// Stops the hotkey listener by posting a Quit message to the thread.
   Future<void> stop() async {
+    if (_isolate == null) return;
+
+    // Ensure we have an exit completer to wait on
+    _exitCompleter ??= Completer<void>();
+
     if (_isolateThreadId != null) {
-      // WM_QUIT = 0x0012
-      // PostThreadMessage puts a message in the thread's queue, waking up GetMessage
+      // Post WM_QUIT to wake up the blocking GetMessage loop
       final result = PostThreadMessage(_isolateThreadId!, WM_QUIT, 0, 0);
       if (result == 0) {
-        LoggingService().error(
-          'Failed to post WM_QUIT to isolate thread: ${GetLastError()}',
-        );
-        // Fallback to hard kill
+        // PostThreadMessage failed, force kill
         _isolate?.kill(priority: Isolate.immediate);
+        if (!_exitCompleter!.isCompleted) _exitCompleter!.complete();
       }
-    }
-
-    // Allow some time for graceful shutdown
-    await Future.delayed(const Duration(milliseconds: 50));
-
-    if (_isolate != null) {
-      // Ensure it's dead if graceful shutdown failed
+    } else {
+      // No thread ID, just kill
       _isolate?.kill(priority: Isolate.immediate);
-      _isolate = null;
+      if (!_exitCompleter!.isCompleted) _exitCompleter!.complete();
     }
+
+    // Wait for graceful exit or timeout
+    await _exitCompleter!.future.timeout(
+      const Duration(milliseconds: 300),
+      onTimeout: () {
+        _isolate?.kill(priority: Isolate.immediate);
+      },
+    );
+
+    // Clean up all state
+    await _portSubscription?.cancel();
+    _portSubscription = null;
+    _receivePort?.close();
+    _receivePort = null;
+    _isolate = null;
     _isolateThreadId = null;
+    _exitCompleter = null;
+
     LoggingService().info('HotkeyService stopped.');
   }
 

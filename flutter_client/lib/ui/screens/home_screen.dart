@@ -8,12 +8,10 @@ import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
 import 'package:flutter_client/ui/shared/widgets/floating_capsule.dart';
 import 'package:flutter_client/ui/shared/widgets/hamburger_menu.dart';
-import 'package:flutter_client/ui/shared/widgets/refined_icon_button.dart';
 import 'package:flutter_client/ui/shared/widgets/transcribed_text_area.dart';
 import 'package:flutter_client/ui/shared/widgets/audio_visualizer.dart';
-import 'package:flutter_client/ui/screens/settings_screen.dart';
-import 'package:flutter_client/ui/screens/log_viewer_dialog.dart';
-import 'package:flutter_client/ui/screens/history_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/app_footer.dart';
+import 'package:flutter_client/ui/shared/widgets/action_bar.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -25,6 +23,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _hotkeySubscription;
+  int? _lastModifiers;
+  int? _lastVKey;
 
   @override
   void initState() {
@@ -39,12 +39,16 @@ class _HomeScreenState extends State<HomeScreen> {
     // Ensure controller is available
     final controller = context.read<RecordingController>();
 
+    // Track initial hotkey settings to detect changes later
+    _lastModifiers = settings.hotkeyModifiers;
+    _lastVKey = settings.hotkeyVKey;
+
     // Start with current settings
-    // The new service automagically handles restarts if we call start() again
     unawaited(_restartHotkeyService(hotkeyService, settings));
 
     _hotkeySubscription = hotkeyService.onHotkeyPressed.listen((event) {
-      LoggingService().info('Hotkey triggered - toggling recording');
+      final action = controller.isRecording ? 'Stopping' : 'Starting';
+      LoggingService().info('Hotkey: $action recording');
       unawaited(controller.toggleRecording());
     });
 
@@ -56,9 +60,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final hotkeyService = context.read<HotkeyService>();
     final settings = context.read<SettingsService>();
 
-    // Simply restart the service with new settings
-    // The service handles the "kill and respawn" logic internally
-    unawaited(_restartHotkeyService(hotkeyService, settings));
+    // Only restart hotkey service if hotkey settings actually changed
+    if (_lastModifiers != settings.hotkeyModifiers ||
+        _lastVKey != settings.hotkeyVKey) {
+      _lastModifiers = settings.hotkeyModifiers;
+      _lastVKey = settings.hotkeyVKey;
+      unawaited(_restartHotkeyService(hotkeyService, settings));
+    }
   }
 
   Future<void> _restartHotkeyService(
@@ -153,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     // Watch controller for UI updates
     final controller = context.watch<RecordingController>();
+    final settings = context.watch<SettingsService>();
     final isRecording = controller.isRecording;
 
     return Scaffold(
@@ -197,11 +206,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
 
                           const SizedBox(height: 8),
-                          if (isRecording) ...[
-                            const AudioVisualizer(),
-                            const SizedBox(height: 8),
-                          ] else
-                            const SizedBox(height: 8),
+                          // Visualizer toggle for performance testing
+                          if (settings.showVisualizer)
+                            AnimatedOpacity(
+                              opacity: isRecording ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 200),
+                              child: const AudioVisualizer(),
+                            )
+                          else
+                            const SizedBox(height: 40), // Placeholder height
+                          const SizedBox(height: 8),
 
                           const HotkeyHint(),
                           const SizedBox(height: 12),
@@ -209,72 +223,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
                           const SizedBox(height: 12),
                           // Footer: [Incognito] [History] • Connected [Settings] [Log]
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // LEFT SIDE - Incognito button
-                              RefinedIconButton(
-                                icon: controller.incognitoMode
-                                    ? Icons.visibility_off
-                                    : Icons.visibility_off_outlined,
-                                iconColor: controller.incognitoMode
-                                    ? Colors.orangeAccent
-                                    : Colors.white38,
-                                iconSize: 16,
-                                onTap: () =>
-                                    _toggleIncognitoMode(context, controller),
-                              ),
-                              const SizedBox(width: 8),
-                              // History button
-                              RefinedIconButton(
-                                icon: Icons.history,
-                                iconColor: Colors.white38,
-                                iconSize: 16,
-                                onTap: () {
-                                  unawaited(
-                                    showDialog(
-                                      context: context,
-                                      builder: (ctx) => const HistoryDialog(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(width: 16),
-                              // CENTER - Status
-                              const StatusBar(),
-                              const SizedBox(width: 16),
-                              // RIGHT SIDE - Settings button (moved)
-                              RefinedIconButton(
-                                icon: Icons.settings_outlined,
-                                iconColor: AppTheme.crimsonPrimary,
-                                iconSize: 18,
-                                onTap: () {
-                                  unawaited(
-                                    showDialog(
-                                      context: context,
-                                      builder: (ctx) => const SettingsScreen(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                              // Log button
-                              RefinedIconButton(
-                                icon: Icons.terminal_outlined,
-                                iconColor: Colors.white38,
-                                iconSize: 16,
-                                onTap: () {
-                                  unawaited(
-                                    showDialog(
-                                      context: context,
-                                      builder: (ctx) => const LogViewerDialog(),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
+                          ActionBar(
+                            isIncognitoMode: controller.incognitoMode,
+                            onIncognitoTap: () =>
+                                _toggleIncognitoMode(context, controller),
                           ),
-                          const SizedBox(height: 8),
                         ],
                       ),
                     ),
@@ -282,6 +235,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+            // Fixed Footer at bottom
+            const AppFooter(),
           ],
         ),
       ),

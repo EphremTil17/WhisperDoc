@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -50,8 +51,44 @@ void main() async {
   );
 }
 
-class WhisperDocApp extends StatelessWidget {
+class WhisperDocApp extends StatefulWidget {
   const WhisperDocApp({super.key});
+
+  @override
+  State<WhisperDocApp> createState() => _WhisperDocAppState();
+}
+
+class _WhisperDocAppState extends State<WhisperDocApp> with WindowListener {
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  /// Called when user closes the window - cleanup all services
+  @override
+  Future<void> onWindowClose() async {
+    // Stop hotkey service (kills the isolate)
+    await getIt<HotkeyService>().stop();
+
+    // Stop audio recording if active
+    final audioService = getIt<AudioService>();
+    if (audioService.isRecording) {
+      await audioService.stopRecording();
+    }
+
+    // Close WebSocket connection
+    getIt<WebSocketService>().disconnect();
+
+    // Allow window to close
+    await windowManager.destroy();
+  }
 
   @override
   Widget build(BuildContext context) {

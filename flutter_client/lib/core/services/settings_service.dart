@@ -11,6 +11,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyMicrophoneId = 'microphone_id';
   static const String _keyAutoCopy = 'auto_copy';
   static const String _keyAutoPaste = 'auto_paste';
+  static const String _keyShowVisualizer = 'show_visualizer';
 
   // Default Values (from AppConstants)
   static const String _defaultServerUri = AppConstants.defaultServerUri;
@@ -20,6 +21,7 @@ class SettingsService extends ChangeNotifier {
   static const int _defaultHotkeyVKey = AppConstants.defaultHotkeyVKey;
   static const bool _defaultAutoCopy = true;
   static const bool _defaultAutoPaste = false;
+  static const bool _defaultShowVisualizer = true;
 
   late SharedPreferences _prefs;
   bool _isInitialized = false;
@@ -31,6 +33,7 @@ class SettingsService extends ChangeNotifier {
   String? _microphoneId;
   bool _autoCopy = _defaultAutoCopy;
   bool _autoPaste = _defaultAutoPaste;
+  bool _showVisualizer = _defaultShowVisualizer;
 
   String get serverUri => _serverUri;
   String get globalHotkey => _globalHotkey;
@@ -39,6 +42,7 @@ class SettingsService extends ChangeNotifier {
   String? get microphoneId => _microphoneId;
   bool get autoCopy => _autoCopy;
   bool get autoPaste => _autoPaste;
+  bool get showVisualizer => _showVisualizer;
 
   Future<void> load() async {
     try {
@@ -52,6 +56,8 @@ class SettingsService extends ChangeNotifier {
       _microphoneId = _prefs.getString(_keyMicrophoneId);
       _autoCopy = _prefs.getBool(_keyAutoCopy) ?? _defaultAutoCopy;
       _autoPaste = _prefs.getBool(_keyAutoPaste) ?? _defaultAutoPaste;
+      _showVisualizer =
+          _prefs.getBool(_keyShowVisualizer) ?? _defaultShowVisualizer;
 
       _isInitialized = true;
       notifyListeners();
@@ -91,6 +97,16 @@ class SettingsService extends ChangeNotifier {
     await _prefs.setBool(_keyAutoPaste, value);
     notifyListeners();
     LoggingService().info('Auto-paste updated to: $value');
+  }
+
+  Future<void> setShowVisualizer(bool value) async {
+    _ensureInitialized();
+    if (_showVisualizer == value) return;
+
+    _showVisualizer = value;
+    await _prefs.setBool(_keyShowVisualizer, value);
+    notifyListeners();
+    LoggingService().info('Visualizer updated to: $value');
   }
 
   Future<void> setServerUri(String uri) async {

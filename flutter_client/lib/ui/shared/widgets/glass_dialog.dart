@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 /// - Glass decoration with border
 /// - Header with title and close button
 /// - Scrollable body area
+/// - Optional footer
 ///
 /// Usage:
 /// ```dart
@@ -17,6 +18,7 @@ import 'package:google_fonts/google_fonts.dart';
 ///   builder: (_) => GlassDialog(
 ///     title: 'My Dialog',
 ///     body: MyContent(),
+///     footer: MyFooter(), // optional
 ///   ),
 /// );
 /// ```
@@ -30,15 +32,23 @@ class GlassDialog extends StatelessWidget {
   /// The main content of the dialog.
   final Widget body;
 
+  /// Optional footer widget (e.g., version + Done button).
+  final Widget? footer;
+
   /// Maximum width constraint for the dialog.
   final double maxWidth;
+
+  /// If true, dialog sizes to content. If false, expands to fill available space.
+  final bool shrinkWrap;
 
   const GlassDialog({
     super.key,
     required this.title,
     required this.body,
     this.titleTrailing,
+    this.footer,
     this.maxWidth = 500,
+    this.shrinkWrap = false,
   });
 
   @override
@@ -53,6 +63,7 @@ class GlassDialog extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
         ),
         child: Column(
+          mainAxisSize: shrinkWrap ? MainAxisSize.min : MainAxisSize.max,
           children: [
             // Header
             Container(
@@ -99,7 +110,18 @@ class GlassDialog extends StatelessWidget {
               ),
             ),
             // Body
-            Expanded(child: body),
+            shrinkWrap ? Flexible(child: body) : Expanded(child: body),
+            // Footer (optional)
+            if (footer != null)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                  ),
+                ),
+                child: footer,
+              ),
           ],
         ),
       ),

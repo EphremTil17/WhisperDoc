@@ -77,6 +77,7 @@ class AudioService extends ChangeNotifier {
     final average = total / sampleCount;
     // Normalize to 0.0 - 1.0 (Approximate max for 16-bit is 32767)
     final normalized = (average / 32768.0).clamp(0.0, 1.0);
+
     _amplitudeController.add(normalized);
   }
 
@@ -90,8 +91,6 @@ class AudioService extends ChangeNotifier {
     _isRecording = false;
     _amplitudeController.add(0.0); // Reset
     notifyListeners();
-
-    LoggingService().info('Audio recording stopped');
   }
 
   @override

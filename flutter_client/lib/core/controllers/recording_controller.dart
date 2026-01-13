@@ -121,8 +121,6 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> startRecording() async {
-    LoggingService().info('Starting recording session...');
-
     _currentBuffer = '';
     _awaitingFinalTranscription = false;
     notifyListeners();

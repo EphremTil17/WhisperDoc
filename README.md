@@ -1,5 +1,5 @@
 # WhisperDoc - Speech-to-Text System
-A minimal but production-ready speech-to-text system that combines faster-whisper GPU acceleration with a clean client-server architecture.
+A minimal, **secure**, and production-ready speech-to-text system. It combines `faster-whisper` GPU acceleration with a clean client-server architecture, featuring a **read-only container runtime** and a modern flutter client application for hassle free auto-pasting transcription.
 
 ## Prerequisites
 Before starting, ensure your system meets the following requirements:
@@ -42,16 +42,13 @@ For high-performance transcription, an NVIDIA GPU is required:
    pip install -r backend/requirements.txt
    pip install -r client/requirements.txt
    ```
-
 2. **Start the Backend API**
    ```bash
    # Build and start the backend service
    docker compose build whisper-backend
    docker compose up -d whisper-backend
    ```
-
 3. **Test the API**
-
 You can run the test suite locally or directly inside the running Docker container.
 
 **Run Locally:**
@@ -67,8 +64,6 @@ docker compose exec whisper-backend pytest tests/
 # To run a specific test file:
 docker compose exec whisper-backend pytest tests/test_api.py
 ```
-
-
 **API Endpoints:**
 - `GET /health` - Check API status and model readiness
 - `POST /transcribe` - Upload audio file for transcription
@@ -80,8 +75,10 @@ docker compose exec whisper-backend pytest tests/test_api.py
 - **Dynamic Resource Scaling**: The backend includes an intelligent `ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
 - **Session-Based WebSockets**: Connections are established only when recording starts and are automatically closed after 5 minutes of idle time.
 - **Protocol Handshake**: A versioned `hello` event system ensures clients and server are synchronized on versioning and readiness states before data starts flowing.
-- **Centralized Logging**: The system uses `loguru` for structured, colorful logging. All logs are standardized to UTC. A `POST /log` endpoint allows any client (Flutter/Python) to send a batch of logs to the server.
-- **Decoupled Requirements**: Dependencies are split into modular `requirements.txt` files (backend, client, tests) to minimize bloat on client machines.
+-   **Centralized Logging**: The system uses `loguru` and outputs strictly to `stdout/stderr` (Docker logs) to support read-only containers and external log aggregation (e.g., Cloudflare, Datadog).
+-   **Security**: The backend container runs in `read_only` mode to prevent malicious code persistence.
+-   **Privacy**: All temporary audio files are stored in a RAM disk (`tmpfs` at `/tmp`), ensuring audio data never touches the physical hard drive.
+-   **Decoupled Requirements**: Dependencies are split into modular `requirements.txt` files (backend, client, tests) to minimize bloat on client machines.
 
 ## Configuration
 The system is entirely configuration-driven via the `.env` file in the root directory.
@@ -93,22 +90,18 @@ The system is entirely configuration-driven via the `.env` file in the root dire
 | `MODEL_DEVICE` | Hardware to run on (`cuda` for GPU, `cpu` for CPU). | `cuda` |
 | `MODEL_COMPUTE_TYPE` | Precision level (`float16` for GPU, `int8` for CPU). | `float16` |
 | `LOG_LEVEL` | Verbosity of the logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`). | `INFO` |
-
-To change these values, edit your `.env` file and restart the container:
-```bash
-docker compose up -d --force-recreate whisper-backend
-```
+| `WHISPER_DOC_API_KEY` | API Key for authenticating client requests. | `""` |
 
 ## Docker Commands
 ```bash
 # View logs of the main backend service
-sudo docker compose logs -f whisper-backend
+docker compose logs -f whisper-backend
 
 # Stop all services
-sudo docker compose down
+docker compose down
 
 # Rebuild and restart the backend after changes
-sudo docker compose build whisper-backend && sudo docker compose up -d --force-recreate whisper-backend
+docker compose build whisper-backend && docker compose up -d --force-recreate whisper-backend
 ```
 ## Performance
 - **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
@@ -138,12 +131,16 @@ flutter run -d windows
 A lightweight terminal-based client for quick testing and scripting.
 
 ```bash
+# Create and activate a python virtual environment and install dependencies:
 cd client
 pip install -r requirements.txt
 python whisper_client.py
 ```
 
 ## Common Troubleshooting
+
+### Error: "Read-only file system"
+This is expected behavior if you try to open a shell and write to root. The container is locked down. Write to `/tmp` if strictly necessary for testing.
 
 ### Error: "unknown or invalid runtime name: nvidia"
 This means Docker cannot find the NVIDIA runtime.
@@ -165,3 +162,4 @@ This means Docker cannot find the NVIDIA runtime.
 | Phase 4 | Flutter Windows Client | ✅ Complete |
 | Phase 5 | Dynamic Model Loading | ✅ Complete |
 | Phase 6 | Architecture Refactoring | ✅ Complete |
+| Phase 7 | Infrastructure Hardening | ✅ Complete |
