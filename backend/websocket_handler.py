@@ -38,7 +38,12 @@ class ModelManager:
         log.info(f"Loading Whisper model ({self.model_name}) into {self.device}...")
         try:
             start = time.time()
-            self.model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+            self.model = WhisperModel(
+                self.model_name, 
+                device=self.device, 
+                compute_type=self.compute_type,
+                download_root="/app/model-cache"  # Force usage of mounted volume
+            )
             log.success(f"Model loaded in {time.time() - start:.2f}s")
         except Exception as e:
             log.error(f"Failed to load model: {e}")
@@ -69,9 +74,10 @@ class ModelManager:
 
 
 class ConnectionManager:
-    def __init__(self, model_manager: ModelManager):
+    def __init__(self, model_manager: ModelManager, app_version: str):
         self.active_connections = {}
         self.model_manager = model_manager
+        self.app_version = app_version
         # Start the background cleanup task
         self.cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())
         log.info(f"ConnectionManager initialized. Connection Idle: {IDLE_TIMEOUT_SECONDS}s, Model Idle: {MODEL_TIMEOUT_SECONDS}s")
@@ -111,7 +117,7 @@ class ConnectionManager:
         await websocket.send_json({
             "event": "hello",
             "server": "WhisperDoc Backend",
-            "version": "1.0.0",
+            "version": self.app_version,
             "status": "ready" if self.model_manager.model else "idle"
         })
 
