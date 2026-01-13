@@ -43,30 +43,12 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # Read version from environment variable (Docker)
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
-WHISPER_DOC_API_KEY = os.getenv("WHISPER_DOC_API_KEY")
 
 # --- Security & Validation Configuration ---
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
-from fastapi import Security, Depends
-from fastapi.security.api_key import APIKeyHeader
-
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    """Verifies the API key provided in the request headers."""
-    # If no key is configured in the environment, we allow all for local dev
-    if not WHISPER_DOC_API_KEY:
-        return True
-        
-    if api_key == WHISPER_DOC_API_KEY:
-        return True
-        
-    log.warning(f"Unauthorized access attempt with invalid API Key.")
-    raise HTTPException(
-        status_code=401,
-        detail="Unauthorized: Invalid or missing API Key"
-    )
+from fastapi import Depends
+from auth import get_api_key, verify_api_key, validate_token
 
 # Import the WebSocket handler
 from websocket_handler import ConnectionManager
@@ -109,6 +91,9 @@ async def startup_event():
     log.info("Starting WhisperDoc API server...")
     
     try:
+        # Enforce "Fail Secure" Policy
+        get_api_key() # Will raise RuntimeError if no key is set
+        
         log.info(f"Initializing Model Manager ({MODEL_NAME})...")
         
         # Initialize ModelManager (which handles loading/unloading)
@@ -299,6 +284,19 @@ async def websocket_endpoint(websocket: WebSocket):
     if not manager:
         log.error("WebSocket connection failed: ConnectionManager not initialized.")
         await websocket.close(code=1011)
+        return
+
+    # --- WebSocket Security (Block 2) ---
+    token = websocket.query_params.get("token")
+    if not token:
+        # Check Header
+        auth_header = websocket.headers.get("authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header[7:]
+    
+    if not token or not validate_token(token):
+        log.warning(f"Unauthorized WebSocket connection attempt from {websocket.client}")
+        await websocket.close(code=1008, reason="Invalid API Key")
         return
 
     await manager.connect(websocket)

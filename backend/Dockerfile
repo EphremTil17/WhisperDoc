@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /root/.local
 
 # 4. Copy application code
-COPY api_server.py websocket_handler.py logging_config.py .env.template ./
+COPY api_server.py websocket_handler.py logging_config.py auth.py .env.template ./
 COPY tests/ ./tests/
 
 # 5. Network & Execution
