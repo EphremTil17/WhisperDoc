@@ -22,7 +22,10 @@ For high-performance transcription, an NVIDIA GPU is required:
 ### Option 1: Automated Setup (Recommended) - Linux Only
 1. **Check Prerequisites**: Ensure Docker and (optionally) NVIDIA drivers are installed.
 2. **Run Setup**:
+   *  First make sure to have a python virtual environment activated
    ```bash
+   python3 -m venv venv
+   source venv/bin/activate
    # Run the setup script to check dependencies and create config files
    ./setup.sh
    ```
@@ -32,11 +35,19 @@ For high-performance transcription, an NVIDIA GPU is required:
    sudo docker compose build whisper-backend
    sudo docker compose up -d whisper-backend
    ```
+4. **Secure the .env file**
+   ```bash
+   chmod 600 .env
+   ```
 ### Option 2: Manual Setup - Windows/MacOS/Linux
 1. **Configure Environment**
+
    ```bash
-   # Create .env file from template
+   *  First make sure to have a python virtual environment activated in powershell
+   # Create .env file from template and make sure to secure it by making it read-only
    cp backend/.env.template .env
+   python3 -m venv venv
+   .\venv\Scripts\Activate.ps1
    
    # Install local dependencies (Terminal Client & Dev Tools)
    pip install -r backend/requirements.txt

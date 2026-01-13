@@ -13,6 +13,8 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSock
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
+import uuid
+import torch
 from faster_whisper import WhisperModel
 import tempfile
 import shutil
@@ -41,6 +43,30 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # Read version from environment variable (Docker)
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
+WHISPER_DOC_API_KEY = os.getenv("WHISPER_DOC_API_KEY")
+
+# --- Security & Validation Configuration ---
+MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
+
+from fastapi import Security, Depends
+from fastapi.security.api_key import APIKeyHeader
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    """Verifies the API key provided in the request headers."""
+    # If no key is configured in the environment, we allow all for local dev
+    if not WHISPER_DOC_API_KEY:
+        return True
+        
+    if api_key == WHISPER_DOC_API_KEY:
+        return True
+        
+    log.warning(f"Unauthorized access attempt with invalid API Key.")
+    raise HTTPException(
+        status_code=401,
+        detail="Unauthorized: Invalid or missing API Key"
+    )
 
 # Import the WebSocket handler
 from websocket_handler import ConnectionManager
@@ -54,6 +80,27 @@ app = FastAPI(
     description="Speech-to-text transcription service using faster-whisper",
     version=APP_VERSION
 )
+
+# --- Infrastructure Hardening (Middleware & Security) ---
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+
+# Compress responses to save bandwidth on large transcription results
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Configure CORS for Cloudflare and Client security
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this for your specific deployment
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# Ensure the app trusts the proxy headers (Cloudflare)
+# This is handled by uvicorn's proxy_headers, but we add host validation here
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 @app.on_event("startup")
 async def startup_event():
@@ -81,9 +128,35 @@ async def startup_event():
         model = None
         manager = None
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup resources on shutdown"""
+    log.info("Shutting down WhisperDoc API server...")
+    if manager and manager.model_manager:
+        manager.model_manager.unload_model()
+    log.success("Cleanup completed.")
+
+# --- Global Exception Handler (Error Masking) ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Catch-all exception handler to mask system errors in production."""
+    error_id = str(uuid.uuid4())[:8]
+    log.error(f"Unhandled Error [Ref: {error_id}]: {exc}")
+    
+    # In development (no API key set), we might want to see the error, 
+    # but for this "hardened" block we strictly mask it.
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please contact support.",
+            "ref": error_id
+        }
+    )
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Enhanced health check with GPU status verification"""
     if manager is None or manager.model_manager is None:
         log.warning("Health check failed: system not initialized.")
         return JSONResponse(
@@ -91,20 +164,31 @@ async def health_check():
              content={"status": "unhealthy", "message": "System not initialized"}
         )
     
+    # Check GPU "Zombification"
+    cuda_available = torch.cuda.is_available() if torch.cuda.is_available() else False
+    
     # Check if model is loaded (don't force load)
     is_loaded = manager.model_manager.model is not None
     
-    log.info(f"Health check passed. Model loaded: {is_loaded}")
-    return {
-        "status": "healthy",
-        "model_loaded": is_loaded,
-        "device": str(manager.model_manager.device),
-        "timestamp": time.time()
-    }
+    status = "healthy" if cuda_available else "degraded"
+    status_code = 200 if cuda_available else 500 # Return 500 if GPU is dead so Docker restarts
+    
+    log.info(f"Health check: {status}. Model loaded: {is_loaded}, CUDA: {cuda_available}")
+    
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": status,
+            "model_loaded": is_loaded,
+            "cuda_available": cuda_available,
+            "device": str(manager.model_manager.device),
+            "timestamp": time.time(),
+            "version": APP_VERSION
+        }
+    )
 
-@app.post("/transcribe")
+@app.post("/transcribe", dependencies=[Depends(verify_api_key)])
 async def transcribe_audio(file: UploadFile = File(...)):
-    """Transcribe uploaded audio file"""
     """Transcribe uploaded audio file"""
     if manager is None:
         raise HTTPException(status_code=503, detail="System not initialized")
@@ -128,6 +212,16 @@ async def transcribe_audio(file: UploadFile = File(...)):
             )
     
     log.info(f"Processing file: {file.filename} ({file.content_type})")
+    
+    # Optional: Check file size if content-length is provided
+    # Note: For UploadFile, we may need to read it to be 100% sure
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    
+    if file_size > MAX_FILE_SIZE:
+        log.warning(f"File upload rejected: {file_size} bytes exceeds limit of {MAX_FILE_SIZE}")
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.")
     
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
@@ -183,7 +277,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             except Exception as e:
                 log.warning(f"Could not clean up temp file {temp_path}: {e}")
 
-@app.post("/log")
+@app.post("/log", dependencies=[Depends(verify_api_key)])
 async def ingest_logs(batch: LogBatch):
     """Receive and process a batch of log records from a remote client."""
     log.info(f"Received log batch with {len(batch.logs)} records.")

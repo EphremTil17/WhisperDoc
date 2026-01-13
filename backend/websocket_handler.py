@@ -15,6 +15,7 @@ from logging_config import log
 # --- Configuration ---
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = 9600000
+MAX_CONNECTIONS = 10  # Limit concurrent clients to protect GPU/RAM
 IDLE_TIMEOUT_SECONDS = 300  # 5 minutes idle timeout (Connection)
 MODEL_TIMEOUT_SECONDS = 1800  # 30 minutes idle timeout (GPU Model)
 
@@ -80,7 +81,7 @@ class ConnectionManager:
         self.app_version = app_version
         # Start the background cleanup task
         self.cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())
-        log.info(f"ConnectionManager initialized. Connection Idle: {IDLE_TIMEOUT_SECONDS}s, Model Idle: {MODEL_TIMEOUT_SECONDS}s")
+        log.info(f"ConnectionManager initialized. Max Connections: {MAX_CONNECTIONS}")
 
     async def _cleanup_inactive_connections(self):
         """Background task to close connections that have been idle for too long."""
@@ -105,6 +106,11 @@ class ConnectionManager:
                 log.error(f"Error in cleanup task: {e}")
 
     async def connect(self, websocket: WebSocket):
+        if len(self.active_connections) >= MAX_CONNECTIONS:
+            log.warning(f"Connection rejected for {websocket.client}: Max connections reached.")
+            await websocket.close(code=1008, reason="Max concurrent connections reached")
+            return
+
         await websocket.accept()
         self.active_connections[websocket] = {
             "buffer": bytearray(), 
@@ -135,7 +141,7 @@ class ConnectionManager:
 
         if isinstance(message, str):
             try:
-                # Handle potentially JSON-encoded control messages
+                # Handle JSON-encoded control messages
                 if message.startswith('{'):
                     data = json.loads(message)
                     event = data.get("event")
@@ -146,6 +152,9 @@ class ConnectionManager:
                         log.info(f"Handshake complete. Client: {client_info}")
                         
                     elif event == "end-of-stream":
+                        if not self.active_connections[websocket]["handshake_completed"]:
+                            log.warning(f"Rejected EOS from {websocket.client}: Handshake not completed.")
+                            return
                         log.info(f"Received end-of-stream from {websocket.client}")
                         await self.transcribe_and_send(websocket)
                     elif event == "ping":
@@ -153,15 +162,15 @@ class ConnectionManager:
                     else:
                         log.warning(f"Unknown event '{event}' from {websocket.client}")
                 else:
-                    # Legacy support for plain-text '{"event": "end-of-stream"}'
-                    if 'end-of-stream' in message:
-                         await self.transcribe_and_send(websocket)
-                    else:
-                        log.warning(f"Received invalid text message from {websocket.client}: {message[:100]}...")
+                    log.warning(f"Received invalid text message from {websocket.client}: {message[:100]}...")
             except Exception as e:
                 log.error(f"Error handling text message: {e}")
                 
         elif isinstance(message, bytes):
+            if not self.active_connections[websocket]["handshake_completed"]:
+                log.warning(f"Rejected audio data from {websocket.client}: Handshake not completed.")
+                return
+            
             buffer = self.active_connections[websocket]["buffer"]
             if len(buffer) < MAX_BUFFER_SIZE:
                 buffer.extend(message)

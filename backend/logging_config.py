@@ -33,13 +33,6 @@ def configure_logging():
         colorize=force_color
     )
 
-    # Determine log path dynamically
-    # Use LOG_DIR env var if set, otherwise fallback to local 'logs' folder
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    log_dir = os.getenv("LOG_DIR", os.path.join(base_dir, "logs"))
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, "backend.log")
-
     # File logger removed for read-only filesystem compatibility.
     # Docker/Cloudflare handles log aggregation via stdout/stderr.
 

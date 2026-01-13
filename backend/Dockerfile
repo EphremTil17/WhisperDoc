@@ -62,7 +62,7 @@ LABEL version=${VERSION}
 # Note: Docker/BuildKit tricky with dynamic labels from files. 
 # Best practice: pass it as a build-arg from the compose file.
 
-HEALTHCHECK --interval=10m --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:9989/health || exit 1
 
-CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "9989"]
+CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "9989", "--proxy-headers", "--forwarded-allow-ips='*'", "--timeout-keep-alive", "300"]

@@ -1,5 +1,6 @@
 services:
   whisper-backend:
+    image: whisperdoc-whisper-backend:${WHISPER_DOC_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -23,24 +24,31 @@ services:
       - WHISPER_DOC_API_KEY=${WHISPER_DOC_API_KEY:?No API KEY set. Configure WHISPER_DOC_API_KEY in .env.}
     deploy:
       resources:
+        limits:
+          memory: 8G
         reservations:
+          cpus: '1'
+          memory: 2G
           devices:
             - driver: nvidia
               count: 1
               capabilities: [ gpu ]
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./model-cache:/app/model-cache
       - ./assets:/app/assets
       - ./backend/tests:/app/tests
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:noexec,nosuid,nodev
     restart: unless-stopped
     env_file:
       - ./backend/.env.template
       - .env
 
   whisper-test:
+    image: whisperdoc-whisper-test:${WHISPER_DOC_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile
