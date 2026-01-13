@@ -39,6 +39,15 @@ MODEL_DEVICE = os.getenv('MODEL_DEVICE', 'cuda')
 MODEL_COMPUTE_TYPE = os.getenv('MODEL_COMPUTE_TYPE', 'float16')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
+# Read version from environment variable (Docker) or file (Local Dev)
+APP_VERSION = os.getenv("WHISPER_DOC_VERSION")
+if not APP_VERSION:
+    try:
+        with open("VERSION", "r") as f:
+            APP_VERSION = f.read().strip()
+    except FileNotFoundError:
+        APP_VERSION = "1.0.0"
+
 # Import the WebSocket handler
 from websocket_handler import ConnectionManager
 
@@ -49,7 +58,7 @@ manager: Optional[ConnectionManager] = None
 app = FastAPI(
     title="WhisperDoc API",
     description="Speech-to-text transcription service using faster-whisper",
-    version="1.0.0"
+    version=APP_VERSION
 )
 
 @app.on_event("startup")
@@ -66,7 +75,7 @@ async def startup_event():
         model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
         
         # Pass manager to ConnectionManager
-        manager = ConnectionManager(model_manager)
+        manager = ConnectionManager(model_manager, app_version=APP_VERSION)
         
         # We no longer set 'model' globally as it's dynamic now
         model = None 

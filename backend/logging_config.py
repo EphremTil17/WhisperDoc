@@ -40,17 +40,8 @@ def configure_logging():
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "backend.log")
 
-    # File logger (always logs from DEBUG level up)
-    logger.add(
-        log_file,
-        level="DEBUG",
-        rotation="10 MB",  # Rotate log file when it reaches 10 MB
-        retention="7 days", # Keep logs for 7 days
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        enqueue=True,      # Make file logging non-blocking
-        backtrace=True,
-        diagnose=True
-    )
+    # File logger removed for read-only filesystem compatibility.
+    # Docker/Cloudflare handles log aggregation via stdout/stderr.
 
     return logger
 
