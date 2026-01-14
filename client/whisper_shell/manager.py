@@ -69,7 +69,12 @@ class DictationClient:
 
     def paste_text(self, text):
         if not text or not text.strip(): return
-        logger.success(f"Result: {text}")
+        
+        if cfg.args.incognito:
+             logger.log("GHOST", f"Result: {text}")
+        else:
+            logger.success(f"Result: {text}")
+        
         pyperclip.copy(text)
         with self.kb.pressed(keyboard.Key.ctrl):
             self.kb.press('v')
@@ -132,8 +137,7 @@ class DictationClient:
                 await asyncio.sleep(0.05)
 
             except Exception as e:
-                # Handle Auth Errors specifically
-                import websockets
+                # Standardize Auth Failure checks
                 is_auth = False
                 if isinstance(e, websockets.exceptions.InvalidStatusCode):
                      if e.status_code in [401, 403]: is_auth = True
@@ -160,14 +164,13 @@ class DictationClient:
              # Keep connection open for immediate use
              return True
         except Exception as e:
-             # Check for Auth Failure
-             import websockets
+             # Standardize Auth Failure checks
              is_auth = False
              if isinstance(e, websockets.exceptions.InvalidStatusCode):
                   if e.status_code in [401, 403]: is_auth = True
              elif isinstance(e, websockets.exceptions.ConnectionClosed):
                   if e.code == 1008: is_auth = True
-             elif "HTTP 403" in str(e) or "HTTP 401" in str(e) or "Auth Failed" in str(e): # Generic string check for safety
+             elif "HTTP 403" in str(e) or "HTTP 401" in str(e) or "Auth Failed" in str(e): 
                   is_auth = True
 
              if is_auth:
@@ -198,6 +201,9 @@ class DictationClient:
 
         # 3. Start Audio Stream (before hotkey so we're fully ready)
         self.audio.start_stream()
+        
+        if cfg.args.incognito:
+             logger.warning(f"Ghost Mode Active: Remote logs are sanitized.")
         
         # 4. Start Hotkey Service (last, so everything is ready when user presses it)
         self.hotkey.start()

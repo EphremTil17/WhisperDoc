@@ -14,7 +14,7 @@ colorama.init()
 
 SERVICE_NAME = "WhisperDoc_Client"
 ENV_PATH = Path(".env")
-CLIENT_VERSION = "2.4.1"
+CLIENT_VERSION = "2.5.0"
 
 class Config:
     def __init__(self):
@@ -36,11 +36,18 @@ class Config:
         parser.add_argument("--health", action="store_true", help="Run pre-flight server health check")
         parser.add_argument("--version", action="store_true", help="Print client version and exit")
         parser.add_argument("--clear-key", action="store_true", help="Clear stored API key and exit")
+        parser.add_argument("--incognito", action="store_true", help="Enable Ghost Mode (No server logs, no local history)")
         self.args = parser.parse_known_args()[0]
 
     def _setup_logging(self):
         logger.remove()
-        logger.add(sys.stdout, level=self.LOG_LEVEL, format="<white>{time:HH:mm:ss}</white> | <level>{level: <8}</level> | <level>{message}</level>")
+        # Add custom level for Incognito Mode
+        try:
+            logger.level("GHOST", no=25, color="<magenta>")
+        except TypeError: 
+            pass # Already exists
+            
+        logger.add(sys.stdout, level=self.LOG_LEVEL, format="<white>{time:HH:mm:ss}</white> | <level>{level: <8}</level> | <white>{message}</white>")
 
 class SecureConfig:
     @staticmethod

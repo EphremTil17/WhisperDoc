@@ -17,6 +17,8 @@ def configure_logging():
     logger.level("WARNING", color="<yellow>")
     logger.level("ERROR", color="<red>")
     logger.level("CRITICAL", color="<red><reverse>")
+    # Custom Level for Incognito Mode
+    logger.level("PRIVACY", no=25, color="<magenta>")
 
     # Get log level from environment variable, default to INFO
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -26,9 +28,9 @@ def configure_logging():
     force_color = os.getenv("COLORIZE_LOGS", "true").lower() == "true"
 
     def formatter(record):
-        # Concise format for INFO/SUCCESS
-        if record["level"].name in ["INFO", "SUCCESS"]:
-            return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <level>{message}</level>\n"
+        # Concise format for INFO/SUCCESS/PRIVACY
+        if record["level"].name in ["INFO", "SUCCESS", "PRIVACY"]:
+            return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <white>{message}</white>\n"
         # Verbose format for ERROR/WARNING/DEBUG
         return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>\n"
 

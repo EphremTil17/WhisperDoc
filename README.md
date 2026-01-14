@@ -87,8 +87,8 @@ docker compose exec whisper-backend pytest tests/test_api.py
 - **Secure Transport & Handshake**: All streaming connections (WSS) utilize a versioned bi-directional handshake. **Authentication is performed within the handshake payload**, ensuring API tokens never appear in URL query strings or server access logs.
 - **OS Secure Enclave**: The Python client integrates with system-level credential managers (Windows Credential Manager, Keychain, etc.) via `keyring`, ensuring API keys never touch the filesystem in plain text.
 - **Session-Based WebSockets**: Connections are established only when recording starts and are automatically closed after 5 minutes of idle time.
-- **Centralized Sanitized Logging**: The system uses `loguru` with dynamic formatting; verbose traces are suppressed for production, and sensitive connection metadata is sanitized.
-- **Security & Privacy**: The container runs in `read_only` mode with RAM-disk processing and RFC 1918 Private IP Fallback (`tmpfs`), ensuring audio data is volatile and never persisted to the host disk.
+- **Centralized Sanitized Logging**: The system utilizes high-performance logging with dynamic privacy levels. It supports **Incognito Mode (Ghost Mode)** where transcription data is processed strictly in-memory and all server-side traces are automatically redacted via a dedicated privacy state engine.
+- **Privacy Architecture**: Explicit session-level privacy tracking ensures that sensitive audio metadata and transcription results are never persisted or logged when Ghost Mode is active, harnessing volatile RAM-disk processing (tmpfs) for complete anonymity.
 
 ## Configuration
 The system is entirely configuration-driven via the `.env` file in the root directory.
@@ -138,6 +138,7 @@ A secure, modular, and production-ready terminal client for high-performance dic
 *   **Fail-Secure Handshake**
 *   **Auto Copy/Paste**
 *   **Automated First-Time Setup**
+*   **Incognito Mode** (Ghost Mode)
 
 📖 **[Terminal Client Documentation](client/README.md)**
 

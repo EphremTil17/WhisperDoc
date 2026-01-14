@@ -1,4 +1,4 @@
-# WhisperDoc Client (v2.4.1)
+# WhisperDoc Client (v2.5.0)
 
 A secure, modular, and high-performance Python terminal client for real-time dictation using the WhisperDoc backend.
 
@@ -10,6 +10,7 @@ A secure, modular, and high-performance Python terminal client for real-time dic
 *   **Transport Security**: Enforces `wss://` (TLS 1.2+) for all remote connections.
 *   **RFC 1918 Compliance**: Intelligently falls back to plain text (`ws://`) **only** if the target is a verified private network IP (e.g., `192.168.x.x`), ensuring security without breaking local development.
 *   **Secure Handshake**: Utilizes a versioned bi-directional handshake to verify client integrity and authentication tokens before promoting the connection to a processing state.
+*   **Incognito Mode (Ghost Mode)**: A protocol-level privacy state that enforces zero-persistence on the backend. When enabled, the client signals the server to redact all transcription traces from logs and bypasses any local result caching. Our architecture ensures that privacy is established during the secure handshake.
 
 ### Performance & UX
 *   **Global Hotkeys**: Control recording (Default: `Ctrl+Alt+W`) system-wide from any application.
@@ -61,6 +62,7 @@ python whisper_client.py --setup
 | :--- | :--- |
 | `--setup` | Re-run the interactive setup wizard (Mic/Host selection). |
 | `--clear-key` | Wipe the stored API key from the OS keyring. |
+| `--incognito` | Enable Ghost Mode (No server logs, redacted output). |
 | `--health` | Perform a pre-flight health check on the backend. |
 | `--version` | Display current client version. |
 

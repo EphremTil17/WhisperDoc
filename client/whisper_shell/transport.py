@@ -8,7 +8,7 @@ import websockets
 import requests
 import ipaddress
 import socket
-from .config import cfg, SecureConfig
+from .config import cfg, SecureConfig, CLIENT_VERSION
 
 class TransportManager:
     def __init__(self):
@@ -51,7 +51,8 @@ class TransportManager:
              try:
                  ip = socket.gethostbyname(parsed.hostname)
                  if ipaddress.ip_address(ip).is_private: is_private = True
-             except: pass
+             except Exception: 
+                 pass
              
              if is_private:
                   logger.warning(f"HTTPS failed. Falling back to HTTP for private IP ({ip})...")
@@ -103,14 +104,14 @@ class TransportManager:
         
         if hello.get("event") == "hello":
              # Send Client Hello with token
-             from .config import CLIENT_VERSION
              api_key = SecureConfig.get_api_key(self.hostname)
              
              await self.ws.send(json.dumps({
                  "event": "hello",
                  "client": "whisper_shell",
                  "version": CLIENT_VERSION,
-                 "token": api_key
+                 "token": api_key,
+                 "incognito": cfg.args.incognito
              }))
              
              # Wait for Auth Verification

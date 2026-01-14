@@ -9,7 +9,8 @@ import torch
 from fastapi import WebSocket
 from faster_whisper import WhisperModel
 
-# Import the configured logger
+# Project dependencies
+from auth import validate_token
 from logging_config import log
 
 # --- Configuration ---
@@ -118,7 +119,8 @@ class ConnectionManager:
             "buffer": bytearray(), 
             "last_activity": time.time(),
             "handshake_completed": False,
-            "id": conn_id
+            "id": conn_id,
+            "incognito": False
         }
         log.info(f"[{conn_id}] WebSocket client connected from {websocket.client.host}")
         
@@ -152,7 +154,6 @@ class ConnectionManager:
                     event = data.get("event")
                     
                     if event == "hello":
-                        from auth import validate_token
                         token = data.get("token")
                         conn_id = self.active_connections[websocket].get("id", "????")
                         
@@ -169,9 +170,14 @@ class ConnectionManager:
                             return
 
                         self.active_connections[websocket]["handshake_completed"] = True
+                        
+                        # Capture Incognito State
+                        is_incognito = data.get("incognito", False)
+                        self.active_connections[websocket]["incognito"] = is_incognito
+                        
                         client_info = data.get("client", "unknown")
                         client_ver = data.get("version", "unknown")
-                        log.info(f"[{conn_id}] Authentication successful. Client: {client_info} (v{client_ver})")
+                        log.info(f"[{conn_id}] Authentication successful. Client: {client_info} (v{client_ver}) Incognito: {is_incognito}")
                         
                         # Acknowledge authentication success to the client
                         log.debug(f"[{conn_id}] Sending 'authenticated' confirmation...")
@@ -237,6 +243,7 @@ class ConnectionManager:
             return
         # -------------------------------
 
+        temp_path = None
         try:
             # Create a temporary WAV file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio_file:
@@ -256,7 +263,12 @@ class ConnectionManager:
             segments_list, info = await asyncio.to_thread(run_transcription)
             full_text = " ".join([segment.text.strip() for segment in segments_list])
 
-            log.success(f"Transcription successful: {full_text[:50]}...")
+            # Conditional Logging based on Privacy Mode
+            is_incognito = connection_data.get("incognito", False)
+            if is_incognito:
+                log.log("PRIVACY", f"Transcription completed [REDACTED]")
+            else:
+                log.success(f"Transcription successful: {full_text[:50]}...")
 
             await websocket.send_json({
                 "text": full_text,
@@ -272,5 +284,5 @@ class ConnectionManager:
                 "message": str(e)
             })
         finally:
-            if 'temp_path' in locals() and os.path.exists(temp_path):
+            if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
