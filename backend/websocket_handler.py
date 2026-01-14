@@ -112,28 +112,30 @@ class ConnectionManager:
             return
 
         await websocket.accept()
+        # Create a unique short ID for this connection to track logs
+        conn_id = str(id(websocket))[-4:]
         self.active_connections[websocket] = {
             "buffer": bytearray(), 
             "last_activity": time.time(),
-            "handshake_completed": False
+            "handshake_completed": False,
+            "id": conn_id
         }
-        # Sanitize query parameters (API Key) for logging
-        client_host = websocket.client.host
-        client_port = websocket.client.port
-        log.info(f"WebSocket client connected: {client_host}:{client_port}")
+        log.info(f"[{conn_id}] WebSocket client connected from {websocket.client.host}")
         
         # Send Server Hello
         await websocket.send_json({
             "event": "hello",
             "server": "WhisperDoc Backend",
             "version": self.app_version,
-            "status": "ready" if self.model_manager.model else "idle"
+            "status": "ready" if self.model_manager.model else "idle",
+            "cid": conn_id
         })
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
+            conn_id = self.active_connections.get(websocket, {}).get("id", "????")
             del self.active_connections[websocket]
-            log.info(f"WebSocket client disconnected: {websocket.client}")
+            log.info(f"[{conn_id}] WebSocket client disconnected: {websocket.client}")
 
     async def handle_message(self, websocket: WebSocket, message):
         if websocket not in self.active_connections:
@@ -150,10 +152,35 @@ class ConnectionManager:
                     event = data.get("event")
                     
                     if event == "hello":
+                        from auth import validate_token
+                        token = data.get("token")
+                        conn_id = self.active_connections[websocket].get("id", "????")
+                        
+                        log.debug(f"[{conn_id}] Verifying token for client: {data.get('client')}")
+
+                        if not validate_token(token):
+                            log.warning(f"[{conn_id}] Authentication failed. Invalid token.")
+                            await websocket.send_json({
+                                "event": "error",
+                                "code": 403,
+                                "message": "Authentication failed: Invalid API Key"
+                            })
+                            await websocket.close(code=1008)
+                            return
+
                         self.active_connections[websocket]["handshake_completed"] = True
                         client_info = data.get("client", "unknown")
                         client_ver = data.get("version", "unknown")
-                        log.info(f"Handshake complete. Client: {client_info} (v{client_ver})")
+                        log.info(f"[{conn_id}] Authentication successful. Client: {client_info} (v{client_ver})")
+                        
+                        # Acknowledge authentication success to the client
+                        log.debug(f"[{conn_id}] Sending 'authenticated' confirmation...")
+                        await websocket.send_json({
+                            "event": "authenticated",
+                            "status": "success",
+                            "message": "Handshake verified"
+                        })
+                        log.info(f"[{conn_id}] Handshake complete.")
                         
                     elif event == "end-of-stream":
                         if not self.active_connections[websocket]["handshake_completed"]:

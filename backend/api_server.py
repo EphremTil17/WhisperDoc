@@ -49,12 +49,9 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
 from fastapi import Depends
 from auth import get_api_key, verify_api_key, validate_token
-
-# Import the WebSocket handler
 from websocket_handler import ConnectionManager
 
-# Global model instance
-model: Optional[WhisperModel] = None
+# Global initialized on startup
 manager: Optional[ConnectionManager] = None
 
 app = FastAPI(
@@ -87,7 +84,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 @app.on_event("startup")
 async def startup_event():
     """Load the Whisper model and initialize the connection manager on startup"""
-    global model, manager
+    global manager
     log.info("Starting WhisperDoc API server...")
     
     try:
@@ -100,17 +97,13 @@ async def startup_event():
         from websocket_handler import ModelManager
         model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
         
-        # Pass manager to ConnectionManager
+        # Initialize the connection manager
         manager = ConnectionManager(model_manager, app_version=APP_VERSION)
-        
-        # We no longer set 'model' globally as it's dynamic now
-        model = None 
         
         log.success(f"System initialized successfully.")
         
     except Exception as e:
         log.error(f"Failed to initialize backend: {e}")
-        model = None
         manager = None
 
 @app.on_event("shutdown")
@@ -286,19 +279,9 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1011)
         return
 
-    # --- WebSocket Security (Block 2) ---
-    token = websocket.query_params.get("token")
-    if not token:
-        # Check Header
-        auth_header = websocket.headers.get("authorization")
-        if auth_header and auth_header.lower().startswith("bearer "):
-            token = auth_header[7:]
-    
-    if not token or not validate_token(token):
-        log.warning(f"Unauthorized WebSocket connection attempt from {websocket.client}")
-        await websocket.close(code=1008, reason="Invalid API Key")
-        return
-
+    # Connection is upgraded unconditionally. 
+    # Authentication is now performed during the 'hello' handshake phase 
+    # within the manager.connect / handle_message logic to keep tokens out of URL logs.
     await manager.connect(websocket)
     try:
         while True:

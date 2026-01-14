@@ -134,6 +134,8 @@ class DictationClient:
                      if e.status_code in [401, 403]: is_auth = True
                 elif isinstance(e, websockets.exceptions.ConnectionClosed):
                      if e.code == 1008: is_auth = True
+                elif "Auth Failed" in str(e):
+                     is_auth = True
                 
                 if is_auth:
                      logger.error(f"{Fore.RED}Authentication Failed.{Style.RESET_ALL} Invalid Key.")
@@ -160,7 +162,7 @@ class DictationClient:
                   if e.status_code in [401, 403]: is_auth = True
              elif isinstance(e, websockets.exceptions.ConnectionClosed):
                   if e.code == 1008: is_auth = True
-             elif "HTTP 403" in str(e) or "HTTP 401" in str(e): # Generic string check for safety
+             elif "HTTP 403" in str(e) or "HTTP 401" in str(e) or "Auth Failed" in str(e): # Generic string check for safety
                   is_auth = True
 
              if is_auth:

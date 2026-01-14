@@ -79,16 +79,15 @@ docker compose exec whisper-backend pytest tests/test_api.py
 - `GET /health` - Check API status and model readiness
 - `POST /transcribe` - Upload audio file for transcription
 - `POST /log` - Ingest a batch of logs from a remote client
-- `GET /ws` - WebSocket connection for real-time streaming
+- `GET /ws` - WebSocket connection (JSON handshake with token required)
 
 ## Architecture
 - **Backend**: Docker containerized FastAPI server with `faster-whisper` and CUDA acceleration.
 - **Dynamic Resource Scaling**: The backend includes an intelligent ` ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
-- **Win32 API**: The backend uses the Win32 API to access system resources to manage hotkeys and microphone access.
-- **Secure Transport & Handshake**: All streaming connections (WSS) utilize a versioned bi-directional handshake. The server verifies client integrity and authentication tokens before promoting the connection to a processing state.
+- **Secure Transport & Handshake**: All streaming connections (WSS) utilize a versioned bi-directional handshake. **Authentication is performed within the handshake payload**, ensuring API tokens never appear in URL query strings or server access logs.
 - **OS Secure Enclave**: The Python client integrates with system-level credential managers (Windows Credential Manager, Keychain, etc.) via `keyring`, ensuring API keys never touch the filesystem in plain text.
 - **Session-Based WebSockets**: Connections are established only when recording starts and are automatically closed after 5 minutes of idle time.
-- **Centralized Sanitized Logging**: The system uses `loguru` with dynamic formatting; 
+- **Centralized Sanitized Logging**: The system uses `loguru` with dynamic formatting; verbose traces are suppressed for production, and sensitive connection metadata is sanitized.
 - **Security & Privacy**: The container runs in `read_only` mode with RAM-disk processing and RFC 1918 Private IP Fallback (`tmpfs`), ensuring audio data is volatile and never persisted to the host disk.
 
 ## Configuration

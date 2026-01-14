@@ -40,9 +40,6 @@ def configure_logging():
         colorize=force_color
     )
 
-    # File logger removed for read-only filesystem compatibility.
-    # Docker/Cloudflare handles log aggregation via stdout/stderr.
-
     return logger
 
 # Create a configured logger instance

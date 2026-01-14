@@ -76,11 +76,8 @@ class TransportManager:
         """Establishes authenticated WebSocket connection."""
         if self.ws: return
         
-        api_key = SecureConfig.get_api_key(self.hostname) # Prompts if missing
-        
-        # Add auth token
-        sep = "&" if "?" in self.final_uri else "?"
-        connect_uri = f"{self.final_uri}{sep}token={api_key}"
+        # We no longer append the token to the URL to keep logs clean
+        connect_uri = self.final_uri
         
         try:
             logger.info(f"Connecting to {self.hostname}...")
@@ -101,17 +98,34 @@ class TransportManager:
                 raise e
 
         # Server Handshake (TWO-WAY)
-        hello = json.loads(await self.ws.recv())
+        hello_raw = await self.ws.recv()
+        hello = json.loads(hello_raw)
+        
         if hello.get("event") == "hello":
-             logger.success(f"Connected to Backend (v{hello.get('version')}) [Status: {hello.get('status')}]")
-             
-             # **CRITICAL**: Send Client Hello response to complete handshake
+             # Send Client Hello with token
              from .config import CLIENT_VERSION
+             api_key = SecureConfig.get_api_key(self.hostname)
+             
              await self.ws.send(json.dumps({
                  "event": "hello",
                  "client": "whisper_shell",
-                 "version": CLIENT_VERSION
+                 "version": CLIENT_VERSION,
+                 "token": api_key
              }))
+             
+             # Wait for Auth Verification
+             try:
+                 auth_raw = await asyncio.wait_for(self.ws.recv(), timeout=10.0)
+                 auth_resp = json.loads(auth_raw)
+                 
+                 if auth_resp.get("event") == "authenticated":
+                      logger.success(f"Connected to {self.hostname} (v{hello.get('version')})")
+                 elif auth_resp.get("event") == "error":
+                      raise Exception(f"Auth Failed: {auth_resp.get('message')}")
+                 else:
+                      raise Exception("Handshake failed: Invalid response from server.")
+             except asyncio.TimeoutError:
+                 raise Exception("Handshake timeout: Server response delayed.")
         else:
              logger.warning("Protocol mismatch: No hello received.")
 
