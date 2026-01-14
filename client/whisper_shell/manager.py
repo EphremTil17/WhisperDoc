@@ -115,7 +115,12 @@ class DictationClient:
                              break
                         
                         if resp.get("event") == "error":
-                             logger.error(f"Server: {resp.get('code')} - {resp.get('message')}")
+                             code = resp.get("code")
+                             msg = resp.get("message")
+                             logger.error(f"Server: {code} - {msg}")
+                             
+                             if code == "NO_AUDIO":
+                                 logger.warning(f"{Fore.YELLOW}Tip: Check your microphone connection and settings.{Style.RESET_ALL}")
                              break
                     last_activity = time.time()
 

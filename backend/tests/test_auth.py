@@ -3,14 +3,19 @@ import os
 from unittest.mock import patch, MagicMock
 
 # Setup environment before importing app
-os.environ["WHISPER_DOC_API_KEY"] = "test_secret_key"
-os.environ["WHISPER_DOC_VERSION"] = "1.0.0-test"
+# We use a fixture to patch the environment safely instead of global assignment
 
 from fastapi.testclient import TestClient
 from fastapi import WebSocketDisconnect
 # Import app after setting env
 from api_server import app
 import auth
+
+@pytest.fixture(autouse=True)
+def setup_auth_env():
+    """Ensure a consistent API key for unit tests in this file."""
+    with patch.dict(os.environ, {"WHISPER_DOC_API_KEY": "test_secret_key"}):
+        yield
 
 client = TestClient(app)
 
@@ -52,34 +57,54 @@ def test_http_auth_missing_header():
     # FastAPI returns 401 when Security/Depends fails
     assert response.status_code == 401
 
-def test_websocket_auth_valid_query_param():
-    """Verify WebSocket accepts token in query param."""
-    with patch("api_server.manager") as mock_manager:
-        # Mock connect to doing nothing
-        mock_manager.connect = MagicMock()
+def test_websocket_handshake_flow():
+    """Verify complete handshake flow with valid token."""
+    # Patch ModelManager to avoid loading real GPU model during test
+    with patch("websocket_handler.ModelManager") as MockModelManager:
+        mock_mm = MagicMock()
+        mock_mm.model = "MockModel" # Simulate loaded model
+        MockModelManager.return_value = mock_mm
         
-        with client.websocket_connect("/ws?token=test_secret_key") as websocket:
-            # Connection should be open
-            pass
-
-def test_websocket_auth_valid_header():
-    """Verify WebSocket accepts token in Authorization header."""
-    with patch("api_server.manager") as mock_manager:
-        mock_manager.connect = MagicMock()
-        
-        with client.websocket_connect("/ws", headers={"Authorization": "Bearer test_secret_key"}) as websocket:
-            pass
-
-def test_websocket_auth_reject_invalid_token():
-    """Verify WebSocket rejects invalid token with 1008."""
-    with pytest.raises(WebSocketDisconnect) as excinfo:
-        with client.websocket_connect("/ws?token=WRONG_KEY") as websocket:
-            pass
-    assert excinfo.value.code == 1008
-
-def test_websocket_auth_reject_missing_token():
-    """Verify WebSocket rejects missing token with 1008."""
-    with pytest.raises(WebSocketDisconnect) as excinfo:
-        with client.websocket_connect("/ws") as websocket:
-            pass
-    assert excinfo.value.code == 1008
+        # Use a fresh client context to ensure startup_event runs with our patch
+        with TestClient(app) as local_client:
+            with local_client.websocket_connect("/ws") as websocket:
+                # 1. Receive Server Hello
+                data = websocket.receive_json()
+                assert data["event"] == "hello"
+                assert "server" in data
+                
+                # 2. Send Client Hello with Token
+                websocket.send_json({
+                    "event": "hello",
+                    "client": "test_client",
+                    "version": "1.0.0",
+                    "token": "test_secret_key"
+                })
+                
+                # 3. Receive Authenticated
+                auth_response = websocket.receive_json()
+                assert auth_response["event"] == "authenticated"
+                
+def test_websocket_handshake_invalid_token():
+    """Verify WebSocket rejects invalid token during handshake."""
+    with patch("websocket_handler.ModelManager"):
+        with TestClient(app) as local_client:
+            with local_client.websocket_connect("/ws") as websocket:
+                # 1. Server Hello
+                websocket.receive_json()
+                
+                # 2. Send Invalid Token
+                websocket.send_json({
+                    "event": "hello",
+                    "token": "INVALID_KEY"
+                })
+                
+                # 3. Expect Error Message
+                error_resp = websocket.receive_json()
+                assert error_resp["event"] == "error"
+                assert "Authentication failed" in error_resp["message"]
+                
+                # 4. Expect Disconnect
+                with pytest.raises(WebSocketDisconnect) as exc:
+                    websocket.receive_text()
+                assert exc.value.code == 1008

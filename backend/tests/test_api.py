@@ -4,7 +4,12 @@ import os
 import sys
 
 # Configuration
+# Configuration
 API_URL = "http://localhost:9989"
+API_KEY = os.getenv("WHISPER_DOC_API_KEY", "test_secret_key")
+
+def get_headers():
+    return {"Authorization": f"Bearer {API_KEY}"}
 
 def check_server():
     """Returns True if the server is alive, otherwise skips the test."""
@@ -30,7 +35,8 @@ def test_http_transcribe_dummy():
         pytest.skip(f"Server not found at {API_URL}")
         
     # Test with no data - should return 422 Unprocessable Entity
-    response = requests.post(f"{API_URL}/transcribe", timeout=5)
+    # We must provide auth to reach the validation logic
+    response = requests.post(f"{API_URL}/transcribe", headers=get_headers(), timeout=5)
     assert response.status_code == 422 
 
 def test_http_transcription_real():
@@ -44,7 +50,7 @@ def test_http_transcription_real():
         
     with open(audio_file, 'rb') as f:
         files = {'file': (os.path.basename(audio_file), f, 'audio/wav')}
-        response = requests.post(f"{API_URL}/transcribe", files=files, timeout=30)
+        response = requests.post(f"{API_URL}/transcribe", files=files, headers=get_headers(), timeout=30)
             
     assert response.status_code == 200
     data = response.json()

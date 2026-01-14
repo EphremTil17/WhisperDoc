@@ -75,7 +75,7 @@ async def test_connection_manager_handshake():
     mock_model_manager = MagicMock()
     mock_model_manager.model = "MockModel" # Simulate loaded model
     
-    manager = ConnectionManager(mock_model_manager)
+    manager = ConnectionManager(mock_model_manager, app_version="1.0.0")
     mock_ws = AsyncMock()
     
     # Action: Client Connects
@@ -95,7 +95,7 @@ async def test_connection_manager_handshake():
 async def test_connection_manager_structured_error():
     """Test that no-audio scenarios return structured errors."""
     mock_model_manager = MagicMock()
-    manager = ConnectionManager(mock_model_manager)
+    manager = ConnectionManager(mock_model_manager, app_version="1.0.0")
     mock_ws = AsyncMock()
     
     # Mock a connection that has NO buffer data

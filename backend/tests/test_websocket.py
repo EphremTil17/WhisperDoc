@@ -28,7 +28,8 @@ async def run_websocket_test(audio_path=None):
             await websocket.send(json.dumps({
                 "event": "hello",
                 "client": "pytest_integration",
-                "version": "1.0.0"
+                "version": "1.0.0",
+                "token": os.getenv("WHISPER_DOC_API_KEY", "test_secret_key")
             }))
             print("✅ Handshake Complete.")
 

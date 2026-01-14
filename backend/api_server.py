@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import uvicorn
 import uuid
 import torch
 from faster_whisper import WhisperModel
@@ -51,13 +50,52 @@ from fastapi import Depends
 from auth import get_api_key, verify_api_key, validate_token
 from websocket_handler import ConnectionManager
 
+from contextlib import asynccontextmanager
+
 # Global initialized on startup
 manager: Optional[ConnectionManager] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager that handles startup and shutdown logic.
+    Replaces the deprecated @app.on_event("startup") and ("shutdown").
+    """
+    global manager
+    log.info("Starting WhisperDoc API server...")
+    
+    try:
+        # Enforce "Fail Secure" Policy
+        get_api_key() # Will raise RuntimeError if no key is set
+        
+        log.info(f"Initializing Model Manager ({MODEL_NAME})...")
+        
+        # Initialize ModelManager (which handles loading/unloading)
+        from websocket_handler import ModelManager
+        model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
+        
+        # Initialize the connection manager
+        manager = ConnectionManager(model_manager, app_version=APP_VERSION)
+        
+        log.success(f"System initialized successfully.")
+        
+    except Exception as e:
+        log.error(f"Failed to initialize backend: {e}")
+        manager = None
+        
+    yield  # Server runs here
+    
+    # --- Shutdown Logic ---
+    log.info("Shutting down WhisperDoc API server...")
+    if manager and manager.model_manager:
+        manager.model_manager.unload_model()
+    log.success("Cleanup completed.")
 
 app = FastAPI(
     title="WhisperDoc API",
     description="Speech-to-text transcription service using faster-whisper",
-    version=APP_VERSION
+    version=APP_VERSION,
+    lifespan=lifespan
 )
 
 # --- Infrastructure Hardening (Middleware & Security) ---
@@ -80,39 +118,6 @@ app.add_middleware(
 # This is handled by uvicorn's proxy_headers, but we add host validation here
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
-
-@app.on_event("startup")
-async def startup_event():
-    """Load the Whisper model and initialize the connection manager on startup"""
-    global manager
-    log.info("Starting WhisperDoc API server...")
-    
-    try:
-        # Enforce "Fail Secure" Policy
-        get_api_key() # Will raise RuntimeError if no key is set
-        
-        log.info(f"Initializing Model Manager ({MODEL_NAME})...")
-        
-        # Initialize ModelManager (which handles loading/unloading)
-        from websocket_handler import ModelManager
-        model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
-        
-        # Initialize the connection manager
-        manager = ConnectionManager(model_manager, app_version=APP_VERSION)
-        
-        log.success(f"System initialized successfully.")
-        
-    except Exception as e:
-        log.error(f"Failed to initialize backend: {e}")
-        manager = None
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup resources on shutdown"""
-    log.info("Shutting down WhisperDoc API server...")
-    if manager and manager.model_manager:
-        manager.model_manager.unload_model()
-    log.success("Cleanup completed.")
 
 # --- Global Exception Handler (Error Masking) ---
 @app.exception_handler(Exception)

@@ -14,7 +14,7 @@ colorama.init()
 
 SERVICE_NAME = "WhisperDoc_Client"
 ENV_PATH = Path(".env")
-CLIENT_VERSION = "2.4.0"
+CLIENT_VERSION = "2.4.1"
 
 class Config:
     def __init__(self):
