@@ -117,7 +117,10 @@ class ConnectionManager:
             "last_activity": time.time(),
             "handshake_completed": False
         }
-        log.info(f"WebSocket client connected: {websocket.client}")
+        # Sanitize query parameters (API Key) for logging
+        client_host = websocket.client.host
+        client_port = websocket.client.port
+        log.info(f"WebSocket client connected: {client_host}:{client_port}")
         
         # Send Server Hello
         await websocket.send_json({
@@ -149,7 +152,8 @@ class ConnectionManager:
                     if event == "hello":
                         self.active_connections[websocket]["handshake_completed"] = True
                         client_info = data.get("client", "unknown")
-                        log.info(f"Handshake complete. Client: {client_info}")
+                        client_ver = data.get("version", "unknown")
+                        log.info(f"Handshake complete. Client: {client_info} (v{client_ver})")
                         
                     elif event == "end-of-stream":
                         if not self.active_connections[websocket]["handshake_completed"]:
@@ -216,7 +220,7 @@ class ConnectionManager:
                     wav_file.writeframes(audio_data)
                 temp_path = temp_audio_file.name
             
-            log.info(f"Transcribing {len(audio_data)} bytes for {websocket.client}")
+            log.info(f"Transcribing {len(audio_data)} bytes from {websocket.client.host}")
 
             def run_transcription():
                 segments, info = model.transcribe(temp_path, language="en")

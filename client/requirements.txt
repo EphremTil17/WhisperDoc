@@ -5,3 +5,6 @@ pynput
 loguru
 pyperclip
 python-dotenv
+keyring
+colorama
+requests

@@ -25,11 +25,18 @@ def configure_logging():
     # If COLORIZE_LOGS is not set, we let loguru decide based on TTY detection
     force_color = os.getenv("COLORIZE_LOGS", "true").lower() == "true"
 
+    def formatter(record):
+        # Concise format for INFO/SUCCESS
+        if record["level"].name in ["INFO", "SUCCESS"]:
+            return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <level>{message}</level>\n"
+        # Verbose format for ERROR/WARNING/DEBUG
+        return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>\n"
+
     # Console logger
     logger.add(
         sys.stderr,
         level=log_level,
-        format="<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        format=formatter,
         colorize=force_color
     )
 

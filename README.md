@@ -83,13 +83,13 @@ docker compose exec whisper-backend pytest tests/test_api.py
 
 ## Architecture
 - **Backend**: Docker containerized FastAPI server with `faster-whisper` and CUDA acceleration.
-- **Dynamic Resource Scaling**: The backend includes an intelligent `ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
+- **Dynamic Resource Scaling**: The backend includes an intelligent ` ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
+- **Win32 API**: The backend uses the Win32 API to access system resources to manage hotkeys and microphone access.
+- **Secure Transport & Handshake**: All streaming connections (WSS) utilize a versioned bi-directional handshake. The server verifies client integrity and authentication tokens before promoting the connection to a processing state.
+- **OS Secure Enclave**: The Python client integrates with system-level credential managers (Windows Credential Manager, Keychain, etc.) via `keyring`, ensuring API keys never touch the filesystem in plain text.
 - **Session-Based WebSockets**: Connections are established only when recording starts and are automatically closed after 5 minutes of idle time.
-- **Protocol Handshake**: A versioned `hello` event system ensures clients and server are synchronized on versioning and readiness states before data starts flowing.
--   **Centralized Logging**: The system uses `loguru` and outputs strictly to `stdout/stderr` (Docker logs) to support read-only containers and external log aggregation (e.g., Cloudflare, Datadog).
--   **Security**: The backend container runs in `read_only` mode to prevent malicious code persistence.
--   **Privacy**: All temporary audio files are stored in a RAM disk (`tmpfs` at `/tmp`), ensuring audio data never touches the physical hard drive.
--   **Decoupled Requirements**: Dependencies are split into modular `requirements.txt` files (backend, client, tests) to minimize bloat on client machines.
+- **Centralized Sanitized Logging**: The system uses `loguru` with dynamic formatting; 
+- **Security & Privacy**: The container runs in `read_only` mode with RAM-disk processing and RFC 1918 Private IP Fallback (`tmpfs`), ensuring audio data is volatile and never persisted to the host disk.
 
 ## Configuration
 The system is entirely configuration-driven via the `.env` file in the root directory.
@@ -131,22 +131,16 @@ A native Windows desktop application with a modern glassmorphic UI. Features inc
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-```bash
-cd flutter_client
-flutter pub get
-flutter run -d windows
-```
-
 ### Python Terminal Client
 
-A lightweight terminal-based client for quick testing and scripting.
+A secure, modular, and production-ready terminal client for high-performance dictation. 
 
-```bash
-# Create and activate a python virtual environment and install dependencies:
-cd client
-pip install -r requirements.txt
-python whisper_client.py
-```
+*   **Secure API Key Storage** (OS Enclave)
+*   **Fail-Secure Handshake**
+*   **Auto Copy/Paste**
+*   **Automated First-Time Setup**
+
+📖 **[Terminal Client Documentation](client/README.md)**
 
 ## Common Troubleshooting
 
@@ -174,3 +168,5 @@ This means Docker cannot find the NVIDIA runtime.
 | Phase 5 | Dynamic Model Loading | ✅ Complete |
 | Phase 6 | Architecture Refactoring | ✅ Complete |
 | Phase 7 | Infrastructure Hardening | ✅ Complete |
+| Phase 8 | Client and Backend Hardening | ✅ Complete |
+

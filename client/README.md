@@ -1,53 +1,77 @@
-# WhisperDoc Client
+# WhisperDoc Client (v2.3.0)
 
-A lightweight Python client for real-time dictation using the WhisperDoc backend.
+A secure, modular, and high-performance Python terminal client for real-time dictation using the WhisperDoc backend.
 
 ## Features
-- **Global Hotkeys**: Start/Stop recording from any application.
-- **Auto-Paste**: Automatically copies transcription to clipboard and pastes it (`Ctrl+V`) or types it into the active text box.
-- **Streaming**: Streams audio chunks to the server as you speak for low-latency processing.
-- **Cross-Platform**: Works on Windows and Linux (X11).
 
-## Setup
+### Enterprise-Grade Security
+*   **Secure API Key Storage**: Uses the OS native credential manager (Windows Credential Manager, macOS Keychain, Linux Secret Service) via `keyring`. Keys are **never** stored in plain text files.
+*   **Fail-Secure Architecture**: Validates credentials against the server *before* initializing hardware (mic/hotkeys). If auth fails, the client exits immediately.
+*   **Transport Security**: Enforces `wss://` (TLS 1.2+) for all remote connections.
+*   **RFC 1918 Compliance**: Intelligently falls back to plain text (`ws://`) **only** if the target is a verified private network IP (e.g., `192.168.x.x`), ensuring security without breaking local development.
+*   **Secure Handshake**: Utilizes a versioned bi-directional handshake to verify client integrity and authentication tokens before promoting the connection to a processing state.
 
-1. **Install PortAudio** (Required for `sounddevice`):
-   - **Ubuntu/Debian**: `sudo apt install libportaudio2 python3-pyaudio`
-   - **Windows**: Included in the pip package.
+### Performance & UX
+*   **Global Hotkeys**: Control recording (Default: `Ctrl+Alt+W`) system-wide from any application.
+*   **Low-Latency Streaming**: Streams raw PCM audio chunks in real-time.
+*   **Smart Auto-Paste**: Automatically types the transcription into your active window.
+*   **Single-Instance Lock**: Uses a Windows Mutex to ensure only one client instance runs at a time (preventing mic conflicts).
+*   **Auto-Reconnect**: Seamlessly handles connection drops and re-authenticates on demand.
+*   **Auto Paste**: Automatically pastes the transcription into your active window text field.
 
-2. **Install Python Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Getting Started
 
-3. **Configure**:
-   ```bash
-   cp .env.template .env
-   # Edit .env to set your server URI and preferred hotkey
-   ```
+### 1. Prerequisites
+- **Python 3.8+**
+- **PortAudio**: Usually included with pip wheels.
+  - *Linux*: `sudo apt install libportaudio2`
 
-## Usage
+### 2. Installation - Linux/Windows/MacOS
 
-1. **Start the backend server** (ensure Docker is running):
-   ```bash
-   sudo docker compose up -d whisper-backend
-   ```
+After making sure you are in the client dir:
+```bash
+cd client
+```
+Create a virtual environment and install dependencies:
+```bash
+python -m venv venv
 
-2. **Run the client**:
-   ```bash
-   python whisper_client.py
-   ```
+# Windows
+.\venv\Scripts\Activate.ps1
+# Linux/Mac
+source venv/bin/activate
 
-3. **List Audio Devices** (if the default mic isn't working):
-   ```bash
-   python whisper_client.py --list-devices
-   ```
+pip install -r requirements.txt
+```
 
-4. **Dictate**:
-   - Press the hotkey (default: `Ctrl+Alt+R`) to start recording.
-   - Speak clearly.
-   - Press the hotkey again to stop and paste the text.
+### 3. Launch & Configuration
+Simply start the client. If it’s your first time, the interactive wizard will guide you through server setup and microphone selection:
+```bash
+python whisper_client.py
+# or
+python whisper_client.py --setup
+```
+*   **API Key**: You will be prompted for your API Key, which is then stored securely in your OS Enclave.
+*   **Hardware**: Select your microphone device and hotkey during prompts.
+*   **Ready**: Once you see "Client Ready", press (Default: **Ctrl+Alt+W**) to start dictating.
+
+## CLI Options
+
+| Flag | Description |
+| :--- | :--- |
+| `--setup` | Re-run the interactive setup wizard (Mic/Host selection). |
+| `--clear-key` | Wipe the stored API key from the OS keyring. |
+| `--health` | Perform a pre-flight health check on the backend. |
+| `--version` | Display current client version. |
+
+**Example:**
+```bash
+# Force re-configure audio device
+python whisper_client.py --setup
+```
 
 ## Troubleshooting
 
-- **Linux/Wayland**: Global hotkeys and typing simulation may be restricted. Use an X11 session for best results.
-- **Microphone issues**: Check `AUDIO_DEVICE_ID` in `.env` if the app picks the wrong microphone.
+*   **Manual Edits**: If you prefer manual configuration, you can edit the `.env` file created after the first run.
+*   **Auth Reset**: If the server rejects your key, use `--clear-key` to reset it.
+*   **Linux/Wayland**: Global hotkeys may require X11 or specific compositor permissions.
