@@ -1,0 +1,64 @@
+import os
+import time
+import gc
+import torch
+import asyncio
+from faster_whisper import WhisperModel
+from logging_config import log
+
+# Load config from env
+MODEL_TIMEOUT_SECONDS = int(os.getenv("MODEL_TIMEOUT_SECONDS", "1800"))
+
+class ModelManager:
+    """Manages the lifecycle of the WhisperModel for dynamic GPU loading."""
+    def __init__(self, model_name, device, compute_type):
+        self.model_name = model_name
+        self.device = device
+        self.compute_type = compute_type
+        self.model = None
+        self.last_used = time.time()
+        
+        # Initial load
+        self.load_model()
+        
+        # Start cleanup task
+        asyncio.create_task(self._monitor_usage())
+
+    def load_model(self):
+        if self.model: return
+        log.info(f"Loading Whisper model ({self.model_name}) into {self.device}...")
+        try:
+            start = time.time()
+            self.model = WhisperModel(
+                self.model_name, 
+                device=self.device, 
+                compute_type=self.compute_type,
+                download_root="/app/model-cache"
+            )
+            log.success(f"Model loaded in {time.time() - start:.2f}s")
+        except Exception as e:
+            log.error(f"Failed to load model: {e}")
+            raise
+
+    def unload_model(self):
+        if not self.model: return
+        log.info("Unloading IDLE model from GPU...")
+        del self.model
+        self.model = None
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        log.success("Model unloaded. GPU memory freed.")
+
+    def get_model(self):
+        self.last_used = time.time()
+        if not self.model:
+            self.load_model()
+            return self.model, True # Tuple: (model, was_reloaded)
+        return self.model, False
+
+    async def _monitor_usage(self):
+        while True:
+            await asyncio.sleep(60) # Check every minute
+            if self.model and (time.time() - self.last_used > MODEL_TIMEOUT_SECONDS):
+                self.unload_model()

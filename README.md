@@ -82,24 +82,28 @@ docker compose exec whisper-backend pytest tests/test_api.py
 - `GET /ws` - WebSocket connection (JSON handshake with token required)
 
 ## Architecture
-- **Backend**: Docker containerized FastAPI server with `faster-whisper` and CUDA acceleration.
-- **Dynamic Resource Scaling**: The backend includes an intelligent ` ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
-- **Dual-Door Authentication**: Hybrid security model supporting local static API keys (Door #1) and enterprise OIDC/JWT providers (Door #2) with stateless JWKS verification.
-- **Secure Handshake & Enclave**: Utilizes a versioned bi-directional handshake for identity verification. Python clients further secure keys via system-level OS enclaves (`keyring`).
-- **Centralized Sanitized Logging**: High-performance logging with **Incognito Mode (Ghost Mode)** for in-memory processing and automatic server-side trace redaction.
-- **Session-Based WebSockets**: Connections are established only during active recording and automatically timeout after 5 minutes of inactivity.
+- **Backend Core**: Dockerized FastAPI server with `faster-whisper` GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
+- **Zero-Trust Modular Design**: Refactored into specialized domains to prevent lateral complexity:
+    - **Engine**: Pure AI Orchestration with intelligent dynamic VRAM management (unloads model after 30m idle).
+    - **Security**: Advanced IP-Level Governance featuring an automated **Active Defense Circuit Breaker** to mitigate flood attacks and protocol violations.
+    - **Protocol**: Rigid WebSocket state machine enforcing identity verification before any data processing occurs.
+- **Dual-Door Authentication & Secure Enclave**: Hybrid security supporting local static keys (Door #1) and OIDC/JWT providers (Door #2). Python clients further secure these keys via system-level OS enclaves (`keyring`).
+- **Secure Handshake & Versioning**: Utilizes a versioned bi-directional handshake to verify client/server parity and identity before promoting a connection to active status.
+- **Centralized Sanitized Logging**: High-performance logging with built-in **Incognito Mode (Ghost Mode)** for in-memory processing and automated server-side trace redaction.
+- **Fail-Secure Transaction Integrity**: Implements deterministic cleanup of all temporary audio assets via `finally` blocks, ensuring zero disk persistence post-transcription.
 
 ## Configuration
-The system is entirely configuration-driven via the `.env` file in the root directory.
+WhisperDoc is entirely configuration-driven via the `.env` file. These variables are passed to the backend during startup.
 
+### Core Settings
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `API_PORT` | The port the backend server will listen on. | `9989` |
-| `MODEL_NAME` | The Whisper model to use (e.g., `tiny.en`, `base.en`, `medium.en`). | `medium.en` |
-| `MODEL_DEVICE` | Hardware to run on (`cuda` for GPU, `cpu` for CPU). | `cuda` |
-| `MODEL_COMPUTE_TYPE` | Precision level (`float16` for GPU, `int8` for CPU). | `float16` |
-| `LOG_LEVEL` | Verbosity of the logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`). | `INFO` |
-| `WHISPER_DOC_API_KEY` | API Key for authenticating client requests. | `""` |
+| `API_PORT` | Port the backend server will listen on. | `9989` |
+| `MODEL_NAME` | Whisper model (e.g., `tiny.en`, `medium.en`). | `medium.en` |
+| `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`). | `cuda` |
+| `LOG_LEVEL` | Logging verbosity (DEBUG, INFO, SUCCESS). | `INFO` |
+
+### Security & Hardening Config Variables (Refer to `backend/.env.template`)
 
 ## Docker Commands
 ```bash

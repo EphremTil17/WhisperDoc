@@ -14,7 +14,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uuid
 import torch
-from faster_whisper import WhisperModel
 import tempfile
 import shutil
 
@@ -48,7 +47,8 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
 from fastapi import Depends
 from auth import get_api_key, verify_api_key, validate_token, warmup_oidc
-from websocket_handler import ConnectionManager
+from engine.model_manager import ModelManager
+from protocol.websocket_handler import ConnectionManager
 
 from contextlib import asynccontextmanager
 
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
     Replaces the deprecated @app.on_event("startup") and ("shutdown").
     """
     global manager
-    log.info("Starting WhisperDoc API server...")
+    log.info(f"Starting WhisperDoc API (v{APP_VERSION})...")
     
     try:
         # Enforce "Fail Secure" Policy
@@ -71,7 +71,6 @@ async def lifespan(app: FastAPI):
         log.info(f"Initializing Model Manager ({MODEL_NAME})...")
         
         # Initialize ModelManager (which handles loading/unloading)
-        from websocket_handler import ModelManager
         model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
         
         # Initialize the connection manager

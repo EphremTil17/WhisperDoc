@@ -61,7 +61,7 @@ def test_http_auth_missing_header():
 def test_websocket_handshake_flow():
     """Verify complete handshake flow with valid token."""
     # Patch ModelManager to avoid loading real GPU model during test
-    with patch("websocket_handler.ModelManager") as MockModelManager:
+    with patch("engine.model_manager.ModelManager") as MockModelManager:
         mock_mm = MagicMock()
         mock_mm.model = "MockModel" # Simulate loaded model
         MockModelManager.return_value = mock_mm
@@ -88,7 +88,7 @@ def test_websocket_handshake_flow():
                 
 def test_websocket_handshake_invalid_token():
     """Verify WebSocket rejects invalid token during handshake."""
-    with patch("websocket_handler.ModelManager"):
+    with patch("engine.model_manager.ModelManager"):
         with TestClient(app) as local_client:
             with local_client.websocket_connect("/ws") as websocket:
                 # 1. Server Hello
@@ -123,32 +123,31 @@ def test_jwt_valid_authentication():
         "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
         "OIDC_CLIENT_ID": "whisperdoc_client"
     }):
-        # Patch module-level config variables that are set at import time
-        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
-            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
-                # Mock OIDC configuration and JWKS endpoints
-                with patch("auth.oidc.requests.get") as mock_get:
-                    # Setup mock responses
-                    def mock_response(url, *args, **kwargs):
-                        response = Mock()
-                        if "openid-configuration" in url:
-                            response.json.return_value = mock_oidc_discovery()
-                        elif "jwks" in url:
-                            response.json.return_value = generate_mock_jwks()
-                        response.raise_for_status = Mock()
-                        return response
-                    
-                    mock_get.side_effect = mock_response
-                    
-                    # Generate valid JWT
-                    token = generate_test_jwt(
-                        issuer="https://auth.test.local/application/o/test/",
-                        audience="whisperdoc_client",
-                        email="user@example.com"
-                    )
-                    
-                    # Test validation
-                    assert validate_token(token) is True
+        # Mock OIDC configuration and JWKS endpoints
+        with patch("auth.oidc.requests.get") as mock_get, \
+             patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"), \
+             patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+            # Setup mock responses
+            def mock_response(url, *args, **kwargs):
+                response = Mock()
+                if "openid-configuration" in url:
+                    response.json.return_value = mock_oidc_discovery()
+                elif "jwks" in url:
+                    response.json.return_value = generate_mock_jwks()
+                response.raise_for_status = Mock()
+                return response
+            
+            mock_get.side_effect = mock_response
+            
+            # Generate valid JWT
+            token = generate_test_jwt(
+                issuer="https://auth.test.local/application/o/test/",
+                audience="whisperdoc_client",
+                email="user@example.com"
+            )
+            
+            # Test validation
+            assert validate_token(token) is not None
 
 def test_jwt_expired_token():
     """Verify that expired JWT tokens are rejected."""
@@ -160,28 +159,28 @@ def test_jwt_expired_token():
         "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
         "OIDC_CLIENT_ID": "whisperdoc_client"
     }):
-        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
-            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
-                with patch("auth.oidc.requests.get") as mock_get:
-                    def mock_response(url, *args, **kwargs):
-                        response = Mock()
-                        if "openid-configuration" in url:
-                            response.json.return_value = mock_oidc_discovery()
-                        elif "jwks" in url:
-                            response.json.return_value = generate_mock_jwks()
-                        response.raise_for_status = Mock()
-                        return response
-                    
-                    mock_get.side_effect = mock_response
-                    
-                    # Generate expired token (expired 1 hour ago)
-                    token = generate_test_jwt(
-                        issuer="https://auth.test.local/application/o/test/",
-                        audience="whisperdoc_client",
-                        expiration_delta=-3600
-                    )
-                    
-                    assert validate_token(token) is False
+        with patch("auth.oidc.requests.get") as mock_get, \
+             patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"), \
+             patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+            def mock_response(url, *args, **kwargs):
+                response = Mock()
+                if "openid-configuration" in url:
+                    response.json.return_value = mock_oidc_discovery()
+                elif "jwks" in url:
+                    response.json.return_value = generate_mock_jwks()
+                response.raise_for_status = Mock()
+                return response
+            
+            mock_get.side_effect = mock_response
+            
+            # Generate expired token (expired 1 hour ago)
+            token = generate_test_jwt(
+                issuer="https://auth.test.local/application/o/test/",
+                audience="whisperdoc_client",
+                expiration_delta=-3600
+            )
+            
+            assert validate_token(token) is False
 
 def test_jwt_wrong_audience():
     """Verify that JWT with wrong audience is rejected."""
@@ -193,27 +192,27 @@ def test_jwt_wrong_audience():
         "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
         "OIDC_CLIENT_ID": "whisperdoc_client"
     }):
-        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
-            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
-                with patch("auth.oidc.requests.get") as mock_get:
-                    def mock_response(url, *args, **kwargs):
-                        response = Mock()
-                        if "openid-configuration" in url:
-                            response.json.return_value = mock_oidc_discovery()
-                        elif "jwks" in url:
-                            response.json.return_value = generate_mock_jwks()
-                        response.raise_for_status = Mock()
-                        return response
-                    
-                    mock_get.side_effect = mock_response
-                    
-                    # Generate token for different audience
-                    token = generate_test_jwt(
-                        issuer="https://auth.test.local/application/o/test/",
-                        audience="different_app"
-                    )
-                    
-                    assert validate_token(token) is False
+        with patch("auth.oidc.requests.get") as mock_get, \
+             patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"), \
+             patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+            def mock_response(url, *args, **kwargs):
+                response = Mock()
+                if "openid-configuration" in url:
+                    response.json.return_value = mock_oidc_discovery()
+                elif "jwks" in url:
+                    response.json.return_value = generate_mock_jwks()
+                response.raise_for_status = Mock()
+                return response
+            
+            mock_get.side_effect = mock_response
+            
+            # Generate token for different audience
+            token = generate_test_jwt(
+                issuer="https://auth.test.local/application/o/test/",
+                audience="different_app"
+            )
+            
+            assert validate_token(token) is False
 
 def test_jwt_wrong_issuer():
     """Verify that JWT from wrong issuer is rejected."""
@@ -225,27 +224,27 @@ def test_jwt_wrong_issuer():
         "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
         "OIDC_CLIENT_ID": "whisperdoc_client"
     }):
-        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
-            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
-                with patch("auth.oidc.requests.get") as mock_get:
-                    def mock_response(url, *args, **kwargs):
-                        response = Mock()
-                        if "openid-configuration" in url:
-                            response.json.return_value = mock_oidc_discovery()
-                        elif "jwks" in url:
-                            response.json.return_value = generate_mock_jwks()
-                        response.raise_for_status = Mock()
-                        return response
-                    
-                    mock_get.side_effect = mock_response
-                    
-                    # Generate token from different issuer
-                    token = generate_test_jwt(
-                        issuer="https://evil.attacker.com/",
-                        audience="whisperdoc_client"
-                    )
-                    
-                    assert validate_token(token) is False
+        with patch("auth.oidc.requests.get") as mock_get, \
+             patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"), \
+             patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+            def mock_response(url, *args, **kwargs):
+                response = Mock()
+                if "openid-configuration" in url:
+                    response.json.return_value = mock_oidc_discovery()
+                elif "jwks" in url:
+                    response.json.return_value = generate_mock_jwks()
+                response.raise_for_status = Mock()
+                return response
+            
+            mock_get.side_effect = mock_response
+            
+            # Generate token from different issuer
+            token = generate_test_jwt(
+                issuer="https://evil.attacker.com/",
+                audience="whisperdoc_client"
+            )
+            
+            assert validate_token(token) is False
 
 def test_jwt_malformed_token():
     """Verify that malformed JWT tokens are rejected."""

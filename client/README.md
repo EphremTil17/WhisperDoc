@@ -1,24 +1,20 @@
-# WhisperDoc Client (v2.6.1)
+# WhisperDoc Client (v2.7.0)
 
 A secure, modular, and high-performance Python terminal client for real-time dictation using the WhisperDoc backend.
 
 ## Features
 
 ### Enterprise-Grade Security
-*   **Secure API Key Storage**: Uses the OS native credential manager (Windows Credential Manager, macOS Keychain, Linux Secret Service) via `keyring`. Keys are **never** stored in plain text files.
-*   **Fail-Secure Architecture**: Validates credentials against the server *before* initializing hardware (mic/hotkeys). If auth fails, the client exits immediately.
-*   **Transport Security**: Enforces `wss://` (TLS 1.2+) for all remote connections.
-*   **RFC 1918 Compliance**: Intelligently falls back to plain text (`ws://`) **only** if the target is a verified private network IP (e.g., `192.168.x.x`), ensuring security without breaking local development.
-*   **Secure Handshake**: Utilizes a versioned bi-directional handshake to verify client integrity and authentication tokens before promoting the connection to a processing state.
-*   **Incognito Mode (Ghost Mode)**: A protocol-level privacy state that enforces zero-persistence on the backend. When enabled, the client signals the server to redact all transcription traces from logs and bypasses any local result caching. Our architecture ensures that privacy is established during the secure handshake.
+*   **Secure API Key Storage (OS Enclave)**: Uses the native OS credential manager via `keyring` (Windows Credential Manager, macOS Keychain, Linux Secret Service). Keys are **never** persisted in plain text files.
+*   **Zero-Trust Fail-Secure Architecture**: Validates credentials against the server *before* initializing hardware. If authentication fails, the client terminates immediately without exposing microphone access.
+*   **Transport Security & RFC 1918 Compliance**: Enforces `wss://` (TLS 1.2+) for all remote connections. Intelligently falls back to plain text (`ws://`) **only** if the target is a verified private network IP (e.g., `192.168.x.x`).
+*   **Incognito Mode (Ghost Mode)**: A protocol-level privacy state enforcing zero-persistence on the backend. When enabled, privacy is negotiated during the initial handshake, triggering server-side log redaction.
 
 ### Performance & UX
-*   **Global Hotkeys**: Control recording (Default: `Ctrl+Alt+W`) system-wide from any application.
-*   **Low-Latency Streaming**: Streams raw PCM audio chunks in real-time.
-*   **Smart Auto-Paste**: Automatically types the transcription into your active window.
-*   **Single-Instance Lock**: Uses a Windows Mutex to ensure only one client instance runs at a time (preventing mic conflicts).
-*   **Auto-Reconnect**: Seamlessly handles connection drops and re-authenticates on demand.
-*   **Auto Paste**: Automatically pastes the transcription into your active window text field.
+*   **Global Hotkeys & Single Instance**: Control recording (Default: `Ctrl+Alt+W`) system-wide. Uses a Windows Mutex to ensure only one instance runs at a time (preventing mic conflicts).
+*   **State-Aware Resiliency**: Seamlessly handles connection drops, re-authenticates on demand, and respects server-side "Cooldown" messages during temporary bans.
+*   **Low-Latency PCM Streaming**: Streams raw PCM audio chunks in real-time with zero-latency handover.
+*   **Smart Auto-Paste**: Automatically types transcriptions into your active cursor instantly upon processing completion.
 
 ## Getting Started
 

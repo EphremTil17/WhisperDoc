@@ -34,6 +34,34 @@ def configure_logging():
         # Verbose format for ERROR/WARNING/DEBUG
         return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>\n"
 
+    # --- Intercept Standard Logging (Uvicorn/FastAPI) ---
+    import logging
+
+    class InterceptHandler(logging.Handler):
+        def emit(self, record):
+            # Get corresponding Loguru level if it exists
+            try:
+                level = logger.level(record.levelname).name
+            except ValueError:
+                level = record.levelno
+
+            # Find caller from where originated the logged message
+            frame, depth = logging.currentframe(), 2
+            while frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+    # Set up global intercept for all standard library loggers
+    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+    
+    # Specifically target uvicorn and web framework loggers
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "starlette"):
+        mod_logger = logging.getLogger(logger_name)
+        mod_logger.handlers = [InterceptHandler()]
+        mod_logger.propagate = False
+
     # Console logger
     logger.add(
         sys.stderr,

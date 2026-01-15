@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import asyncio
 
 # Assuming we are running pytest from backend/ or the root with backend/ in path
-from websocket_handler import ConnectionManager
+from protocol.websocket_handler import ConnectionManager
 
 @pytest.mark.asyncio
 async def test_incognito_redaction():
@@ -35,7 +35,7 @@ async def test_incognito_redaction():
     }
     
     # Patch the logger
-    with patch("websocket_handler.log") as mock_log:
+    with patch("protocol.websocket_handler.log") as mock_log:
         await manager.transcribe_and_send(mock_ws)
         
         # Verify PRIVACY log contains [REDACTED]
@@ -73,7 +73,7 @@ async def test_standard_logging_visibility():
         "incognito": False
     }
     
-    with patch("websocket_handler.log") as mock_log:
+    with patch("protocol.websocket_handler.log") as mock_log:
         await manager.transcribe_and_send(mock_ws)
         
         # Verify SUCCESS log DOES contain text

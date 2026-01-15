@@ -17,12 +17,13 @@ import sys
 import os
 
 # We rely on local patching in fixtures instead of global sys.modules hijacking.
-from websocket_handler import ModelManager, ConnectionManager
+from engine.model_manager import ModelManager
+from protocol.websocket_handler import ConnectionManager
 
 @pytest.fixture
 def mock_whisper():
     """Mock the WhisperModel class to avoid loading real weights."""
-    with patch("websocket_handler.WhisperModel") as MockClass:
+    with patch("engine.model_manager.WhisperModel") as MockClass:
         mock_instance = MagicMock()
         MockClass.return_value = mock_instance
         yield MockClass
