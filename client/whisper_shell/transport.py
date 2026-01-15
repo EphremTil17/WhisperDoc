@@ -18,21 +18,35 @@ class TransportManager:
         self._prepare_uri()
 
     def _prepare_uri(self):
-        """Parses URI and enforces Transport Security (TLS/WSS)."""
+        """
+        Parses URI and normalizes protocols. 
+        Enforces WSS for remote hosts, tolerates WS for local development.
+        """
         parsed = urlparse(self.uri)
         hostname = parsed.hostname or "localhost"
-        scheme = parsed.scheme
+        scheme = parsed.scheme.lower() if parsed.scheme else "ws"
         
-        # Enforce TLS for remote connections
+        # 1. Base Normalization: Convert HTTP -> WS
+        if scheme == "https":
+            scheme = "wss"
+        elif scheme == "http":
+            scheme = "ws"
+            
+        # 2. Security Enforcement: Upgrade to WSS for remote hosts unless already WSS
         if hostname not in ["localhost", "127.0.0.1", "0.0.0.0"]:
             if scheme == "ws":
-                logger.warning("Remote connection detected. Enforcing SSL/TLS (wss://).")
+                logger.warning("Remote connection detected. Upgrading to WSS (TLS/SSL)...")
                 scheme = "wss"
-            elif scheme == "http":
-                scheme = "https"
         
-        self.final_uri = f"{scheme}://{parsed.netloc}{parsed.path}"
-        if parsed.query: self.final_uri += f"?{parsed.query}"
+        # 3. Path Normalization: Ensure /ws is present if not specified
+        path = parsed.path
+        if not path or path == "/":
+            path = "/ws"
+            
+        self.final_uri = f"{scheme}://{parsed.netloc}{path}"
+        if parsed.query: 
+            self.final_uri += f"?{parsed.query}"
+            
         logger.info(f"Target Server: {self.final_uri}")
 
     def check_health(self):

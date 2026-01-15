@@ -158,30 +158,40 @@ class DictationClient:
                      await asyncio.sleep(1)
 
     async def _verify_auth_and_connect(self):
-        """Attempts to connect once to verify credentials. Keeps connection open on success."""
-        try:
-             await self.transport.connect()
-             # Keep connection open for immediate use
-             return True
-        except Exception as e:
-             # Standardize Auth Failure checks
-             is_auth = False
-             if isinstance(e, websockets.exceptions.InvalidStatusCode):
-                  if e.status_code in [401, 403]: is_auth = True
-             elif isinstance(e, websockets.exceptions.ConnectionClosed):
-                  if e.code == 1008: is_auth = True
-             elif "HTTP 403" in str(e) or "HTTP 401" in str(e) or "Auth Failed" in str(e): 
-                  is_auth = True
+        """
+        Attempts to connect and verify credentials with exponential backoff.
+        Handles transient failures (e.g., OIDC warmup race) gracefully.
+        """
+        MAX_RETRIES = 3
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                await self.transport.connect()
+                # Keep connection open for immediate use
+                return True
+            except Exception as e:
+                # Standardize Auth Failure checks
+                is_auth = False
+                if isinstance(e, websockets.exceptions.InvalidStatusCode):
+                    if e.status_code in [401, 403]: is_auth = True
+                elif isinstance(e, websockets.exceptions.ConnectionClosed):
+                    if e.code == 1008: is_auth = True
+                elif "HTTP 403" in str(e) or "HTTP 401" in str(e) or "Auth Failed" in str(e): 
+                    is_auth = True
 
-             if is_auth:
-                  logger.error(f"{Fore.RED}Startup Auth Failed.{Style.RESET_ALL} Server rejected the key.")
-                  SecureConfig.clear_key(self.transport.hostname)
-                  return False
-             else:
-                  logger.warning(f"Startup Connection Failed: {e}. Proceeding (might be offline mode), but services might fail.")
-                  # We allow proceeding on generic network error (e.g. server down), 
-                  # but NOT on auth error.
-                  return True
+                if is_auth:
+                    logger.error(f"{Fore.RED}Startup Auth Failed.{Style.RESET_ALL} Server rejected the key.")
+                    SecureConfig.clear_key(self.transport.hostname)
+                    return False
+                else:
+                    # Transient error - retry with backoff
+                    if attempt < MAX_RETRIES - 1:
+                        wait_time = 2 ** attempt  # 1s, 2s, 4s
+                        logger.warning(f"Connection attempt {attempt + 1}/{MAX_RETRIES} failed: {e}. Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.warning(f"Startup Connection Failed after {MAX_RETRIES} attempts: {e}. Proceeding anyway.")
+                        return True  # Allow proceeding after exhausting retries
 
     def start(self):
         # 1. Enforce Auth Upfront

@@ -84,11 +84,10 @@ docker compose exec whisper-backend pytest tests/test_api.py
 ## Architecture
 - **Backend**: Docker containerized FastAPI server with `faster-whisper` and CUDA acceleration.
 - **Dynamic Resource Scaling**: The backend includes an intelligent ` ModelManager` that unloads the Whisper model from VRAM after 30 minutes of inactivity to save GPU resources, and reloads it instantly on demand.
-- **Secure Transport & Handshake**: All streaming connections (WSS) utilize a versioned bi-directional handshake. **Authentication is performed within the handshake payload**, ensuring API tokens never appear in URL query strings or server access logs.
-- **OS Secure Enclave**: The Python client integrates with system-level credential managers (Windows Credential Manager, Keychain, etc.) via `keyring`, ensuring API keys never touch the filesystem in plain text.
-- **Session-Based WebSockets**: Connections are established only when recording starts and are automatically closed after 5 minutes of idle time.
-- **Centralized Sanitized Logging**: The system utilizes high-performance logging with dynamic privacy levels. It supports **Incognito Mode (Ghost Mode)** where transcription data is processed strictly in-memory and all server-side traces are automatically redacted via a dedicated privacy state engine.
-- **Privacy Architecture**: Explicit session-level privacy tracking ensures that sensitive audio metadata and transcription results are never persisted or logged when Ghost Mode is active, harnessing volatile RAM-disk processing (tmpfs) for complete anonymity.
+- **Dual-Door Authentication**: Hybrid security model supporting local static API keys (Door #1) and enterprise OIDC/JWT providers (Door #2) with stateless JWKS verification.
+- **Secure Handshake & Enclave**: Utilizes a versioned bi-directional handshake for identity verification. Python clients further secure keys via system-level OS enclaves (`keyring`).
+- **Centralized Sanitized Logging**: High-performance logging with **Incognito Mode (Ghost Mode)** for in-memory processing and automatic server-side trace redaction.
+- **Session-Based WebSockets**: Connections are established only during active recording and automatically timeout after 5 minutes of inactivity.
 
 ## Configuration
 The system is entirely configuration-driven via the `.env` file in the root directory.

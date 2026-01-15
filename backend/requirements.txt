@@ -11,6 +11,10 @@ websockets
 requests
 python-dotenv
 
+# Authentication & Security
+python-jose[cryptography]
+cachetools
+
 # Utilities & Testing
 loguru
 pytest

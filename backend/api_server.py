@@ -47,7 +47,7 @@ APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
 from fastapi import Depends
-from auth import get_api_key, verify_api_key, validate_token
+from auth import get_api_key, verify_api_key, validate_token, warmup_oidc
 from websocket_handler import ConnectionManager
 
 from contextlib import asynccontextmanager
@@ -76,6 +76,9 @@ async def lifespan(app: FastAPI):
         
         # Initialize the connection manager
         manager = ConnectionManager(model_manager, app_version=APP_VERSION)
+        
+        # Warmup OIDC (graceful degradation: logs warnings if provider unreachable)
+        warmup_oidc()
         
         log.success(f"System initialized successfully.")
         

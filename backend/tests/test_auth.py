@@ -1,6 +1,7 @@
 import pytest
 import os
-from unittest.mock import patch, MagicMock
+import time
+from unittest.mock import patch, MagicMock, Mock
 
 # Setup environment before importing app
 # We use a fixture to patch the environment safely instead of global assignment
@@ -108,3 +109,177 @@ def test_websocket_handshake_invalid_token():
                 with pytest.raises(WebSocketDisconnect) as exc:
                     websocket.receive_text()
                 assert exc.value.code == 1008
+
+# --- OIDC/JWT Authentication Tests ---
+
+def test_jwt_valid_authentication():
+    """Verify that a valid JWT token passes authentication."""
+    from auth import validate_token
+    from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery
+    
+    # Setup environment for OIDC
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "test_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
+        "OIDC_CLIENT_ID": "whisperdoc_client"
+    }):
+        # Patch module-level config variables that are set at import time
+        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
+            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+                # Mock OIDC configuration and JWKS endpoints
+                with patch("auth.oidc.requests.get") as mock_get:
+                    # Setup mock responses
+                    def mock_response(url, *args, **kwargs):
+                        response = Mock()
+                        if "openid-configuration" in url:
+                            response.json.return_value = mock_oidc_discovery()
+                        elif "jwks" in url:
+                            response.json.return_value = generate_mock_jwks()
+                        response.raise_for_status = Mock()
+                        return response
+                    
+                    mock_get.side_effect = mock_response
+                    
+                    # Generate valid JWT
+                    token = generate_test_jwt(
+                        issuer="https://auth.test.local/application/o/test/",
+                        audience="whisperdoc_client",
+                        email="user@example.com"
+                    )
+                    
+                    # Test validation
+                    assert validate_token(token) is True
+
+def test_jwt_expired_token():
+    """Verify that expired JWT tokens are rejected."""
+    from auth import validate_token
+    from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "test_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
+        "OIDC_CLIENT_ID": "whisperdoc_client"
+    }):
+        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
+            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+                with patch("auth.oidc.requests.get") as mock_get:
+                    def mock_response(url, *args, **kwargs):
+                        response = Mock()
+                        if "openid-configuration" in url:
+                            response.json.return_value = mock_oidc_discovery()
+                        elif "jwks" in url:
+                            response.json.return_value = generate_mock_jwks()
+                        response.raise_for_status = Mock()
+                        return response
+                    
+                    mock_get.side_effect = mock_response
+                    
+                    # Generate expired token (expired 1 hour ago)
+                    token = generate_test_jwt(
+                        issuer="https://auth.test.local/application/o/test/",
+                        audience="whisperdoc_client",
+                        expiration_delta=-3600
+                    )
+                    
+                    assert validate_token(token) is False
+
+def test_jwt_wrong_audience():
+    """Verify that JWT with wrong audience is rejected."""
+    from auth import validate_token
+    from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "test_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
+        "OIDC_CLIENT_ID": "whisperdoc_client"
+    }):
+        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
+            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+                with patch("auth.oidc.requests.get") as mock_get:
+                    def mock_response(url, *args, **kwargs):
+                        response = Mock()
+                        if "openid-configuration" in url:
+                            response.json.return_value = mock_oidc_discovery()
+                        elif "jwks" in url:
+                            response.json.return_value = generate_mock_jwks()
+                        response.raise_for_status = Mock()
+                        return response
+                    
+                    mock_get.side_effect = mock_response
+                    
+                    # Generate token for different audience
+                    token = generate_test_jwt(
+                        issuer="https://auth.test.local/application/o/test/",
+                        audience="different_app"
+                    )
+                    
+                    assert validate_token(token) is False
+
+def test_jwt_wrong_issuer():
+    """Verify that JWT from wrong issuer is rejected."""
+    from auth import validate_token
+    from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "test_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
+        "OIDC_CLIENT_ID": "whisperdoc_client"
+    }):
+        with patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"):
+            with patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"):
+                with patch("auth.oidc.requests.get") as mock_get:
+                    def mock_response(url, *args, **kwargs):
+                        response = Mock()
+                        if "openid-configuration" in url:
+                            response.json.return_value = mock_oidc_discovery()
+                        elif "jwks" in url:
+                            response.json.return_value = generate_mock_jwks()
+                        response.raise_for_status = Mock()
+                        return response
+                    
+                    mock_get.side_effect = mock_response
+                    
+                    # Generate token from different issuer
+                    token = generate_test_jwt(
+                        issuer="https://evil.attacker.com/",
+                        audience="whisperdoc_client"
+                    )
+                    
+                    assert validate_token(token) is False
+
+def test_jwt_malformed_token():
+    """Verify that malformed JWT tokens are rejected."""
+    from auth import validate_token
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "test_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/"
+    }):
+        # Test various malformed tokens
+        assert validate_token("not.a.valid.jwt.token") is False
+        assert validate_token("only.two.parts") is False
+        assert validate_token("") is False
+        assert validate_token("   ") is False
+
+def test_static_key_still_works():
+    """Regression test: Ensure static API key authentication still works with OIDC enabled."""
+    from auth import validate_token
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "my_secret_static_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/"
+    }):
+        # Static key should still work (Door #1)
+        assert validate_token("my_secret_static_key") is True
+        assert validate_token("wrong_key") is False
+
+def test_oidc_disabled_fallback():
+    """Verify system works when OIDC is not configured (static key only)."""
+    from auth import validate_token
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "static_only_key",
+        "OIDC_ISSUER_URL": ""  # OIDC disabled
+    }):
+        assert validate_token("static_only_key") is True
+        assert validate_token("any.jwt.token") is False
