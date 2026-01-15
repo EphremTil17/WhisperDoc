@@ -85,21 +85,30 @@ class ConnectionManager:
         log.info(f"ConnectionManager initialized. Max Connections: {MAX_CONNECTIONS}")
 
     async def _cleanup_inactive_connections(self):
-        """Background task to close connections that have been idle for too long."""
+        """Background task to close connections that are idle or failed to handshake."""
         while True:
             try:
-                await asyncio.sleep(30)  # Check every 30 seconds
+                await asyncio.sleep(10)  # Check more frequently
                 now = time.time()
                 to_disconnect = []
 
                 for websocket, data in self.active_connections.items():
-                    if now - data["last_activity"] > IDLE_TIMEOUT_SECONDS:
-                        to_disconnect.append(websocket)
+                    idle_time = now - data["last_activity"]
+                    
+                    # Rule 1: Kill un-handshaked connections after 15 seconds
+                    if not data["handshake_completed"] and idle_time > 15:
+                        log.warning(f"Closing un-handshaked connection from {websocket.client} (Timeout)")
+                        to_disconnect.append((websocket, 1008, "Handshake timeout"))
+                        continue
 
-                for websocket in to_disconnect:
-                    log.warning(f"Closing inactive connection for client {websocket.client}")
+                    # Rule 2: Kill idle connections after IDLE_TIMEOUT_SECONDS
+                    if idle_time > IDLE_TIMEOUT_SECONDS:
+                        log.warning(f"Closing inactive connection for client {websocket.client}")
+                        to_disconnect.append((websocket, 4000, "Inactivity timeout"))
+
+                for websocket, code, reason in to_disconnect:
                     try:
-                        await websocket.close(code=4000, reason="Inactivity timeout")
+                        await websocket.close(code=code, reason=reason)
                     except:
                         pass
                     self.disconnect(websocket)
@@ -115,9 +124,11 @@ class ConnectionManager:
         await websocket.accept()
         # Create a unique short ID for this connection to track logs
         conn_id = str(id(websocket))[-4:]
+        now = time.time()
         self.active_connections[websocket] = {
             "buffer": bytearray(), 
-            "last_activity": time.time(),
+            "last_activity": now,
+            "connected_at": now,
             "handshake_completed": False,
             "id": conn_id,
             "incognito": False
@@ -140,80 +151,92 @@ class ConnectionManager:
             log.info(f"[{conn_id}] WebSocket client disconnected: {websocket.client}")
 
     async def handle_message(self, websocket: WebSocket, message):
-        if websocket not in self.active_connections:
+        connection_data = self.active_connections.get(websocket)
+        if not connection_data:
             return
 
-        # Update activity timestamp for any message received
-        self.active_connections[websocket]["last_activity"] = time.time()
+        # Update activity timestamp
+        connection_data["last_activity"] = time.time()
+        conn_id = connection_data.get("id", "????")
+        handshake_done = connection_data.get("handshake_completed", False)
 
+        # --- PROTOCOL STATE MACHINE ---
         if isinstance(message, str):
             try:
-                # Handle JSON-encoded control messages
-                if message.startswith('{'):
+                # 1. Parsing & Sanity Check
+                try:
                     data = json.loads(message)
-                    event = data.get("event")
+                except json.JSONDecodeError:
+                    log.warning(f"[{conn_id}] Protocol Violation: Malformed JSON. Terminating.")
+                    await websocket.close(code=1008, reason="Malformed JSON")
+                    return
+
+                event = data.get("event")
+
+                # 2. Handle Authentication State (Pre-Handshake)
+                if not handshake_done:
+                    if event != "hello":
+                        log.warning(f"[{conn_id}] Protocol Violation: Expected 'hello' event, got '{event}'. Disconnecting.")
+                        await websocket.close(code=1008, reason="Handshake required")
+                        return
+
+                    # Process Handshake
+                    token = data.get("token")
+                    if not validate_token(token):
+                        log.warning(f"[{conn_id}] Authentication Failed: Invalid Key.")
+                        await websocket.send_json({"event": "error", "code": 403, "message": "Auth Failed"})
+                        await websocket.close(code=1008)
+                        return
+
+                    # Successful Auth
+                    connection_data["handshake_completed"] = True
+                    connection_data["incognito"] = data.get("incognito", False)
                     
-                    if event == "hello":
-                        token = data.get("token")
-                        conn_id = self.active_connections[websocket].get("id", "????")
-                        
-                        log.debug(f"[{conn_id}] Verifying token for client: {data.get('client')}")
+                    client_info = data.get("client", "unknown")
+                    client_ver = data.get("version", "unknown")
+                    log.info(f"[{conn_id}] Handshake Verified. Client: {client_info} (v{client_ver}) Incognito: {connection_data['incognito']}")
 
-                        if not validate_token(token):
-                            log.warning(f"[{conn_id}] Authentication failed. Invalid token.")
-                            await websocket.send_json({
-                                "event": "error",
-                                "code": 403,
-                                "message": "Authentication failed: Invalid API Key"
-                            })
-                            await websocket.close(code=1008)
-                            return
+                    await websocket.send_json({
+                        "event": "authenticated",
+                        "status": "success",
+                        "cid": conn_id
+                    })
+                    return
 
-                        self.active_connections[websocket]["handshake_completed"] = True
-                        
-                        # Capture Incognito State
-                        is_incognito = data.get("incognito", False)
-                        self.active_connections[websocket]["incognito"] = is_incognito
-                        
-                        client_info = data.get("client", "unknown")
-                        client_ver = data.get("version", "unknown")
-                        log.info(f"[{conn_id}] Authentication successful. Client: {client_info} (v{client_ver}) Incognito: {is_incognito}")
-                        
-                        # Acknowledge authentication success to the client
-                        log.debug(f"[{conn_id}] Sending 'authenticated' confirmation...")
-                        await websocket.send_json({
-                            "event": "authenticated",
-                            "status": "success",
-                            "message": "Handshake verified"
-                        })
-                        log.info(f"[{conn_id}] Handshake complete.")
-                        
-                    elif event == "end-of-stream":
-                        if not self.active_connections[websocket]["handshake_completed"]:
-                            log.warning(f"Rejected EOS from {websocket.client}: Handshake not completed.")
-                            return
-                        log.info(f"Received end-of-stream from {websocket.client}")
-                        await self.transcribe_and_send(websocket)
-                    elif event == "ping":
-                        await websocket.send_json({"event": "pong"})
-                    else:
-                        log.warning(f"Unknown event '{event}' from {websocket.client}")
-                else:
-                    log.warning(f"Received invalid text message from {websocket.client}: {message[:100]}...")
-            except Exception as e:
-                log.error(f"Error handling text message: {e}")
+                # 3. Handle Authenticated State (Post-Handshake)
+                if event == "hello":
+                    log.warning(f"[{conn_id}] Protocol Violation: Duplicate 'hello' attempt. Terminating.")
+                    await websocket.close(code=1008, reason="Handshake already completed")
+                    return
                 
+                if event == "end-of-stream":
+                    log.info(f"[{conn_id}] Received EOS triggered by client.")
+                    await self.transcribe_and_send(websocket)
+                elif event == "ping":
+                    await websocket.send_json({"event": "pong"})
+                else:
+                    log.warning(f"[{conn_id}] Protocol Violation: Unknown event '{event}'. Closing.")
+                    await websocket.close(code=1008, reason=f"Invalid event: {event}")
+            
+            except Exception as e:
+                log.error(f"[{conn_id}] Error in text handler: {e}")
+                try: await websocket.close(code=1011)
+                except: pass
+
         elif isinstance(message, bytes):
-            if not self.active_connections[websocket]["handshake_completed"]:
-                log.warning(f"Rejected audio data from {websocket.client}: Handshake not completed.")
+            # Strict Enforcement: No audio data allowed before authentication
+            if not handshake_done:
+                log.warning(f"[{conn_id}] Protocol Violation: Binary data before handshake. Disconnecting.")
+                await websocket.close(code=1008, reason="Handshake required")
                 return
             
-            buffer = self.active_connections[websocket]["buffer"]
+            # Process Valid Audio
+            buffer = connection_data["buffer"]
             if len(buffer) < MAX_BUFFER_SIZE:
                 buffer.extend(message)
             else:
-                log.warning(f"Audio buffer limit reached for {websocket.client}. Closing.")
-                await websocket.close(code=1009, reason="Audio buffer limit reached")
+                log.warning(f"[{conn_id}] Resource Exhaustion: Buffer limit reached. Closing.")
+                await websocket.close(code=1009, reason="Buffer limit exceeded")
                 self.disconnect(websocket)
 
     async def transcribe_and_send(self, websocket: WebSocket):
