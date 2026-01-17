@@ -96,13 +96,15 @@ class _HistoryEntryTile extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           // Transcription text
-          SelectableText(
-            entry.text,
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.4,
-              fontFamily: GoogleFonts.lexend().fontFamily,
+          Consumer<RecordingController>(
+            builder: (context, controller, child) => SelectableText(
+              controller.getDecryptedText(entry),
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                height: 1.4,
+                fontFamily: GoogleFonts.lexend().fontFamily,
+              ),
             ),
           ),
         ],

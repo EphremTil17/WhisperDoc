@@ -10,6 +10,8 @@ import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter_client/core/services/handshake_state_machine.dart';
+import 'package:flutter_client/core/services/jwt_validator.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,6 +22,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _uriController;
+  final JWTValidator _jwtValidator = JWTValidator();
 
   @override
   void initState() {
@@ -116,18 +119,142 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Authentication Section (Phase 1)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'API KEY',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        settings
+                            .getTokenLabel(settings.cachedApiKey ?? '')
+                            .contains('JWT')
+                        ? Colors.blue.withValues(alpha: 0.2)
+                        : Colors.purple.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color:
+                          settings
+                              .getTokenLabel(settings.cachedApiKey ?? '')
+                              .contains('JWT')
+                          ? Colors.blue.withValues(alpha: 0.5)
+                          : Colors.purple.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    settings.getTokenLabel(settings.cachedApiKey ?? ''),
+                    style: TextStyle(
+                      color:
+                          settings
+                              .getTokenLabel(settings.cachedApiKey ?? '')
+                              .contains('JWT')
+                          ? Colors.blueAccent
+                          : Colors.purpleAccent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // JWT Expiry Warning (if applicable)
+            if (settings.cachedApiKey != null &&
+                settings.cachedApiKey!.isNotEmpty)
+              Builder(
+                builder: (context) {
+                  final warning = _jwtValidator.getExpiryWarning(
+                    settings.cachedApiKey!,
+                  );
+                  if (warning == null) return const SizedBox.shrink();
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.orange.withValues(alpha: 0.15),
+                            Colors.orange.withValues(alpha: 0.05),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: Colors.orangeAccent.withValues(alpha: 0.3),
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time,
+                            color: Colors.orangeAccent,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              warning,
+                              style: const TextStyle(
+                                color: Colors.orangeAccent,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+            _SecureApiKeyField(
+              initialValue: settings.cachedApiKey ?? '',
+              onChanged: (val) => settings.setApiKey(val),
+            ),
+            const SizedBox(height: 16),
+
             // Test Connection Button
             Consumer<WebSocketService>(
               builder: (context, wsService, child) {
                 final status = wsService.status;
+                final handshake = wsService.handshakeState.state;
+
                 Color btnColor = Colors.white10;
+                Color textColor = Colors.white;
                 String btnText = 'Test Connection';
 
-                if (status == ConnectionStatus.connected) {
+                if (handshake == HandshakeState.authenticated) {
                   btnColor = Colors.green.withValues(alpha: 0.2);
-                  btnText = 'Connected';
-                } else if (status == ConnectionStatus.connecting) {
+                  textColor = Colors.greenAccent;
+                  btnText = 'Authenticated ✓';
+                } else if (handshake == HandshakeState.authenticating ||
+                    status == ConnectionStatus.connecting) {
                   btnText = 'Connecting...';
+                } else if (handshake == HandshakeState.failed) {
+                  btnColor = Colors.red.withValues(alpha: 0.2);
+                  textColor = Colors.redAccent;
+                  btnText = 'Failed ✗';
+                } else if (status == ConnectionStatus.connected) {
+                  // Fallback for when connected but handshake state is somehow not authenticated
+                  btnColor = Colors.green.withValues(alpha: 0.2);
+                  textColor = Colors.greenAccent;
+                  btnText = 'Connected';
                 }
 
                 return FilledButton(
@@ -136,13 +263,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     await context.read<SettingsService>().setServerUri(
                       _uriController.text,
                     );
-                    // The WebSocketService listens to this and will auto-reconnect
+                    // Explicitly call connect if not already connecting
+                    if (status != ConnectionStatus.connecting) {
+                      unawaited(wsService.connect());
+                    }
                   },
                   style: FilledButton.styleFrom(
                     backgroundColor: btnColor,
-                    foregroundColor: status == ConnectionStatus.connected
-                        ? Colors.greenAccent
-                        : Colors.white,
+                    foregroundColor: textColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -205,6 +333,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 16),
 
             const SizedBox(height: 16),
 
@@ -272,6 +402,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // HomeScreen's settings listener will restart the service automatically
         // when SettingsService.setHotkey() is called. No need to call start() here.
       }),
+    );
+  }
+}
+
+/// Helper widget for secure API key entry with visibility toggle.
+class _SecureApiKeyField extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+
+  const _SecureApiKeyField({
+    required this.initialValue,
+    required this.onChanged,
+  });
+
+  @override
+  State<_SecureApiKeyField> createState() => _SecureApiKeyFieldState();
+}
+
+class _SecureApiKeyFieldState extends State<_SecureApiKeyField> {
+  late TextEditingController _controller;
+  bool _obscureText = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      obscureText: _obscureText,
+      maxLines: _obscureText ? 1 : null, // Only wrap when visible
+      keyboardType: TextInputType.multiline,
+      style: const TextStyle(color: Colors.white, fontSize: 13),
+      onChanged: widget.onChanged,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.black26,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
+        hintText: 'Enter your API key or JWT token',
+        hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _obscureText ? Icons.visibility_off : Icons.visibility,
+            color: Colors.white38,
+            size: 18,
+          ),
+          onPressed: () => setState(() => _obscureText = !_obscureText),
+        ),
+      ),
     );
   }
 }
