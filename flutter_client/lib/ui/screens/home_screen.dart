@@ -7,14 +7,14 @@ import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
-import 'package:flutter_client/ui/shared/widgets/floating_capsule.dart';
 import 'package:flutter_client/ui/shared/widgets/hamburger_menu.dart';
-import 'package:flutter_client/ui/shared/widgets/transcribed_text_area.dart';
-import 'package:flutter_client/ui/shared/widgets/audio_visualizer.dart';
 import 'package:flutter_client/ui/shared/widgets/app_footer.dart';
 import 'package:flutter_client/ui/shared/widgets/action_bar.dart';
 import 'package:flutter_client/ui/shared/widgets/ban_countdown_overlay.dart';
 import 'package:flutter_client/ui/screens/settings_screen.dart';
+import 'package:flutter_client/ui/screens/home/widgets/home_header.dart';
+import 'package:flutter_client/ui/screens/home/widgets/recording_view.dart';
+import 'package:flutter_client/ui/screens/home/widgets/transcription_view.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -256,11 +256,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     // Watch controller for UI updates
-    final controller = context.watch<RecordingController>();
-    final settings = context.watch<SettingsService>();
-    final wsService = context.watch<WebSocketService>();
-    final isRecording = controller.isRecording;
-
     return Scaffold(
       body: Container(
         decoration: AppTheme.mainGradient,
@@ -282,56 +277,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           child: Column(
                             children: [
-                              const SizedBox(height: 16),
-                              // Title Section
-                              const Text(
-                                'WhisperDoc',
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: -1.0,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'AI-Powered Speech-to-Text Dictation',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
-                              ),
+                              const HomeHeader(),
+                              const RecordingView(),
+                              const TranscriptionView(),
 
-                              const SizedBox(height: 16),
-                              FloatingCapsule(
-                                isRecording: isRecording,
-                                onTap: () =>
-                                    unawaited(controller.toggleRecording()),
-                              ),
-
-                              const SizedBox(height: 8),
-                              // Visualizer toggle for performance testing
-                              if (settings.showVisualizer)
-                                AnimatedOpacity(
-                                  opacity: isRecording ? 1.0 : 0.0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: const AudioVisualizer(),
-                                )
-                              else
-                                const SizedBox(
-                                  height: 40,
-                                ), // Placeholder height
-                              const SizedBox(height: 8),
-
-                              const HotkeyHint(),
-                              const SizedBox(height: 12),
-                              TranscribedTextArea(text: controller.currentText),
-
-                              const SizedBox(height: 12),
                               // Footer: [Incognito] [History] • Connected [Settings] [Log]
-                              ActionBar(
-                                isIncognitoMode: controller.incognitoMode,
-                                onIncognitoTap: () =>
-                                    _toggleIncognitoMode(context, controller),
+                              Consumer<RecordingController>(
+                                builder: (context, controller, child) =>
+                                    ActionBar(
+                                      isIncognitoMode: controller.incognitoMode,
+                                      onIncognitoTap: () =>
+                                          _toggleIncognitoMode(
+                                            context,
+                                            controller,
+                                          ),
+                                    ),
                               ),
                             ],
                           ),
@@ -346,18 +306,24 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // Ban Overlay (Phase 4)
-            if (wsService.status == ConnectionStatus.banned)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black87,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: BanCountdownOverlay(
-                    countdownStream: wsService.banState.cooldownStream,
-                    onReconnect: () => unawaited(wsService.connect()),
+            Consumer<WebSocketService>(
+              builder: (context, wsService, child) {
+                if (wsService.status != ConnectionStatus.banned) {
+                  return const SizedBox.shrink();
+                }
+                return Positioned.fill(
+                  child: Container(
+                    color: Colors.black87,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: BanCountdownOverlay(
+                      countdownStream: wsService.banState.cooldownStream,
+                      onReconnect: () => unawaited(wsService.connect()),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
+            ),
           ],
         ),
       ),

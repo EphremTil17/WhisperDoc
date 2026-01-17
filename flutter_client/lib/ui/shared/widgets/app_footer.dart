@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/websocket_service.dart';
-import 'package:flutter_client/ui/shared/widgets/connection_security_indicator.dart';
 
 /// Footer configuration
 class FooterConfig {
@@ -19,25 +16,15 @@ class AppFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wsService = context.watch<WebSocketService>();
-
-    return Padding(
-      padding: const EdgeInsets.only(
+    return const Padding(
+      padding: EdgeInsets.only(
         left: FooterConfig.horizontalPadding,
         right: FooterConfig.horizontalPadding,
         bottom: FooterConfig.bottomPadding,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          ConnectionSecurityIndicator(
-            securityStatus: wsService.securityStatus,
-            serverUri: wsService.status == ConnectionStatus.connected
-                ? 'Connected'
-                : null,
-          ),
-          const _VersionDisplay(),
-        ],
+        children: [_VersionDisplay()],
       ),
     );
   }
