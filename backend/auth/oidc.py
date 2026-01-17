@@ -12,7 +12,8 @@ from logging_config import log
 
 # OIDC Configuration
 OIDC_ISSUER_URL = os.getenv("OIDC_ISSUER_URL", "").strip()
-OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "whisperdoc_client").strip()
+OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "").strip()
+OIDC_API_RESOURCE = os.getenv("OIDC_API_RESOURCE", "https://api.whisperdoc.com").strip()
 OIDC_JWKS_CACHE_SECONDS = int(os.getenv("OIDC_JWKS_CACHE_SECONDS", "3600"))
 
 # Validate OIDC URL to prevent injection attacks
@@ -139,12 +140,16 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
             log.warning(f"No matching key found for kid: {kid}")
             return None
         
-        # Verify signature and claims
+        # python-jose expects a string or None for the audience parameter.
+        # For OIDC ID Tokens, the primary audience is the Client ID.
+        # Fallback to OIDC_API_RESOURCE if Client ID is not set.
+        target_audience = OIDC_CLIENT_ID or OIDC_API_RESOURCE
+
         payload = jwt.decode(
             token,
             rsa_key,
-            algorithms=["RS256"],  # Strict algorithm pinning
-            audience=OIDC_CLIENT_ID,
+            algorithms=["RS256"],
+            audience=target_audience,
             issuer=OIDC_ISSUER_URL.rstrip('/'),
             options={
                 "verify_signature": True,
@@ -153,7 +158,8 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
                 "verify_iat": True,
                 "verify_aud": True,
                 "verify_iss": True,
-                "leeway": 10  # 10-second tolerance for clock skew
+                "verify_at_hash": False,
+                "leeway": 10
             }
         )
         
@@ -170,11 +176,9 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
     except JWTClaimsError as e:
         log.warning(f"JWT validation failed: Claims error - {e}")
         return None
-    except JWTError as e:
+    except (JWTError, Exception) as e:
+        # Catch all JWT and cryptographic errors as a failed handshake
         log.warning(f"JWT validation failed: {e}")
-        return None
-    except Exception as e:
-        log.error(f"Unexpected error during JWT validation: {e}")
         return None
 
 def warmup_oidc():

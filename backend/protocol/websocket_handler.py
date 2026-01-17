@@ -133,16 +133,37 @@ class ConnectionManager:
                         return
 
                     token = data.get("token")
-                    if not validate_token(token):
-                        log.warning(f"[{conn_id}] Authentication Failed: Invalid Key.")
-                        self.governance.record_protocol_violation(ip)
-                        await websocket.send_json({"event": "error", "code": 403, "message": "Authentication failed"})
-                        await websocket.close(code=1008)
-                        return
+                    auth_type = data.get("auth_type", "api_key")
+
+                    if auth_type == "oidc":
+                        # Validate JWT and extract identity
+                        from auth.oidc import validate_oidc_token
+                        payload = validate_oidc_token(token)
+                        if not payload:
+                            log.warning(f"[{conn_id}] OIDC Authentication Failed.")
+                            self.governance.record_protocol_violation(ip)
+                            await websocket.send_json({"event": "error", "code": 403, "message": "OIDC Authentication failed"})
+                            await websocket.close(code=1008)
+                            return
+                        
+                        # Identify user by OIDC 'sub' claim
+                        connection_data["user_id"] = payload.get("sub")
+                        connection_data["user_email"] = payload.get("email")
+                        log.info(f"[{conn_id}] OIDC Verified for: {connection_data['user_email']}")
+                    else:
+                        # Fallback to static API key validation
+                        if not validate_token(token):
+                            log.warning(f"[{conn_id}] API Key Authentication Failed.")
+                            self.governance.record_protocol_violation(ip)
+                            await websocket.send_json({"event": "error", "code": 403, "message": "API Key Authentication failed"})
+                            await websocket.close(code=1008)
+                            return
+                        connection_data["user_id"] = "static_apiKey"
 
                     connection_data["handshake_completed"] = True
+                    connection_data["auth_type"] = auth_type
                     connection_data["incognito"] = data.get("incognito", False)
-                    log.info(f"[{conn_id}] Handshake Verified. Incognito: {connection_data['incognito']}")
+                    log.info(f"[{conn_id}] Handshake Verified ({auth_type}). Incognito: {connection_data['incognito']}")
 
                     await websocket.send_json({"event": "authenticated", "status": "success", "cid": conn_id})
                     return

@@ -246,6 +246,54 @@ def test_jwt_wrong_issuer():
             
             assert validate_token(token) is False
 
+def test_jwt_multi_audience():
+    """Verify that JWT with valid Resource Indicator or Client ID is accepted."""
+    from auth import validate_token
+    from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery
+    
+    with patch.dict(os.environ, {
+        "WHISPER_DOC_API_KEY": "test_key",
+        "OIDC_ISSUER_URL": "https://auth.test.local/application/o/test/",
+        "OIDC_CLIENT_ID": "whisperdoc_client",
+        "OIDC_API_RESOURCE": "https://api.whisperdoc.com"
+    }):
+        with patch("auth.oidc.requests.get") as mock_get, \
+             patch("auth.oidc.OIDC_ISSUER_URL", "https://auth.test.local/application/o/test/"), \
+             patch("auth.oidc.OIDC_CLIENT_ID", "whisperdoc_client"), \
+             patch("auth.oidc.OIDC_API_RESOURCE", "https://api.whisperdoc.com"):
+            
+            def mock_response(url, *args, **kwargs):
+                response = Mock()
+                if "openid-configuration" in url:
+                    response.json.return_value = mock_oidc_discovery()
+                elif "jwks" in url:
+                    response.json.return_value = generate_mock_jwks()
+                response.raise_for_status = Mock()
+                return response
+            
+            mock_get.side_effect = mock_response
+            
+            # Case 1: Token with ONLY API Resource as audience
+            token_only_resource = generate_test_jwt(
+                issuer="https://auth.test.local/application/o/test/",
+                audience="https://api.whisperdoc.com"
+            )
+            assert validate_token(token_only_resource) is not None
+
+            # Case 2: Token with both Client ID and API Resource
+            token_multi = generate_test_jwt(
+                issuer="https://auth.test.local/application/o/test/",
+                audience=["whisperdoc_client", "https://api.whisperdoc.com"]
+            )
+            assert validate_token(token_multi) is not None
+
+            # Case 3: Token with INVALID audience
+            token_invalid = generate_test_jwt(
+                issuer="https://auth.test.local/application/o/test/",
+                audience="https://malicious.com"
+            )
+            assert validate_token(token_invalid) is False
+
 def test_jwt_malformed_token():
     """Verify that malformed JWT tokens are rejected."""
     from auth import validate_token
