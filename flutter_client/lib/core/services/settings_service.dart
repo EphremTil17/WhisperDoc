@@ -1,9 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
+import 'package:flutter_client/core/services/secure_vault_service.dart';
 import 'package:flutter_client/core/constants/app_constants.dart';
 
 class SettingsService extends ChangeNotifier {
+  // Secure Vault Keys (sensitive data)
+  static const String _vaultApiKeyKey = 'api_key';
+
+  // SharedPreferences Keys (non-sensitive data)
   static const String _keyServerUri = 'server_uri';
   static const String _keyGlobalHotkey = 'global_hotkey';
   static const String _keyHotkeyModifiers = 'hotkey_modifiers';
@@ -12,6 +17,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyAutoCopy = 'auto_copy';
   static const String _keyAutoPaste = 'auto_paste';
   static const String _keyShowVisualizer = 'show_visualizer';
+  static const String _keyIncognitoMode = 'incognito_mode';
 
   // Default Values (from AppConstants)
   static const String _defaultServerUri = AppConstants.defaultServerUri;
@@ -22,8 +28,10 @@ class SettingsService extends ChangeNotifier {
   static const bool _defaultAutoCopy = true;
   static const bool _defaultAutoPaste = false;
   static const bool _defaultShowVisualizer = true;
+  static const bool _defaultIncognitoMode = false;
 
   late SharedPreferences _prefs;
+  late SecureVaultService _vault;
   bool _isInitialized = false;
 
   String _serverUri = _defaultServerUri;
@@ -34,6 +42,8 @@ class SettingsService extends ChangeNotifier {
   bool _autoCopy = _defaultAutoCopy;
   bool _autoPaste = _defaultAutoPaste;
   bool _showVisualizer = _defaultShowVisualizer;
+  bool _incognitoMode = _defaultIncognitoMode;
+  String? _apiKey;
 
   String get serverUri => _serverUri;
   String get globalHotkey => _globalHotkey;
@@ -43,10 +53,35 @@ class SettingsService extends ChangeNotifier {
   bool get autoCopy => _autoCopy;
   bool get autoPaste => _autoPaste;
   bool get showVisualizer => _showVisualizer;
+  bool get incognitoMode => _incognitoMode;
+  String? get cachedApiKey => _apiKey;
+  SecureVaultService get vault => _vault;
+
+  /// Loads settings from SharedPreferences and SecureVault.
+  Future<String?> getApiKey() async {
+    _ensureInitialized();
+    _apiKey ??= await _vault.retrieveCredential(_vaultApiKeyKey);
+    return _apiKey;
+  }
+
+  /// Auto-detect token type: JWT (has 2 dots) vs Static API Key
+  String getTokenLabel(String token) {
+    if (token.contains('.') && token.split('.').length == 3) {
+      return 'Access Token (JWT)';
+    }
+    return 'API Key';
+  }
 
   Future<void> load() async {
     try {
+      // Initialize secure vault first
+      _vault = SecureVaultService();
+      await _vault.initialize();
+
+      // Load shared preferences
       _prefs = await SharedPreferences.getInstance();
+
+      // Load non-sensitive settings from SharedPreferences
       _serverUri = _prefs.getString(_keyServerUri) ?? _defaultServerUri;
       _globalHotkey =
           _prefs.getString(_keyGlobalHotkey) ?? _defaultGlobalHotkey;
@@ -58,14 +93,20 @@ class SettingsService extends ChangeNotifier {
       _autoPaste = _prefs.getBool(_keyAutoPaste) ?? _defaultAutoPaste;
       _showVisualizer =
           _prefs.getBool(_keyShowVisualizer) ?? _defaultShowVisualizer;
+      _incognitoMode =
+          _prefs.getBool(_keyIncognitoMode) ?? _defaultIncognitoMode;
+
+      // Load API key from secure vault (cached in memory)
+      _apiKey = await _vault.retrieveCredential(_vaultApiKeyKey);
 
       _isInitialized = true;
       notifyListeners();
       LoggingService().info(
-        'Settings loaded: URI=$_serverUri, Hotkey=$_globalHotkey, AutoCopy=$_autoCopy, AutoPaste=$_autoPaste',
+        'Settings loaded: URI=$_serverUri, Hotkey=$_globalHotkey, Incognito=$_incognitoMode',
       );
     } catch (e) {
       LoggingService().error('Failed to load settings', error: e);
+      rethrow;
     }
   }
 
@@ -152,6 +193,27 @@ class SettingsService extends ChangeNotifier {
     }
     notifyListeners();
     LoggingService().info('Microphone ID updated to: $id');
+  }
+
+  Future<void> setApiKey(String key) async {
+    _ensureInitialized();
+    if (_apiKey == key) return;
+
+    _apiKey = key;
+    await _vault.storeCredential(_vaultApiKeyKey, key);
+    notifyListeners();
+    final label = getTokenLabel(key);
+    LoggingService().info('$label updated securely');
+  }
+
+  Future<void> setIncognitoMode(bool value) async {
+    _ensureInitialized();
+    if (_incognitoMode == value) return;
+
+    _incognitoMode = value;
+    await _prefs.setBool(_keyIncognitoMode, value);
+    notifyListeners();
+    LoggingService().info('Incognito mode updated to: $value');
   }
 
   void _ensureInitialized() {
