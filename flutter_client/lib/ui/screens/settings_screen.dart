@@ -6,7 +6,6 @@ import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/connection_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/hotkey_section.dart';
@@ -51,15 +50,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       footer: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          FutureBuilder<PackageInfo>(
-            future: PackageInfo.fromPlatform(),
-            builder: (context, snapshot) {
-              final version = snapshot.data?.version ?? '...';
-              return Text(
-                'v$version',
-                style: const TextStyle(color: Colors.white24, fontSize: 12),
-              );
-            },
+          Consumer<SettingsService>(
+            builder: (context, settings, child) => Text(
+              'v${settings.appVersion}',
+              style: const TextStyle(color: Colors.white24, fontSize: 12),
+            ),
           ),
           TextButton(
             onPressed: _saveSettings,
@@ -81,7 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             ConnectionSection(uriController: _uriController),
             const SizedBox(height: 16),
-            AuthSection(),
+            const AuthSection(),
             const SizedBox(height: 16),
             const HotkeySection(),
             const SizedBox(height: 16),

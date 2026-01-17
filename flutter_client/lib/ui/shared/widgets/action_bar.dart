@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/transport_security_service.dart';
 import 'package:flutter_client/ui/shared/widgets/refined_icon_button.dart';
-import 'package:flutter_client/ui/features/recording/widgets/status_bar.dart';
 import 'package:flutter_client/ui/screens/settings_screen.dart';
 import 'package:flutter_client/ui/screens/log_viewer_dialog.dart';
 import 'package:flutter_client/ui/screens/history_dialog.dart';
@@ -26,7 +28,7 @@ class ActionBar extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // LEFT SIDE - Incognito button
+        // 1. Incognito button
         RefinedIconButton(
           icon: isIncognitoMode
               ? Icons.visibility_off
@@ -37,20 +39,60 @@ class ActionBar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
 
-        // History button
+        // 2. History button
         RefinedIconButton(
           icon: Icons.history,
           iconColor: Colors.white38,
           iconSize: 16,
           onTap: () => _showHistoryDialog(context),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 8),
 
-        // CENTER - Status
-        const StatusBar(),
-        const SizedBox(width: 16),
+        // 3. Connection Status Lock Icon (CENTER)
+        Consumer<WebSocketService>(
+          builder: (context, wsService, child) {
+            final status = wsService.status;
+            final security = wsService.securityStatus;
 
-        // RIGHT SIDE - Settings button
+            Color iconColor;
+            IconData iconData = Icons.lock_outline;
+
+            if (status == ConnectionStatus.connected) {
+              if (security == SecurityStatus.secure) {
+                // Faint Green for secure WSS
+                iconColor = Colors.greenAccent.withValues(alpha: 0.4);
+                iconData = Icons.lock;
+              } else {
+                // Faint Amber/Orange for unsecure WS (Local)
+                iconColor = Colors.orangeAccent.withValues(alpha: 0.4);
+                iconData = Icons.lock_open;
+              }
+            } else if (status == ConnectionStatus.connecting) {
+              iconColor = Colors.orangeAccent.withValues(alpha: 0.6);
+            } else if (status == ConnectionStatus.banned) {
+              iconColor = AppTheme.crimsonPrimary;
+              iconData = Icons.block;
+            } else {
+              // Disconnected / Deep Sleep - Reddish/Inactive
+              iconColor = AppTheme.crimsonPrimary.withValues(alpha: 0.4);
+            }
+
+            return RefinedIconButton(
+              icon: iconData,
+              iconColor: iconColor,
+              iconSize: 18,
+              onTap: () {
+                if (status != ConnectionStatus.connected &&
+                    status != ConnectionStatus.connecting) {
+                  unawaited(wsService.connect());
+                }
+              },
+            );
+          },
+        ),
+        const SizedBox(width: 8),
+
+        // 4. Settings button
         RefinedIconButton(
           icon: Icons.settings_outlined,
           iconColor: AppTheme.crimsonPrimary,
@@ -59,7 +101,7 @@ class ActionBar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
 
-        // Log button
+        // 5. Log button
         RefinedIconButton(
           icon: Icons.terminal_outlined,
           iconColor: Colors.white38,

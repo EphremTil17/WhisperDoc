@@ -14,7 +14,7 @@ class TranscriptionView extends StatelessWidget {
       children: [
         const HotkeyHint(),
         const SizedBox(height: 12),
-        TranscribedTextArea(text: controller.currentText),
+        Expanded(child: TranscribedTextArea(text: controller.currentText)),
         const SizedBox(height: 12),
       ],
     );

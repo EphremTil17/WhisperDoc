@@ -4,9 +4,9 @@ import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/core/services/jwt_validator.dart';
 
 class AuthSection extends StatelessWidget {
-  final JWTValidator _jwtValidator = JWTValidator();
+  static final JWTValidator _jwtValidator = JWTValidator();
 
-  AuthSection({super.key});
+  const AuthSection({super.key});
 
   @override
   Widget build(BuildContext context) {

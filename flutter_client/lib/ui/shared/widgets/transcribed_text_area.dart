@@ -27,7 +27,7 @@ class _TranscribedTextAreaState extends State<TranscribedTextArea> {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 200,
+      constraints: const BoxConstraints(minHeight: 100),
       decoration: AppTheme.glassDecoration.copyWith(
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),

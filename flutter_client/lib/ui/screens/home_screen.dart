@@ -272,29 +272,31 @@ class _HomeScreenState extends State<HomeScreen> {
                         right: 24,
                         child: HamburgerMenu(),
                       ),
-                      SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            children: [
-                              const HomeHeader(),
-                              const RecordingView(),
-                              const TranscriptionView(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          children: [
+                            const HomeHeader(),
+                            const RecordingView(),
+                            const Expanded(child: TranscriptionView()),
 
-                              // Footer: [Incognito] [History] • Connected [Settings] [Log]
-                              Consumer<RecordingController>(
-                                builder: (context, controller, child) =>
-                                    ActionBar(
-                                      isIncognitoMode: controller.incognitoMode,
-                                      onIncognitoTap: () =>
-                                          _toggleIncognitoMode(
-                                            context,
-                                            controller,
-                                          ),
+                            // Footer: [Incognito] [History] [Lock] [Settings] [Log]
+                            Consumer<RecordingController>(
+                              builder: (context, controller, child) =>
+                                  ActionBar(
+                                    isIncognitoMode: controller.incognitoMode,
+                                    onIncognitoTap: () => _toggleIncognitoMode(
+                                      context,
+                                      controller,
                                     ),
-                              ),
-                            ],
-                          ),
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+                            // Status Text below ActionBar
+                            const StatusBar(),
+                            // Padding below status text to separate from version footer
+                            const SizedBox(height: 24),
+                          ],
                         ),
                       ),
                     ],

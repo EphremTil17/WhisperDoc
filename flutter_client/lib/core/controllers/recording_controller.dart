@@ -136,8 +136,6 @@ class RecordingController extends ChangeNotifier {
       _awaitingFinalTranscription = false;
       notifyListeners();
       unawaited(_finishRecordingSession());
-    } else if (event == 'authenticated') {
-      LoggingService().info('Handshake complete: Authenticated');
     } else if (event == 'error') {
       _awaitingFinalTranscription = false;
       final code = msg['code']?.toString();

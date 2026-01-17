@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
 import 'package:flutter_client/core/services/secure_vault_service.dart';
 import 'package:flutter_client/core/constants/app_constants.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsService extends ChangeNotifier {
   // Secure Vault Keys (sensitive data)
@@ -44,6 +45,9 @@ class SettingsService extends ChangeNotifier {
   bool _showVisualizer = _defaultShowVisualizer;
   bool _incognitoMode = _defaultIncognitoMode;
   String? _apiKey;
+  String _appVersion = '2.9.0'; // Default fallback
+
+  String get appVersion => _appVersion;
 
   String get serverUri => _serverUri;
   String get globalHotkey => _globalHotkey;
@@ -98,6 +102,10 @@ class SettingsService extends ChangeNotifier {
 
       // Load API key from secure vault (cached in memory)
       _apiKey = await _vault.retrieveCredential(_vaultApiKeyKey);
+
+      // Load version info once
+      final info = await PackageInfo.fromPlatform();
+      _appVersion = info.version;
 
       _isInitialized = true;
       notifyListeners();
