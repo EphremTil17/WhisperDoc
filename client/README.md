@@ -1,4 +1,4 @@
-# WhisperDoc Client (v2.10.0)
+# WhisperDoc Client (v2.10.11)
 
 A secure, modular, and high-performance Python terminal client for real-time dictation using the WhisperDoc backend.
 
