@@ -166,12 +166,23 @@ class RecordingController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Connect to server if not already connected
+      // 1. Hard Block: Authentication session must be verified.
+      // We check for the session auth flag which persists across incognito toggles.
+      if (!_wsService.isAuthenticatedSession) {
+        final error =
+            _wsService.lastHandshakeError ?? 'Authentication required';
+        _errorController.add('Please authenticate in Settings first: $error');
+        LoggingService().warning(
+          'Recording blocked: Session not authenticated',
+        );
+        return;
+      }
+
+      // 2. Simple connection check (transport level)
       if (_wsService.status != ConnectionStatus.connected) {
-        LoggingService().info('Connecting to WebSocket server...');
         final connected = await _wsService.connect();
         if (!connected) {
-          LoggingService().error('Failed to connect to WebSocket server');
+          _errorController.add('Failed to reconnect to session.');
           return;
         }
       }

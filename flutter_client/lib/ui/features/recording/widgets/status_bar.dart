@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/core/services/transport_security_service.dart';
 
 import 'package:google_fonts/google_fonts.dart';
@@ -13,11 +14,16 @@ class StatusBar extends StatelessWidget {
     final wsService = context.watch<WebSocketService>();
     final status = wsService.status;
     final security = wsService.securityStatus;
+    final handshake = wsService.handshakeState.state;
 
     Color statusColor;
     String statusText;
 
     switch (status) {
+      case ConnectionStatus.banned:
+        statusColor = Colors.redAccent.withValues(alpha: 0.8);
+        statusText = "Connection Banned";
+        break;
       case ConnectionStatus.connected:
         final isEncrypted = security == SecurityStatus.secure;
         statusColor = isEncrypted
@@ -31,13 +37,14 @@ class StatusBar extends StatelessWidget {
         statusColor = Colors.orangeAccent.withValues(alpha: 0.8);
         statusText = "Connecting...";
         break;
-      case ConnectionStatus.banned:
-        statusColor = Colors.redAccent.withValues(alpha: 0.8);
-        statusText = "Connection Banned";
-        break;
       default:
-        statusColor = Colors.white38;
-        statusText = "Ready (Deep Sleep)";
+        if (handshake == HandshakeState.failed) {
+          statusColor = Colors.redAccent.withValues(alpha: 0.8);
+          statusText = "Authentication Failed";
+        } else {
+          statusColor = Colors.white38;
+          statusText = "Ready (Deep Sleep)";
+        }
     }
 
     return Row(

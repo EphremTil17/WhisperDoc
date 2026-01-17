@@ -20,23 +20,27 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _uriController;
+  late TextEditingController _apiKeyController;
 
   @override
   void initState() {
     super.initState();
     final settings = context.read<SettingsService>();
     _uriController = TextEditingController(text: settings.serverUri);
+    _apiKeyController = TextEditingController(text: settings.cachedApiKey);
   }
 
   @override
   void dispose() {
     _uriController.dispose();
+    _apiKeyController.dispose();
     super.dispose();
   }
 
   Future<void> _saveSettings() async {
     final settings = context.read<SettingsService>();
     await settings.setServerUri(_uriController.text);
+    await settings.setApiKey(_apiKeyController.text);
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -76,7 +80,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             ConnectionSection(uriController: _uriController),
             const SizedBox(height: 16),
-            const AuthSection(),
+            AuthSection(
+              uriController: _uriController,
+              apiKeyController: _apiKeyController,
+            ),
             const SizedBox(height: 16),
             const HotkeySection(),
             const SizedBox(height: 16),

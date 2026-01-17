@@ -1,17 +1,26 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/core/services/jwt_validator.dart';
 
 class AuthSection extends StatelessWidget {
+  final TextEditingController uriController;
+  final TextEditingController apiKeyController;
   static final JWTValidator _jwtValidator = JWTValidator();
 
-  const AuthSection({super.key});
+  const AuthSection({
+    super.key,
+    required this.uriController,
+    required this.apiKeyController,
+  });
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
-    final tokenLabel = settings.getTokenLabel(settings.cachedApiKey ?? '');
+    final tokenLabel = settings.getTokenLabel(apiKeyController.text);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -56,11 +65,11 @@ class AuthSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        if (settings.cachedApiKey != null && settings.cachedApiKey!.isNotEmpty)
+        if (apiKeyController.text.isNotEmpty)
           Builder(
             builder: (context) {
               final warning = _jwtValidator.getExpiryWarning(
-                settings.cachedApiKey!,
+                apiKeyController.text,
               );
               if (warning == null) return const SizedBox.shrink();
 
@@ -103,9 +112,55 @@ class AuthSection extends StatelessWidget {
               );
             },
           ),
-        _SecureApiKeyField(
-          initialValue: settings.cachedApiKey ?? '',
-          onChanged: (val) => settings.setApiKey(val),
+        _SecureApiKeyField(controller: apiKeyController),
+        const SizedBox(height: 16),
+        Consumer<WebSocketService>(
+          builder: (context, wsService, child) {
+            final status = wsService.status;
+            final handshake = wsService.handshakeState.state;
+
+            Color btnColor = Colors.white10;
+            Color textColor = Colors.white;
+            String btnText = 'Authenticate';
+
+            if (handshake == HandshakeState.authenticated) {
+              btnColor = Colors.green.withValues(alpha: 0.2);
+              textColor = Colors.greenAccent;
+              btnText = 'Authenticated ✓';
+            } else if (handshake == HandshakeState.authenticating ||
+                status == ConnectionStatus.connecting) {
+              btnText = 'Connecting...';
+            } else if (handshake == HandshakeState.failed) {
+              btnColor = Colors.red.withValues(alpha: 0.4);
+              textColor = Colors.white;
+              btnText = 'Authentication Failed. Retry?';
+            } else if (status == ConnectionStatus.connected) {
+              btnColor = Colors.green.withValues(alpha: 0.2);
+              textColor = Colors.greenAccent;
+              btnText = 'Connected';
+            }
+
+            return FilledButton(
+              onPressed: () async {
+                if (status != ConnectionStatus.connecting) {
+                  unawaited(
+                    wsService.connect(
+                      uriOverride: uriController.text,
+                      apiKeyOverride: apiKeyController.text,
+                    ),
+                  );
+                }
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: btnColor,
+                foregroundColor: textColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(btnText),
+            );
+          },
         ),
       ],
     );
@@ -113,43 +168,25 @@ class AuthSection extends StatelessWidget {
 }
 
 class _SecureApiKeyField extends StatefulWidget {
-  final String initialValue;
-  final ValueChanged<String> onChanged;
+  final TextEditingController controller;
 
-  const _SecureApiKeyField({
-    required this.initialValue,
-    required this.onChanged,
-  });
+  const _SecureApiKeyField({required this.controller});
 
   @override
   State<_SecureApiKeyField> createState() => _SecureApiKeyFieldState();
 }
 
 class _SecureApiKeyFieldState extends State<_SecureApiKeyField> {
-  late TextEditingController _controller;
   bool _obscureText = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialValue);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: _controller,
+      controller: widget.controller,
       obscureText: _obscureText,
       maxLines: _obscureText ? 1 : null,
       keyboardType: TextInputType.multiline,
       style: const TextStyle(color: Colors.white, fontSize: 13),
-      onChanged: widget.onChanged,
       decoration: InputDecoration(
         filled: true,
         fillColor: Colors.black26,

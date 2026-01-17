@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
 import 'package:flutter_client/core/services/transport_security_service.dart';
+import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/ui/shared/widgets/refined_icon_button.dart';
 import 'package:flutter_client/ui/screens/settings_screen.dart';
 import 'package:flutter_client/ui/screens/log_viewer_dialog.dart';
@@ -52,12 +53,16 @@ class ActionBar extends StatelessWidget {
         Consumer<WebSocketService>(
           builder: (context, wsService, child) {
             final status = wsService.status;
+            final handshake = wsService.handshakeState.state;
             final security = wsService.securityStatus;
 
             Color iconColor;
             IconData iconData = Icons.lock_outline;
 
-            if (status == ConnectionStatus.connected) {
+            if (handshake == HandshakeState.failed) {
+              iconColor = AppTheme.crimsonPrimary;
+              iconData = Icons.lock_open;
+            } else if (status == ConnectionStatus.connected) {
               if (security == SecurityStatus.secure) {
                 // Faint Green for secure WSS
                 iconColor = Colors.greenAccent.withValues(alpha: 0.4);

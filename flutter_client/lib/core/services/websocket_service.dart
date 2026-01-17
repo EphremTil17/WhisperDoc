@@ -43,8 +43,12 @@ class WebSocketService extends ChangeNotifier {
 
   ConnectionStatus _status = ConnectionStatus.disconnected;
   ConnectionStatus get status => _status;
+  bool get isConnecting => _isConnecting;
   Stream<ConnectionStatus> get onStatusChanged => _statusController.stream;
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
+
+  String? _lastHandshakeError;
+  String? get lastHandshakeError => _lastHandshakeError;
 
   // Expose ban state for UI
   BanStateService get banState => _banState;
@@ -54,18 +58,23 @@ class WebSocketService extends ChangeNotifier {
   Timer? _idleTimer;
   bool _isIntentionalDisconnect = false;
   bool _isConnecting = false;
+  bool _isAuthenticatedSession = false;
+  bool get isAuthenticatedSession => _isAuthenticatedSession;
 
   // Audio buffer with 5s limit (16kHz * 16-bit * 1ch * 5s = ~160KB)
   final List<Uint8List> _pendingAudioBuffer = [];
   static const int _maxBufferSize = 160000; // bytes
   int _currentBufferSize = 0;
+  String? _activeApiKey;
 
   static const Duration idleTimeout = AppConstants.wsIdleTimeout;
   String _lastKnownUri;
+  String? _lastKnownApiKey;
   bool _lastKnownIncognito = false;
 
   WebSocketService(this._settingsService)
     : _lastKnownUri = _settingsService.serverUri,
+      _lastKnownApiKey = _settingsService.cachedApiKey,
       _lastKnownIncognito = _settingsService.incognitoMode {
     _settingsService.addListener(_onSettingsChanged);
     LoggingService().attachWebSocket(this);
@@ -95,33 +104,52 @@ class WebSocketService extends ChangeNotifier {
   void _onSettingsChanged() async {
     final currentUri = _settingsService.serverUri;
     final currentIncognito = _settingsService.incognitoMode;
+    final currentApiKey = await _settingsService.getApiKey();
 
-    // If URI changed, trigger reconnect
+    bool credentialsChanged = false;
+
+    // 1. URI Change
     if (currentUri != _lastKnownUri) {
+      _logger.info('Server URI changed: $_lastKnownUri -> $currentUri');
       _lastKnownUri = currentUri;
+      credentialsChanged = true;
+    }
+
+    // 2. API Key Change
+    if (currentApiKey != _lastKnownApiKey) {
+      _logger.info('API Key changed, resetting session auth');
+      _lastKnownApiKey = currentApiKey;
+      credentialsChanged = true;
+    }
+
+    if (credentialsChanged) {
+      _isAuthenticatedSession = false;
       if (_status == ConnectionStatus.connected ||
           _status == ConnectionStatus.connecting) {
-        _logger.info('Server URI changed, reconnecting');
-        await disconnect(reason: 'Server URI changed');
+        await disconnect(reason: 'Credentials changed');
       }
+      notifyListeners();
       return;
     }
 
-    // If incognito mode changed and connected, force reconnect
+    // 3. Incognito mode change (Session remains authorized)
     if (currentIncognito != _lastKnownIncognito) {
       _lastKnownIncognito = currentIncognito;
       if (_status == ConnectionStatus.connected) {
         _logger.info(
-          'Incognito mode changed, reconnecting with new privacy flag',
+          'Incognito mode changed, reconnecting with new privacy flag (Session Auth maintained)',
         );
         await disconnect(reason: 'Incognito mode toggle');
-        // Auto-reconnect will trigger on next audio send
       }
     }
   }
 
-  Future<bool> connect() async {
-    if (_status == ConnectionStatus.connected) return true;
+  Future<bool> connect({String? uriOverride, String? apiKeyOverride}) async {
+    if (_status == ConnectionStatus.connected &&
+        uriOverride == null &&
+        apiKeyOverride == null) {
+      return true;
+    }
     if (_isConnecting) return false;
     if (_banState.isBanned) {
       _logger.warning(
@@ -132,11 +160,17 @@ class WebSocketService extends ChangeNotifier {
 
     _isConnecting = true;
     _isIntentionalDisconnect = false;
+    _lastHandshakeError = null;
     _updateStatus(ConnectionStatus.connecting);
     _handshake.reset();
 
     try {
-      final uriString = _settingsService.serverUri;
+      final uriString = uriOverride ?? _settingsService.serverUri;
+      _activeApiKey = apiKeyOverride ?? await _settingsService.getApiKey();
+
+      if (_activeApiKey == null || _activeApiKey!.isEmpty) {
+        throw Exception('No API key provided');
+      }
 
       // 1. Transport Security Validation
       _securityStatus = await _transportSecurity.validateServerUri(uriString);
@@ -221,9 +255,9 @@ class WebSocketService extends ChangeNotifier {
   }
 
   Future<void> _sendClientHello() async {
-    final apiKey = await _settingsService.getApiKey();
+    final apiKey = _activeApiKey;
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('No API key configured');
+      throw Exception('No API key available for handshake');
     }
 
     final info = await PackageInfo.fromPlatform();
@@ -253,6 +287,7 @@ class WebSocketService extends ChangeNotifier {
           // Handle authentication event
           if (event == 'authenticated') {
             _logger.info('Handshake complete: Authenticated');
+            _isAuthenticatedSession = true;
             _handshake.transitionTo(HandshakeState.authenticated);
             _updateStatus(ConnectionStatus.connected);
             _resetIdleTimer();
@@ -266,7 +301,12 @@ class WebSocketService extends ChangeNotifier {
             if (code == 403 ||
                 message?.toString().contains('Authentication') == true) {
               _logger.error('Authentication failed: $message');
+              _lastHandshakeError =
+                  message?.toString() ?? 'Authentication failed';
+              _isAuthenticatedSession = false;
               _handshake.transitionTo(HandshakeState.failed);
+              _isIntentionalDisconnect =
+                  true; // Stop auto-reconnect on auth failure
               _handleDisconnect();
               return;
             }
@@ -316,6 +356,7 @@ class WebSocketService extends ChangeNotifier {
         _updateStatus(ConnectionStatus.banned);
       } else {
         // Assume authentication or policy failure if doesn't look like a ban
+        _lastHandshakeError = closeReason ?? 'Authentication refused by server';
         _handshake.transitionTo(HandshakeState.failed);
         _updateStatus(ConnectionStatus.disconnected);
 
@@ -323,11 +364,11 @@ class WebSocketService extends ChangeNotifier {
         _messageController.add({
           'event': 'error',
           'code': 'AUTH_FAILED',
-          'message': closeReason ?? 'Authentication refused by server',
+          'message': _lastHandshakeError,
         });
       }
 
-      _isIntentionalDisconnect = true; // Disable auto-reconnect
+      _isIntentionalDisconnect = true; // Disable auto-reconnect on 1008
       _clearReconnectState();
     } else {
       _logger.warning(
@@ -350,7 +391,13 @@ class WebSocketService extends ChangeNotifier {
     _channel = null;
     _idleTimer?.cancel();
     _isConnecting = false;
-    _handshake.reset();
+
+    // Only reset handshake to locked if it's not in a terminal error state
+    // (failed or banned). This ensures the UI remembers the failure.
+    if (_handshake.state != HandshakeState.failed &&
+        _handshake.state != HandshakeState.banned) {
+      _handshake.reset();
+    }
 
     // Auto-reconnect only if not intentional and not banned
     if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
@@ -376,7 +423,11 @@ class WebSocketService extends ChangeNotifier {
         _logger.warning('Audio buffer full, dropping chunk');
       }
     } else {
-      _logger.warning('Cannot send audio in ${_handshake.state.name} state');
+      // Avoid spamming logs if we already know why it's failing
+      if (_handshake.state != HandshakeState.failed &&
+          _handshake.state != HandshakeState.banned) {
+        _logger.warning('Cannot send audio in ${_handshake.state.name} state');
+      }
     }
   }
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/audio_visualizer.dart';
 import 'package:flutter_client/ui/shared/widgets/floating_capsule.dart';
@@ -12,17 +14,37 @@ class RecordingView extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<RecordingController>();
     final settings = context.watch<SettingsService>();
+    final wsService = context.watch<WebSocketService>();
+
     final isRecording = controller.isRecording;
+    final isAuthorized = wsService.isAuthenticatedSession;
+    final isFailed = wsService.handshakeState.state == HandshakeState.failed;
 
     return Column(
       children: [
         const SizedBox(height: 16),
         FloatingCapsule(
           isRecording: isRecording,
+          enabled: isAuthorized,
           onTap: () => controller.toggleRecording(),
         ),
-        const SizedBox(height: 8),
-        if (settings.showVisualizer)
+        const SizedBox(height: 12),
+        if (!isAuthorized)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              isFailed
+                  ? 'Authentication Failed. Please check Settings.'
+                  : 'Please authenticate in Settings to begin.',
+              style: TextStyle(
+                color: isFailed ? Colors.redAccent : Colors.white38,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          )
+        else if (settings.showVisualizer)
           AnimatedOpacity(
             opacity: isRecording ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
