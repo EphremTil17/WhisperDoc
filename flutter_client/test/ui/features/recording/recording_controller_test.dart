@@ -3,6 +3,8 @@ import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/core/services/audio_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/history_service.dart';
+import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/core/controllers/recording_controller.dart';
 
 // Mock classes
@@ -12,51 +14,76 @@ class MockWebSocketService extends Mock implements WebSocketService {}
 
 class MockAutomationService extends Mock implements AutomationService {}
 
+class MockHistoryService extends Mock implements HistoryService {}
+
+class MockSettingsService extends Mock implements SettingsService {}
+
 void main() {
   late RecordingController controller;
   late MockAudioService mockAudioService;
   late MockWebSocketService mockWsService;
   late MockAutomationService mockAutomationService;
+  late MockHistoryService mockHistoryService;
+  late MockSettingsService mockSettingsService;
 
   setUp(() {
     mockAudioService = MockAudioService();
     mockWsService = MockWebSocketService();
     mockAutomationService = MockAutomationService();
+    mockHistoryService = MockHistoryService();
+    mockSettingsService = MockSettingsService();
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
     when(() => mockWsService.status).thenReturn(ConnectionStatus.disconnected);
     when(() => mockWsService.onMessage).thenAnswer((_) => const Stream.empty());
+    when(() => mockHistoryService.getHistory()).thenAnswer((_) async => []);
+    when(() => mockHistoryService.clearAll()).thenAnswer((_) async {});
+    when(() => mockSettingsService.incognitoMode).thenReturn(false);
+    when(
+      () => mockSettingsService.setIncognitoMode(any()),
+    ).thenAnswer((_) async {});
+    when(() => mockSettingsService.addListener(any())).thenReturn(null);
+    when(() => mockSettingsService.removeListener(any())).thenReturn(null);
 
     controller = RecordingController(
       audioService: mockAudioService,
       wsService: mockWsService,
       automationService: mockAutomationService,
+      historyService: mockHistoryService,
+      settingsService: mockSettingsService,
     );
   });
 
   group('Incognito Mode', () {
-    test('enableIncognitoMode sets incognitoMode to true', () {
-      expect(controller.incognitoMode, isFalse);
+    test('enableIncognitoMode sets incognitoMode to true', () async {
+      // Mock SettingsService to return true after setIncognitoMode is called
+      when(() => mockSettingsService.incognitoMode).thenReturn(true);
 
-      controller.enableIncognitoMode();
+      await controller.enableIncognitoMode();
 
       expect(controller.incognitoMode, isTrue);
+      verify(() => mockSettingsService.setIncognitoMode(true)).called(1);
+      verify(() => mockHistoryService.clearAll()).called(1);
     });
 
-    test('enableIncognitoMode clears existing history', () {
+    test('enableIncognitoMode clears existing history', () async {
       // We can't easily add to history without triggering the full flow,
       // but we can verify clearHistory works
-      controller.clearHistory();
+      await controller.clearHistory();
       expect(controller.history, isEmpty);
     });
 
-    test('disableIncognitoMode sets incognitoMode to false', () {
-      controller.enableIncognitoMode();
+    test('disableIncognitoMode sets incognitoMode to false', () async {
+      // Setup: mock incognito true, then false after disable
+      when(() => mockSettingsService.incognitoMode).thenReturn(true);
+      await controller.enableIncognitoMode();
       expect(controller.incognitoMode, isTrue);
 
-      controller.disableIncognitoMode();
+      when(() => mockSettingsService.incognitoMode).thenReturn(false);
+      await controller.disableIncognitoMode();
       expect(controller.incognitoMode, isFalse);
+      verify(() => mockSettingsService.setIncognitoMode(false)).called(1);
     });
   });
 

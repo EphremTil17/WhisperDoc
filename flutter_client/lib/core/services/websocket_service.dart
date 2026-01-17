@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
@@ -21,7 +22,7 @@ enum ConnectionStatus { disconnected, connecting, connected, banned }
 /// - Ban Awareness: 1008 close code handling with cooldown
 /// - Audio Buffering: Queue data during handshake, flush after auth
 ///
-/// Matches backend v2.7 security architecture and Python terminal client patterns.
+/// Matches backend v2.8.x security architecture and Python terminal client patterns.
 class WebSocketService extends ChangeNotifier {
   final SettingsService _settingsService;
   final TransportSecurityService _transportSecurity =
@@ -225,10 +226,11 @@ class WebSocketService extends ChangeNotifier {
       throw Exception('No API key configured');
     }
 
+    final info = await PackageInfo.fromPlatform();
     final payload = {
       'event': 'hello',
       'client': 'flutter_windows',
-      'version': '2.7.0', // Client version matching backend
+      'version': info.version, // Dynamic version from pubspec.yaml
       'token': apiKey,
       'incognito': _settingsService.incognitoMode,
     };

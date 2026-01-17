@@ -8,7 +8,7 @@ import websockets
 import requests
 import ipaddress
 import socket
-from .config import cfg, SecureConfig, CLIENT_VERSION
+from .config import cfg, SecureConfig
 
 class TransportManager:
     def __init__(self):
@@ -123,7 +123,7 @@ class TransportManager:
              await self.ws.send(json.dumps({
                  "event": "hello",
                  "client": "whisper_shell",
-                 "version": CLIENT_VERSION,
+                 "version": cfg.VERSION,
                  "token": api_key,
                  "incognito": cfg.args.incognito
              }))

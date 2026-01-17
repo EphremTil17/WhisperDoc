@@ -14,7 +14,7 @@ colorama.init()
 
 SERVICE_NAME = "WhisperDoc_Client"
 ENV_PATH = Path(".env")
-CLIENT_VERSION = "2.7.0"
+DEFAULT_VERSION = "2.8.4"
 
 class Config:
     def __init__(self):
@@ -29,6 +29,7 @@ class Config:
         self.RECORD_HOTKEY = os.getenv("RECORD_HOTKEY", "ctrl+alt+w")
         self.AUDIO_DEVICE_ID = int(os.getenv("AUDIO_DEVICE_ID", 0))
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+        self.VERSION = os.getenv("CLIENT_VERSION", DEFAULT_VERSION)
 
     def _parse_args(self):
         parser = argparse.ArgumentParser(description="WhisperDoc Terminal Client")

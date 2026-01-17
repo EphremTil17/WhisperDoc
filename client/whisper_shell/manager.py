@@ -36,8 +36,7 @@ class DictationClient:
 
     def _check_setup(self):
         if cfg.args.version:
-            from .config import CLIENT_VERSION
-            logger.info(f"WhisperDoc Terminal Client v{CLIENT_VERSION}")
+            logger.info(f"WhisperDoc Terminal Client v{cfg.VERSION}")
             sys.exit(0)
 
         if cfg.args.clear_key:

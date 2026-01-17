@@ -1,4 +1,4 @@
-# WhisperDoc Client (v2.7.0)
+# WhisperDoc Client (v2.8.4)
 
 A secure, modular, and high-performance Python terminal client for real-time dictation using the WhisperDoc backend.
 
@@ -12,7 +12,8 @@ A secure, modular, and high-performance Python terminal client for real-time dic
 
 ### Performance & UX
 *   **Global Hotkeys & Single Instance**: Control recording (Default: `Ctrl+Alt+W`) system-wide. Uses a Windows Mutex to ensure only one instance runs at a time (preventing mic conflicts).
-*   **State-Aware Resiliency**: Seamlessly handles connection drops, re-authenticates on demand, and respects server-side "Cooldown" messages during temporary bans.
+*   **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The client respects server-mandated "Cooldown" periods and provides clear user feedback on ban status.
+*   **Hardened Handshake Protocol**: Implements strict authentication sequencing. Audio data is only transmitted after the identity-verified handshake is successfully acknowledged by the backend.
 *   **Low-Latency PCM Streaming**: Streams raw PCM audio chunks in real-time with zero-latency handover.
 *   **Smart Auto-Paste**: Automatically types transcriptions into your active cursor instantly upon processing completion.
 

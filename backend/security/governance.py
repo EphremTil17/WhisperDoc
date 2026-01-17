@@ -8,11 +8,11 @@ IDLE_TIMEOUT_SECONDS = int(os.getenv("IDLE_TIMEOUT_SECONDS", "300"))
 HANDSHAKE_TIMEOUT_SECONDS = int(os.getenv("HANDSHAKE_TIMEOUT_SECONDS", "15"))
 
 BAN_FAILURE_THRESHOLD = int(os.getenv("BAN_FAILURE_THRESHOLD", "5"))
-BAN_FAILURE_WINDOW = int(os.getenv("BAN_FAILURE_WINDOW", "60"))
+BAN_FAILURE_WINDOW_SECONDS = int(os.getenv("BAN_FAILURE_WINDOW_SECONDS", "60"))
 BAN_DURATION_SECONDS = int(os.getenv("BAN_DURATION_SECONDS", "300"))
 
 FLOOD_ATTEMPT_THRESHOLD = int(os.getenv("FLOOD_ATTEMPT_THRESHOLD", "50"))
-FLOOD_ATTEMPT_WINDOW = int(os.getenv("FLOOD_ATTEMPT_WINDOW", "60"))
+FLOOD_ATTEMPT_WINDOW_SECONDS = int(os.getenv("FLOOD_ATTEMPT_WINDOW_SECONDS", "60"))
 FLOOD_BAN_SECONDS = int(os.getenv("FLOOD_BAN_SECONDS", "60"))
 
 MAX_CONNECTIONS = int(os.getenv("MAX_CONNECTIONS", "10"))
@@ -40,7 +40,7 @@ class SecurityGovernance:
     def record_connection_attempt(self, ip: str):
         now = time.time()
         attempts = self.attempt_tracker.get(ip, [])
-        attempts = [t for t in attempts if now - t < FLOOD_ATTEMPT_WINDOW]
+        attempts = [t for t in attempts if now - t < FLOOD_ATTEMPT_WINDOW_SECONDS]
         attempts.append(now)
         self.attempt_tracker[ip] = attempts
         
@@ -51,12 +51,12 @@ class SecurityGovernance:
     def record_protocol_violation(self, ip: str):
         now = time.time()
         failures = self.failure_tracker.get(ip, [])
-        failures = [t for t in failures if now - t < BAN_FAILURE_WINDOW]
+        failures = [t for t in failures if now - t < BAN_FAILURE_WINDOW_SECONDS]
         failures.append(now)
         self.failure_tracker[ip] = failures
         
         if len(failures) >= BAN_FAILURE_THRESHOLD:
-            log.error(f"IP {ip} exceeded failure threshold ({BAN_FAILURE_THRESHOLD} in {BAN_FAILURE_WINDOW}s). Banning for {BAN_DURATION_SECONDS}s.")
+            log.error(f"IP {ip} exceeded failure threshold ({BAN_FAILURE_THRESHOLD} in {BAN_FAILURE_WINDOW_SECONDS}s). Banning for {BAN_DURATION_SECONDS}s.")
             self.ban_tracker[ip] = now + BAN_DURATION_SECONDS
 
     def clear_old_trackers(self):

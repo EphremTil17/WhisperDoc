@@ -1,5 +1,5 @@
-# WhisperDoc - Speech-to-Text System
-A minimal, **secure**, and production-ready speech-to-text system. It combines `faster-whisper` GPU acceleration with a clean client-server architecture, featuring a **read-only container runtime** and a modern flutter client application for hassle free auto-pasting transcription.
+# WhisperDoc - Speech-to-Text System v2.8.4
+A minimal, **secure**, and production-ready speech-to-text system. It combines `faster-whisper` GPU acceleration with a clean client-server architecture, featuring a **read-only container runtime** and modern client applications for high-performance, auto-pasting and secure dictation.
 
 ## Prerequisites
 Before starting, ensure your system meets the following requirements:
@@ -7,7 +7,7 @@ Before starting, ensure your system meets the following requirements:
 ### Standard Requirements
 - **Linux/Ubuntu** (Tested on Ubuntu 22.04/24.04) for automated setup
 - **Windows/MacOS/Linux** for manual setup
-- **Python 3.8+** and `pip`
+- **Python 3.10+** and `pip`
 - **Docker** and **Docker Compose**
 
 ### GPU Requirements (Optional, but Recommended)
@@ -81,15 +81,15 @@ docker compose exec whisper-backend pytest tests/test_api.py
 - `POST /log` - Ingest a batch of logs from a remote client
 - `GET /ws` - WebSocket connection (JSON handshake with token required)
 
-## Architecture
+## Architecture & Security (Hardened v2.8)
 - **Backend Core**: Dockerized FastAPI server with `faster-whisper` GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
 - **Zero-Trust Modular Design**: Refactored into specialized domains to prevent lateral complexity:
     - **Engine**: Pure AI Orchestration with intelligent dynamic VRAM management (unloads model after 30m idle).
-    - **Security**: Advanced IP-Level Governance featuring an automated **Active Defense Circuit Breaker** to mitigate flood attacks and protocol violations.
-    - **Protocol**: Rigid WebSocket state machine enforcing identity verification before any data processing occurs.
-- **Dual-Door Authentication & Secure Enclave**: Hybrid security supporting local static keys (Door #1) and OIDC/JWT providers (Door #2). Python clients further secure these keys via system-level OS enclaves (`keyring`).
-- **Secure Handshake & Versioning**: Utilizes a versioned bi-directional handshake to verify client/server parity and identity before promoting a connection to active status.
-- **Centralized Sanitized Logging**: High-performance logging with built-in **Incognito Mode (Ghost Mode)** for in-memory processing and automated server-side trace redaction.
+    - **Security (v2.8)**: Advanced IP-Level Governance featuring an automated **Active Defense Circuit Breaker** (1008 close codes) to mitigate flood attacks and protocol violations.
+    - **Protocol**: Rigid WebSocket state machine enforcing identity verification before any data processing/audio ingestion occurs.
+- **Dual-Door Authentication & Secure Enclave**: Hybrid security supporting local static keys (Door #1) for development and OIDC/JWT providers (Door #2) for production. Clients secure these keys via OS-level enclaves (Windows Credential Manager / Keychain / Keyring).
+- **Hardened Handshake**: Utilizes a versioned bi-directional handshake to verify client/server parity and identity. Unauthorized data sent before authentication triggers an immediate IP-level ban.
+- **Privacy First (Ghost Mode)**: Built-in **Incognito Mode** for in-memory processing and automated server-side trace redaction, synchronized across the protocol.
 - **Fail-Secure Transaction Integrity**: Implements deterministic cleanup of all temporary audio assets via `finally` blocks, ensuring zero disk persistence post-transcription.
 
 ## Configuration
@@ -123,21 +123,24 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows)
+### Flutter Client (Windows) v2.8.4
 
 A native Windows desktop application with a modern glassmorphic UI. Features include:
-- **Global Hotkey** for hands-free recording (default: Ctrl+Alt+E)
-- **Deep Sleep Resilience** - Hotkeys work reliably even after system sleep
-- **Auto Copy/Paste** - Transcriptions go straight to your cursor
-- **Incognito Mode** - Temporarily disable history recording
+- **Enterprise Security**: Windows Credential Manager storage, Encrypted local history (AES-256), and JWT expiry warnings.
+- **Transport Protection**: Mandatory WSS for public IPs and RFC 1918 private network validation.
+- **Global Hotkey** for hands-free recording (default: Ctrl+Alt+E).
+- **Deep Sleep Resilience** - Hotkeys work reliably even after system sleep.
+- **Auto Copy/Paste** - Transcriptions go straight to your cursor.
+- **Incognito Mode** - Protocol-level privacy flag with local memory clearing.
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client
+### Python Terminal Client v2.8.4
 
 A secure, modular, and production-ready terminal client for high-performance dictation. 
 
 *   **Secure API Key Storage** (OS Enclave)
+*   **Active Defense Awareness** (Handles 1008 Ban states)
 *   **Fail-Secure Handshake**
 *   **Auto Copy/Paste**
 *   **Automated First-Time Setup**
@@ -166,10 +169,11 @@ This means Docker cannot find the NVIDIA runtime.
 |-------|-------------|--------|
 | Phase 1 | Core Backend & REST API | ✅ Complete |
 | Phase 2 | WebSocket Streaming | ✅ Complete |
-| Phase 3 | Terminal Client | ✅ Complete |
+| Phase 3 | Terminal Client Refactoring | ✅ Complete |
 | Phase 4 | Flutter Windows Client | ✅ Complete |
 | Phase 5 | Dynamic Model Loading | ✅ Complete |
 | Phase 6 | Architecture Refactoring | ✅ Complete |
 | Phase 7 | Infrastructure Hardening | ✅ Complete |
-| Phase 8 | Client and Backend Hardening | ✅ Complete |
+| Phase 8 | Client and Backend Hardening (v2.8) | ✅ Complete |
+| Phase 9 | Flutter Client AuthHardening (v2.8) | ✅ Complete |
 
