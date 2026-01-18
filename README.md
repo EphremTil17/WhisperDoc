@@ -1,5 +1,5 @@
-# WhisperDoc - Speech-to-Text System v2.11.0
-A minimal, **secure**, and production-ready speech-to-text system. It combines `faster-whisper` GPU acceleration with a clean client-server architecture, featuring a **read-only container runtime** and modern client applications for high-performance, auto-pasting and secure dictation.
+# WhisperDoc - Speech-to-Text System v2.13.0
+A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It leverages `faster-whisper` GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
 ## Prerequisites
 Before starting, ensure your system meets the following requirements:
@@ -81,16 +81,31 @@ docker compose exec whisper-backend pytest tests/test_api.py
 - `POST /log` - Ingest a batch of logs from a remote client
 - `GET /ws` - WebSocket connection (JSON handshake with token required)
 
-## Architecture & Security (Hardened v2.8)
+## 🛡️ Architecture & Security Deep-Dive (Hardened v2.13.0)
+
 - **Backend Core**: Dockerized FastAPI server with `faster-whisper` GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
-- **Zero-Trust Modular Design**: Refactored into specialized domains to prevent lateral complexity:
-    - **Engine**: Pure AI Orchestration with intelligent dynamic VRAM management (unloads model after 30m idle).
-    - **Security (v2.8)**: Advanced IP-Level Governance featuring an automated **Active Defense Circuit Breaker** (1008 close codes) to mitigate flood attacks and protocol violations.
-    - **Protocol**: Rigid WebSocket state machine enforcing identity verification before any data processing/audio ingestion occurs.
-- **Dual-Door Authentication & Secure Enclave**: Hybrid security supporting local static keys (Door #1) for development and OIDC/JWT providers (Door #2) for production. Clients secure these keys via OS-level enclaves (Windows Credential Manager / Keychain / Keyring).
-- **Hardened Handshake**: Utilizes a versioned bi-directional handshake to verify client/server parity and identity. Unauthorized data sent before authentication triggers an immediate IP-level ban.
-- **Privacy First (Ghost Mode)**: Built-in **Incognito Mode** for in-memory processing and automated server-side trace redaction, synchronized across the protocol.
-- **Fail-Secure Transaction Integrity**: Implements deterministic cleanup of all temporary audio assets via `finally` blocks, ensuring zero disk persistence post-transcription.
+WhisperDoc v2.13.0 represents a significant leap in enterprise-grade security, moving beyond simple API keys to a comprehensive **Zero-Trust Identity Federation**.
+
+### 1. Identity Federation & Cryptographic Hardening
+- **OIDC with PKCE (Zitadel)**: Transitioned to industry-standard OAuth2 with **Proof Key for Code Exchange (PKCE)**. The system enforces strict identity verification via **Asymmetrical RS256 signing**.
+- **Cryptographic Mathematical Verification**: The implementation has been rigorously audited and mathematically verified to reject **Algorithm Confusion attacks** (HS256) and `none` algorithm bypass attempts.
+- **System Browser Integration**: OIDC flows are executed via the native system browser, leveraging the OS's existing security posture and preventing "In-App Webview" credential interception.
+
+### 2. The "Handshake Cage" Protocol
+- **Strict Sequencing**: A rigid WebSocket state machine that prevents any data processing or audio ingestion until a valid handshake is acknowledged.
+- **Server-Side Enforcement**: The backend is hardened to immediately drop and black-list IPs that attempt to stream audio before a successful identity verification.
+
+### 3. Native Instance Integrity (Single Instance Mutex)
+- **Win32 Named Mutex**: Implemented a native Windows Mutex (`WhisperDocSingleInstanceMutex`) to ensure only one instance of the application is active.
+- **Resource Protection**: This prevents critical resource contention on global hotkeys and microphone handles, ensuring a deterministic and stable environment during system sleep/wake cycles.
+
+### 4. Active Defense & Infrastructure Hardening
+- **Circuit Breaker Circuitry**: An automated **Active Defense** system that issues `1008 (Policy Violation)` codes to clients attempting flood attacks or protocol violations.
+- **Read-Only Enclosure**: The backend operates in a strictly **read-only container runtime**, making the environment resistant to unauthorized filesystem modifications.
+- **Dynamic VRAM Scaling**: Intelligent engine orchestration that unloads models from VRAM after periods of inactivity, optimizing performance for multi-tenant GPU environments.
+
+### 5. Privacy-First (Ghost Mode)
+- **Incognito State**: Protocol-level privacy flag that redacts server-side logs and enforces zero-disk persistence, ensuring that sensitive transcriptions leave no trace in backend telemetry.
 
 ## Configuration
 WhisperDoc is entirely configuration-driven via the `.env` file. These variables are passed to the backend during startup.
@@ -123,19 +138,18 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows) v2.11.0
+### Flutter Client (Windows) v2.13.0
 
-A native Windows desktop application with a modern glassmorphic UI. Features include:
-- **Enterprise Security**: Windows Credential Manager storage, Encrypted local history (AES-256), and JWT expiry warnings.
-- **Transport Protection**: Mandatory WSS for public IPs and RFC 1918 private network validation.
-- **Global Hotkey** for hands-free recording (default: Ctrl+Alt+E).
-- **Deep Sleep Resilience** - Hotkeys work reliably even after system sleep.
-- **Auto Copy/Paste** - Transcriptions go straight to your cursor.
-- **Incognito Mode** - Protocol-level privacy flag with local memory clearing.
+A native Windows desktop application with integrated **OIDC Identity Hardening** into the user interface. Features include:
+- **Enterprise Security**: Windows Credential Manager enclave storage, Encrypted local history (AES-256), and automated JWT expiry warnings.
+- **Handshake Cage Protocol**: Native implementation of the buffer-then-flush security strategy to ensure zero-data leakage before identity verification.
+- **Native System Integration**: Single-instance enforcement via Win32 Named Mutex and deep-sleep resilient global hotkeys.
+- **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction.
+- **Verification Suite**: Bundled security tests validating PKCE cryptographic integrity and state-parameter protection.
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.11.0
+### Python Terminal Client v2.13.0
 
 A secure, modular, and production-ready terminal client for high-performance dictation. 
 
@@ -169,11 +183,12 @@ This means Docker cannot find the NVIDIA runtime.
 |-------|-------------|--------|
 | Phase 1 | Core Backend & REST API | ✅ Complete |
 | Phase 2 | WebSocket Streaming | ✅ Complete |
-| Phase 3 | Terminal Client Refactoring | ✅ Complete |
+| Phase 3 | Robust Dev Terminal Client | ✅ Complete |
 | Phase 4 | Flutter Windows Client | ✅ Complete |
 | Phase 5 | Dynamic Model Loading | ✅ Complete |
 | Phase 6 | Architecture Refactoring | ✅ Complete |
 | Phase 7 | Infrastructure Hardening | ✅ Complete |
-| Phase 8 | Client and Backend Hardening (v2.8) | ✅ Complete |
-| Phase 9 | Flutter Client AuthHardening (v2.8) | ✅ Complete |
+| Phase 8 | Client and Backend Hardening | ✅ Complete |
+| Phase 9 | OIDC Identity Hardening & Verification Suite (v2.13.0) | ✅ Complete |
+| Phase 10 | UI and Functional Improvements | 🚧 In Progress |
 

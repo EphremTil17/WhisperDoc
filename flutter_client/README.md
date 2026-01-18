@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.11.0
+# WhisperDoc Flutter Client v2.13.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
 
@@ -8,15 +8,15 @@ WhisperDoc Client provides a lightweight, always-ready interface for voice dicta
 
 This client is designed for users who need fast, accurate dictation without leaving their current workflow. Press a global hotkey, speak, and your words appear wherever your cursor is.
 
-## 🔒 Enterprise-Grade Security (Hardened v2.11.0)
+## 🔒 Enterprise-Grade Security (Hardened v2.13.0)
 
 The Flutter client has been hardened to match server-side security standards through five core pillars:
 
-- **Identity Federation (OIDC/PKCE)**: Implements industry standard OAuth2 PKCE (Proof Key for Code Exchange) flow via the **System Browser**. Verified via a custom Dart implementation for maximum transparency and Windows compatibility.
+- **Identity Federation (OIDC/PKCE)**: Implements industry-standard OAuth2 PKCE (Proof Key for Code Exchange) flow via the **System Browser**. Verified via a custom Dart implementation for maximum transparency and Windows compatibility.
 - **Credential Isolation**: API keys and OIDC JWTs are stored exclusively in the **Windows Credential Manager** (Secure Vault). Sensitive tokens are never written to plain-text configuration files.
-- **Transport Security & RFC 1918**: mandatory `wss://` (TLS 1.2+) is enforced for all public connections. Plain-text `ws://` is permitted **only** after validating the target as a verified local private network IP (RFC 1918).
-- **Hardened Handshake Protocol**: Implements a strict "Handshake Cage" state machine that buffers audio locally and only flushes to the socket *after* the identity-verified handshake is acknowledged by the backend.
-- **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The UI provides real-time "Ban Cooldown" countdowns and disables reconnection attempts until the server-mandated wait period expires.
+- **Transport Security & RFC 1918**: Mandatory `wss://` (TLS 1.2+) is enforced for all public connections. Plain-text `ws://` is permitted **only** after validating the target as a verified local private network IP (RFC 1918).
+- **Hardened Handshake (Handshake Cage)**: Implements a strict state machine that buffers audio locally and only flushes to the socket *after* the identity-verified handshake is acknowledged by the backend.
+- **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The UI provides real-time "Ban Cooldown" countdowns and respects server-mandated wait periods.
 - **Data-at-Rest Encryption**: Transcription history is stored in an **AES-256 encrypted Isar database**. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
 
@@ -71,7 +71,8 @@ lib/
 - **WebSocket Resilience**: Exponential backoff reconnection with ban-awareness.
 - **Intelligent Idle Timeout**: Connection auto-closes after inactivity to save resources.
 - **Incognito Mode**: Protocol-level privacy flag with memory hygiene.
-- **Glassmorphic UI**: Modern, translucent design that stays out of your way.
+- **Verification Suite**: Modular security tests (`auth_service_test.dart`) validating PKCE integrity and state-parameter protection.
+- **Glassmorphic UI**: Modern, translucent design with integrated OIDC identity hardening.
 
 ## Prerequisites
 
@@ -119,7 +120,7 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v2.11.0)
+## Recent Improvements (v2.13.0)
 
 ### Hotkey Resilience
 - Replaced `Timer.periodic` polling with native `GetMessage` blocking loop

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
 import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/core/services/transport_security_service.dart';
-
+import 'package:flutter_client/core/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -12,9 +12,12 @@ class StatusBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wsService = context.watch<WebSocketService>();
+    final authService = context.watch<AuthService>();
+
     final status = wsService.status;
     final security = wsService.securityStatus;
     final handshake = wsService.handshakeState.state;
+    final isAuthenticated = authService.isAuthenticated;
 
     Color statusColor;
     String statusText;
@@ -29,9 +32,11 @@ class StatusBar extends StatelessWidget {
         statusColor = isEncrypted
             ? Colors.greenAccent.withValues(alpha: 0.8)
             : Colors.orangeAccent.withValues(alpha: 0.8);
+
+        final String authType = isAuthenticated ? "OIDC Verified" : "API Key";
         statusText = isEncrypted
-            ? "Connected (TLS 1.3 Encrypted)"
-            : "Connected (Not Encrypted)";
+            ? "Connected ($authType • TLS 1.3)"
+            : "Connected ($authType • Unencrypted)";
         break;
       case ConnectionStatus.connecting:
         statusColor = Colors.orangeAccent.withValues(alpha: 0.8);

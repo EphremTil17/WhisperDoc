@@ -8,6 +8,7 @@ class AppTheme {
   static const Color backgroundEnd = Color(0xFF2d0a1a); // Dark gradient end
   static const Color surface = Color(0xCC1E1E23); // Semi-transparent surface
   static const Color glassBorder = Color(0x1AFFFFFF); // White with low opacity
+  static const Color cardBackground = Color(0x0DFFFFFF); // Very subtle white
 
   static ThemeData get darkTheme {
     return ThemeData(

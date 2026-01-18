@@ -45,7 +45,7 @@ class SettingsService extends ChangeNotifier {
   bool _showVisualizer = _defaultShowVisualizer;
   bool _incognitoMode = _defaultIncognitoMode;
   String? _apiKey;
-  String _appVersion = '2.11.0'; // Default fallback
+  String _appVersion = '2.13.0'; // Default fallback
 
   String get appVersion => _appVersion;
 

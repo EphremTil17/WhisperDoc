@@ -6,7 +6,7 @@ import 'package:flutter_client/core/services/logging_service.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
-import 'package:flutter_client/ui/shared/widgets/hamburger_menu.dart';
+import 'package:flutter_client/ui/shared/widgets/profile_hub.dart';
 import 'package:flutter_client/ui/shared/widgets/app_footer.dart';
 import 'package:flutter_client/ui/shared/widgets/action_bar.dart';
 import 'package:flutter_client/ui/screens/home/widgets/transcription_view.dart';
@@ -39,11 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void _initHotkeys() {
     final hotkeyService = context.read<HotkeyService>();
     final settings = context.read<SettingsService>();
-
-    // Ensure controller is available
     final controller = context.read<RecordingController>();
 
-    // Listen for recording errors (Phase 8)
     _errorSubscription = controller.onError.listen((error) {
       if (!mounted) return;
       if (error.contains('Authentication Failed') ||
@@ -67,11 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    // Track initial hotkey settings to detect changes later
     _lastModifiers = settings.hotkeyModifiers;
     _lastVKey = settings.hotkeyVKey;
-
-    // Start with current settings
     unawaited(_restartHotkeyService(hotkeyService, settings));
 
     _hotkeySubscription = hotkeyService.onHotkeyPressed.listen((event) {
@@ -80,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(controller.toggleRecording());
     });
 
-    // Handle settings changes
     settings.addListener(_onSettingsChanged);
   }
 
@@ -88,7 +81,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final hotkeyService = context.read<HotkeyService>();
     final settings = context.read<SettingsService>();
 
-    // Only restart hotkey service if hotkey settings actually changed
     if (_lastModifiers != settings.hotkeyModifiers ||
         _lastVKey != settings.hotkeyVKey) {
       _lastModifiers = settings.hotkeyModifiers;
@@ -116,7 +108,6 @@ class _HomeScreenState extends State<HomeScreen> {
     BuildContext context,
     RecordingController controller,
   ) {
-    // Block toggle during recording (Q3: Option A - Block Toggle)
     if (controller.isRecording) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -133,10 +124,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (controller.incognitoMode) {
-      // Turn OFF incognito - no confirmation needed
       unawaited(controller.disableIncognitoMode());
     } else {
-      // Turn ON incognito - show confirmation
       unawaited(
         showDialog<bool>(
           context: context,
@@ -150,8 +139,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Dialogs extracted to AuthErrorDialog and IncognitoToggleDialog widgets.
-
   @override
   void dispose() {
     context.read<SettingsService>().removeListener(_onSettingsChanged);
@@ -162,7 +149,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch controller for UI updates
     return Scaffold(
       body: Container(
         decoration: AppTheme.mainGradient,
@@ -174,11 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: Stack(
                     children: [
-                      const Positioned(
-                        top: 10,
-                        right: 24,
-                        child: HamburgerMenu(),
-                      ),
+                      const Positioned(top: 10, right: 24, child: ProfileHub()),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Column(
@@ -186,8 +168,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             const HomeHeader(),
                             const RecordingView(),
                             const Expanded(child: TranscriptionView()),
-
-                            // Footer: [Incognito] [History] [Lock] [Settings] [Log]
                             Consumer<RecordingController>(
                               builder: (context, controller, child) =>
                                   ActionBar(
@@ -199,9 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                             ),
                             const SizedBox(height: 12),
-                            // Status Text below ActionBar
                             const StatusBar(),
-                            // Padding below status text to separate from version footer
                             const SizedBox(height: 24),
                           ],
                         ),
@@ -209,12 +187,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-                // Fixed Footer at bottom
                 const AppFooter(),
               ],
             ),
-
-            // Ban Overlay (Phase 4) - Simplified
             const BanOverlay(),
           ],
         ),
