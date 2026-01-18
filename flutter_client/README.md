@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.10.11
+# WhisperDoc Flutter Client v2.11.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
 
@@ -8,13 +8,14 @@ WhisperDoc Client provides a lightweight, always-ready interface for voice dicta
 
 This client is designed for users who need fast, accurate dictation without leaving their current workflow. Press a global hotkey, speak, and your words appear wherever your cursor is.
 
-## 🔒 Enterprise-Grade Security (Hardened v2.8)
+## 🔒 Enterprise-Grade Security (Hardened v2.11.0)
 
 The Flutter client has been hardened to match server-side security standards through five core pillars:
 
+- **Identity Federation (OIDC/PKCE)**: Implements industry standard OAuth2 PKCE (Proof Key for Code Exchange) flow via the **System Browser**. Verified via a custom Dart implementation for maximum transparency and Windows compatibility.
 - **Credential Isolation**: API keys and OIDC JWTs are stored exclusively in the **Windows Credential Manager** (Secure Vault). Sensitive tokens are never written to plain-text configuration files.
 - **Transport Security & RFC 1918**: mandatory `wss://` (TLS 1.2+) is enforced for all public connections. Plain-text `ws://` is permitted **only** after validating the target as a verified local private network IP (RFC 1918).
-- **Hardened Handshake Protocol**: Implements a strict state machine that buffers audio locally and only flushes to the socket *after* the identity-verified handshake is acknowledged by the backend.
+- **Hardened Handshake Protocol**: Implements a strict "Handshake Cage" state machine that buffers audio locally and only flushes to the socket *after* the identity-verified handshake is acknowledged by the backend.
 - **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The UI provides real-time "Ban Cooldown" countdowns and disables reconnection attempts until the server-mandated wait period expires.
 - **Data-at-Rest Encryption**: Transcription history is stored in an **AES-256 encrypted Isar database**. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
@@ -80,16 +81,21 @@ lib/
 
 ## Quick Start
 
-```bash
-# Install dependencies
-flutter pub get
+1. **Install dependencies**
+   ```bash
+   flutter pub get
+   ```
+2. **Configure Environment**
+   Duplicate `env.json.template` to `env.json` and fill in your OIDC credentials.
 
-# Run in development
-flutter run -d windows
-
-# Build release (with obfuscation)
-flutter build windows --release --obfuscate --split-debug-info=build/debug-info
-```
+3. **Run in development**
+   ```bash
+   flutter run -d windows --dart-define-from-file=env.json
+   ```
+4. **Build release**
+   ```bash
+   flutter build windows --release --obfuscate --split-debug-info=build/debug-info --dart-define-from-file=env.json
+   ```
 
 ## Configuration
 
@@ -113,7 +119,7 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v1.13.0)
+## Recent Improvements (v2.11.0)
 
 ### Hotkey Resilience
 - Replaced `Timer.periodic` polling with native `GetMessage` blocking loop
@@ -125,10 +131,23 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 - Added exponential backoff for reconnections to prevent resource waste
 - Idle timeout reduced to 3 minutes for faster resource cleanup
 
+### OIDC Identity Integration
+- Implemented manual OAuth2 PKCE flow for Windows compatibility
+- Replaced third-party OIDC libraries with a lean Dart implementation
+- Added **System Browser** authentication for enhanced user trust and security
+
+### Security Hardening
+- Implemented the **Handshake Cage** (buffer-then-flush) strategy
+- Added OIDC session persistence using hardware-bound secure storage
+- Explicitly masked sensitive authentication tokens in technical logs
+
 ### Architecture Refactoring
 - Added `get_it` for dependency injection
 - Created `AppConstants` for centralized configuration
 - Moved `RecordingController` from UI layer to core layer
+- Shifted to a **Templatized Configuration** using `String.fromEnvironment`
+- Consolidated JWT logic using `jwt_decoder` and removed legacy `dart_jsonwebtoken`
+- Implemented a Win32 Named Mutex to enforce single-instance integrity
 - Created `GlassDialog` reusable widget (reduced dialog boilerplate by ~50 lines each)
 
 ## License

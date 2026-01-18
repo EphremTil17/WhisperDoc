@@ -13,6 +13,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
+  // Enforce single instance to prevent resource conflicts (Hotkey/Audio)
+  HANDLE hMutex = CreateMutex(NULL, TRUE, L"WhisperDocSingleInstanceMutex");
+  if (hMutex == NULL || GetLastError() == ERROR_ALREADY_EXISTS) {
+    // Another instance is running or failed to acquire mutex, exit silently
+    return EXIT_SUCCESS;
+  }
+
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);

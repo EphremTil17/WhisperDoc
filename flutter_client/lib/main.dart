@@ -7,6 +7,7 @@ import 'package:flutter_client/core/services/websocket_service.dart';
 import 'package:flutter_client/core/services/audio_service.dart';
 import 'package:flutter_client/core/services/hotkey_service.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/core/services/auth_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/controllers/recording_controller.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
@@ -14,26 +15,31 @@ import 'package:flutter_client/ui/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await windowManager.ensureInitialized();
 
-  // Window Configuration
-  const windowOptions = WindowOptions(
-    size: Size(420, 600), // AppConstants.windowWidth x windowHeight
-    center: true,
-    backgroundColor: Colors.transparent,
-    skipTaskbar: false,
-    titleBarStyle: TitleBarStyle.hidden,
-    title: "WhisperDoc",
-  );
+  // Window Configuration & Service Initialization
+  try {
+    await windowManager.ensureInitialized();
 
-  await windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.show();
-    await windowManager.focus();
-    await windowManager.setResizable(false);
-  });
+    const windowOptions = WindowOptions(
+      size: Size(420, 600),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.hidden,
+      title: "WhisperDoc",
+    );
 
-  // Initialize all services via Service Locator
-  await setupServices();
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+      await windowManager.setResizable(false);
+    });
+
+    // Initialize all services via Service Locator
+    await setupServices();
+  } catch (e) {
+    debugPrint('Critical Startup Error: $e');
+  }
 
   runApp(
     MultiProvider(
@@ -42,6 +48,7 @@ void main() async {
         ChangeNotifierProvider.value(value: getIt<SettingsService>()),
         ChangeNotifierProvider.value(value: getIt<WebSocketService>()),
         ChangeNotifierProvider.value(value: getIt<AudioService>()),
+        ChangeNotifierProvider.value(value: getIt<AuthService>()),
         ChangeNotifierProvider.value(value: getIt<RecordingController>()),
         Provider.value(value: getIt<HotkeyService>()),
         Provider.value(value: getIt<AutomationService>()),

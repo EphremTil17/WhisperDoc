@@ -43,3 +43,4 @@ terminal.txt
 .gemini/*
 specs/
 PROJECT_CONTEXT.md
+flutter_client/env.json

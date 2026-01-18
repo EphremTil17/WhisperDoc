@@ -10,6 +10,7 @@ import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/core/services/transport_security_service.dart';
 import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/core/services/ban_state_service.dart';
+import 'package:flutter_client/core/services/auth_service.dart';
 import 'package:flutter_client/core/constants/app_constants.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected, banned }
@@ -29,6 +30,7 @@ class WebSocketService extends ChangeNotifier {
       TransportSecurityService();
   final HandshakeStateMachine _handshake = HandshakeStateMachine();
   final BanStateService _banState = BanStateService();
+  final AuthService _authService;
 
   WebSocketChannel? _channel;
   final StreamController<ConnectionStatus> _statusController =
@@ -72,11 +74,12 @@ class WebSocketService extends ChangeNotifier {
   String? _lastKnownApiKey;
   bool _lastKnownIncognito = false;
 
-  WebSocketService(this._settingsService)
+  WebSocketService(this._settingsService, this._authService)
     : _lastKnownUri = _settingsService.serverUri,
       _lastKnownApiKey = _settingsService.cachedApiKey,
       _lastKnownIncognito = _settingsService.incognitoMode {
     _settingsService.addListener(_onSettingsChanged);
+    _authService.addListener(_onAuthChanged);
     LoggingService().attachWebSocket(this);
 
     // Listen to handshake state changes for logging
@@ -94,11 +97,21 @@ class WebSocketService extends ChangeNotifier {
     _idleTimer?.cancel();
     _reconnectTimer?.cancel();
     _settingsService.removeListener(_onSettingsChanged);
+    _authService.removeListener(_onAuthChanged);
     _handshake.dispose();
     _banState.dispose();
     unawaited(_statusController.close());
     unawaited(_messageController.close());
     super.dispose();
+  }
+
+  void _onAuthChanged() async {
+    _logger.info('Auth state changed, resetting session if connected');
+    if (_status == ConnectionStatus.connected ||
+        _status == ConnectionStatus.connecting) {
+      await disconnect(reason: 'Identity change');
+    }
+    notifyListeners();
   }
 
   void _onSettingsChanged() async {
@@ -255,21 +268,40 @@ class WebSocketService extends ChangeNotifier {
   }
 
   Future<void> _sendClientHello() async {
-    final apiKey = _activeApiKey;
-    if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('No API key available for handshake');
+    String? token;
+    String authType = 'api_key';
+
+    // 1. Prioritize OIDC Identity Token
+    if (_authService.isAuthenticated) {
+      token = await _authService.getAccessToken();
+      authType = 'oidc';
+      _logger.info('Using OIDC identity token for handshake');
+    }
+
+    // 2. Fallback to manually entered API Key
+    if (token == null || token.isEmpty) {
+      token = _activeApiKey;
+      authType = 'api_key';
+      _logger.info('Using static API key for handshake');
+    }
+
+    if (token == null || token.isEmpty) {
+      throw Exception('No authentication token available');
     }
 
     final info = await PackageInfo.fromPlatform();
     final payload = {
       'event': 'hello',
       'client': 'flutter_windows',
-      'version': info.version, // Dynamic version from pubspec.yaml
-      'token': apiKey,
+      'version': info.version,
+      'token': token, // Transmitted securely over WSS, masked in logs below
+      'auth_type': authType,
       'incognito': _settingsService.incognitoMode,
     };
 
-    _logger.info('Sending client hello (incognito: ${payload['incognito']})');
+    _logger.info(
+      'Sending client hello (auth: $authType, incognito: ${payload['incognito']})',
+    );
     _channel?.sink.add(jsonEncode(payload));
     _handshake.transitionTo(HandshakeState.authenticating);
   }

@@ -33,4 +33,31 @@ class AppConstants {
   /// Default window size for the main application.
   static const double windowWidth = 420;
   static const double windowHeight = 600;
+
+  // === OIDC / Identity Configuration ===
+  /// Redirect URI for OAuth callbacks.
+  /// Pulls from --dart-define OIDC_REDIRECT_URI
+  static const String oidcRedirectUri = String.fromEnvironment(
+    'OIDC_REDIRECT_URI',
+  );
+
+  /// Zitadel / OIDC Issuer URL
+  /// Pulls from --dart-define OIDC_ISSUER
+  static const String oidcIssuer = String.fromEnvironment('OIDC_ISSUER');
+
+  /// OIDC Client ID
+  /// Pulls from --dart-define OIDC_CLIENT_ID
+  static const String oidcClientId = String.fromEnvironment('OIDC_CLIENT_ID');
+
+  /// Discovery URL for OIDC metadata
+  static const String oidcDiscoveryUrl =
+      '$oidcIssuer/.well-known/openid-configuration';
+
+  /// Scopes required for identity verification
+  static const List<String> oidcScopes = [
+    'openid',
+    'profile',
+    'email',
+    'offline_access',
+  ];
 }
