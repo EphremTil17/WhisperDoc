@@ -7,13 +7,22 @@ Uses faster-whisper with GPU acceleration
 import os
 import time
 import asyncio
+import sys
+
+# Initialize uvloop for performance before anything else
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass
+
 from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import ORJSONResponse as JSONResponse
 from pydantic import BaseModel
 import uuid
-import torch
+import ctranslate2
 import tempfile
 import shutil
 
@@ -33,11 +42,9 @@ class LogBatch(BaseModel):
 
 # Load configuration from environment variables
 API_PORT = int(os.getenv('API_PORT', '9989'))
-API_HOST = os.getenv('API_HOST', '0.0.0.0')
 MODEL_NAME = os.getenv('MODEL_NAME', 'medium.en')
 MODEL_DEVICE = os.getenv('MODEL_DEVICE', 'cuda')
 MODEL_COMPUTE_TYPE = os.getenv('MODEL_COMPUTE_TYPE', 'float16')
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # Read version from environment variable (Docker)
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
@@ -108,10 +115,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 # Compress responses to save bandwidth on large transcription results
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Configure CORS for Cloudflare and Client security
+# Configure CORS
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this for your specific deployment
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -149,8 +157,12 @@ async def health_check():
              content={"status": "unhealthy", "message": "System not initialized"}
         )
     
-    # Check GPU "Zombification"
-    cuda_available = torch.cuda.is_available() if torch.cuda.is_available() else False
+    # Check GPU availability via ctranslate2 (lighter than Torch for this check)
+    try:
+        cuda_device_count = ctranslate2.get_cuda_device_count()
+        cuda_available = cuda_device_count > 0
+    except Exception:
+        cuda_available = False
     
     # Check if model is loaded (don't force load)
     is_loaded = manager.model_manager.model is not None

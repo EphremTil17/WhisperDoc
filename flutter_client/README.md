@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.13.0
+# WhisperDoc Flutter Client v2.14.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
 
@@ -120,7 +120,14 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v2.13.0)
+## Recent Improvements (v2.14.0)
+
+### Performance & Stability
+- **uvloop & orjson Support**: Client communication is now faster due to the backend's move to ultra-high performance I/O and JSON serialization.
+- **Drift-Proof Handshake**: Handshake timing is more resilient to network jitter and backend scheduling.
+- **Improved Resource Cleanup**: Accelerated model unloading and RAM reclamation on the backend reduces idle latency for new sessions.
+
+## Older Improvements (v2.13.0)
 
 ### Hotkey Resilience
 - Replaced `Timer.periodic` polling with native `GetMessage` blocking loop

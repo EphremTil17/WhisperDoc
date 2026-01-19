@@ -1,11 +1,17 @@
+# --- STAGE 0: FFmpeg Source ---
+# We use a specialized static build to avoid 600MB of apt-dependencies
+FROM mwader/static-ffmpeg:latest AS ffmpeg-source
+
 # --- STAGE 1: Builder ---
 FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
-# Install basic build tools
+# Install minimal build tools (gcc/g++ instead of the heavy build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    gcc \
+    g++ \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --upgrade pip
 
@@ -16,8 +22,12 @@ COPY requirements.txt .
 
 # Install dependencies to a local folder
 # We use cache mounts to reuse downloaded wheels across builds
+# We aggressively prune unnecessary files (.a, .pyc, etc) to prevent layer expansion
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --user -r requirements.txt
+    pip3 install --user -r requirements.txt && \
+    find /root/.local -name "*.a" -delete && \
+    find /root/.local -name "__pycache__" -type d -exec rm -rf {} + && \
+    find /root/.local -name "*.pyc" -delete
 
 
 # --- STAGE 2: Runner ---
@@ -38,35 +48,36 @@ ENV TMP=/tmp
 # The "Secret Sauce": Tell the system where the CUDA libs are hidden in Python site-packages
 ENV LD_LIBRARY_PATH=/root/.local/lib/python3.10/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
-# 2. Install ONLY runtime essentials (ffmpeg is mandatory for audio)
+# 2. Install ONLY runtime essentials (libgomp1 is required for Whisper's math)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    curl \
+    libgomp1 \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Copy the dependencies from the builder stage
+# 3. Copy static FFmpeg binaries from Stage 0
+COPY --from=ffmpeg-source /ffmpeg /ffprobe /usr/local/bin/
+
+# 4. Copy the dependencies from the builder stage
 # /root/.local contains all pip-installed packages (via --user)
 COPY --from=builder /root/.local /root/.local
 
-# 4. Copy application code
+# 5. Copy application code
 # We use a single COPY . . which respects .dockerignore
 # This is cleaner and ensures __init__.py and other files are not missed
 COPY . .
 
-# 5. Network & Execution
+# 6. Network & Execution
 ARG API_PORT=9989
 ENV API_PORT=${API_PORT}
 EXPOSE ${API_PORT}
 
 # Bake version into the image metadata
-# Users can verify with: docker inspect -f '{{.Config.Labels.version}}' whisper-backend
 ARG VERSION
 LABEL version=${VERSION} 
-# Note: Docker/BuildKit tricky with dynamic labels from files. 
-# Best practice: pass it as a build-arg from the compose file.
 
+# Use Python for healthcheck to avoid installing curl
 HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${API_PORT}/health || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
 
 # We use shell form for CMD to allow environment variable expansion
 CMD uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT} --proxy-headers --forwarded-allow-ips='*' --timeout-keep-alive 300

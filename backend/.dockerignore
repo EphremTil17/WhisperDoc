@@ -37,3 +37,5 @@ docker-compose*.yml
 # Ignore documentation/meta
 *.md
 LICENSE
+history.txt
+buildx_du_output.txt

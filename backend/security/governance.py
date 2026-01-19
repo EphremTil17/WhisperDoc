@@ -42,7 +42,8 @@ class SecurityGovernance:
         attempts = self.attempt_tracker.get(ip, [])
         attempts = [t for t in attempts if now - t < FLOOD_ATTEMPT_WINDOW_SECONDS]
         attempts.append(now)
-        self.attempt_tracker[ip] = attempts
+        # Prevent memory growth: Keep only what we need to verify the threshold
+        self.attempt_tracker[ip] = attempts[-(FLOOD_ATTEMPT_THRESHOLD + 1):]
         
         if len(attempts) > FLOOD_ATTEMPT_THRESHOLD:
             log.error(f"IP {ip} flagged for Connection Spamming. Banning for {FLOOD_BAN_SECONDS}s.")
@@ -53,7 +54,8 @@ class SecurityGovernance:
         failures = self.failure_tracker.get(ip, [])
         failures = [t for t in failures if now - t < BAN_FAILURE_WINDOW_SECONDS]
         failures.append(now)
-        self.failure_tracker[ip] = failures
+        # Prevent memory growth: Keep only what we need to verify the threshold
+        self.failure_tracker[ip] = failures[-(BAN_FAILURE_THRESHOLD + 1):]
         
         if len(failures) >= BAN_FAILURE_THRESHOLD:
             log.error(f"IP {ip} exceeded failure threshold ({BAN_FAILURE_THRESHOLD} in {BAN_FAILURE_WINDOW_SECONDS}s). Banning for {BAN_DURATION_SECONDS}s.")

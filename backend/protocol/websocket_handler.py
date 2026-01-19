@@ -21,6 +21,7 @@ class ConnectionManager:
         self.model_manager = model_manager
         self.app_version = app_version
         self.governance = SecurityGovernance()
+        self.last_tracker_cleanup = time.time()
         
         # Start background cleanup
         self.cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())
@@ -99,8 +100,11 @@ class ConnectionManager:
                     except: pass
                     self.disconnect(websocket)
                     
-                if int(now) % 3600 == 0:
+                # Robust Tracker Cleanup: Every 1 hour
+                if now - self.last_tracker_cleanup > 3600:
                     self.governance.clear_old_trackers()
+                    self.last_tracker_cleanup = now
+                    log.debug("Maintenance: Security trackers cleared.")
 
             except Exception as e:
                 log.error(f"Error in cleanup task: {e}")

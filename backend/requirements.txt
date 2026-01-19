@@ -1,5 +1,8 @@
 # Heavy Libraries (Least frequent changes)
-torch --extra-index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
 faster-whisper
 ctranslate2>=4.4.0
 
@@ -8,8 +11,8 @@ fastapi
 uvicorn
 python-multipart
 websockets
+# requests is kept for OIDC stability
 requests
-python-dotenv
 
 # Authentication & Security
 python-jose[cryptography]
@@ -17,5 +20,7 @@ cachetools
 
 # Utilities & Testing
 loguru
+uvloop
+orjson
 pytest
 pytest-asyncio

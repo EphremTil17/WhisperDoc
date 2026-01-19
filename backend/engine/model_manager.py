@@ -3,6 +3,8 @@ import time
 import gc
 import torch
 import asyncio
+import ctypes
+import platform
 from faster_whisper import WhisperModel
 from logging_config import log
 
@@ -46,9 +48,23 @@ class ModelManager:
         del self.model
         self.model = None
         gc.collect()
+        
+        # Clear Torch CUDA cache if available
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        log.success("Model unloaded. GPU memory freed.")
+            
+        # AGGRESSIVE: Release memory back to the OS (Linux only)
+        # Python's GC often keeps free memory in its own heap. 
+        # malloc_trim(0) forces the glibc allocator to return it to the system.
+        if platform.system() == "Linux":
+            try:
+                libc = ctypes.CDLL("libc.so.6")
+                libc.malloc_trim(0)
+                log.debug("Memory trimmed via malloc_trim(0)")
+            except Exception as e:
+                log.warning(f"Could not perform malloc_trim: {e}")
+
+        log.success("Model unloaded. Memory reclamation complete.")
 
     def get_model(self):
         self.last_used = time.time()
