@@ -27,7 +27,7 @@ services:
         limits:
           memory: 8G
         reservations:
-          cpus: '1'
+          cpus: '2'
           memory: 2G
           devices:
             - driver: nvidia

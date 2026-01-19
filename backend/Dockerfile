@@ -44,19 +44,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Copy the 7.5GB of dependencies from the builder stage
+# 3. Copy the dependencies from the builder stage
+# /root/.local contains all pip-installed packages (via --user)
 COPY --from=builder /root/.local /root/.local
 
 # 4. Copy application code
-COPY api_server.py logging_config.py .env.template ./
-COPY auth/ ./auth/
-COPY engine/ ./engine/
-COPY protocol/ ./protocol/
-COPY security/ ./security/
-COPY tests/ ./tests/
+# We use a single COPY . . which respects .dockerignore
+# This is cleaner and ensures __init__.py and other files are not missed
+COPY . .
 
 # 5. Network & Execution
 ARG API_PORT=9989
+ENV API_PORT=${API_PORT}
 EXPOSE ${API_PORT}
 
 # Bake version into the image metadata
@@ -67,6 +66,7 @@ LABEL version=${VERSION}
 # Best practice: pass it as a build-arg from the compose file.
 
 HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:9989/health || exit 1
+    CMD curl -f http://localhost:${API_PORT}/health || exit 1
 
-CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "9989", "--proxy-headers", "--forwarded-allow-ips='*'", "--timeout-keep-alive", "300"]
+# We use shell form for CMD to allow environment variable expansion
+CMD uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT} --proxy-headers --forwarded-allow-ips='*' --timeout-keep-alive 300

@@ -12,6 +12,7 @@ model-cache/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
 
 # Ignore IDE settings
 .vscode/
@@ -19,7 +20,20 @@ model-cache/
 
 # Ignore Git
 .git/
+.gitignore
 
 # Ignore logs
 *.log
 logs/
+
+# Ignore secrets/local config
+.env
+
+# Ignore Docker related files in context
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Ignore documentation/meta
+*.md
+LICENSE
