@@ -181,10 +181,6 @@ class WebSocketService extends ChangeNotifier {
       final uriString = uriOverride ?? _settingsService.serverUri;
       _activeApiKey = apiKeyOverride ?? await _settingsService.getApiKey();
 
-      if (_activeApiKey == null || _activeApiKey!.isEmpty) {
-        throw Exception('No API key provided');
-      }
-
       // 1. Transport Security Validation
       _securityStatus = await _transportSecurity.validateServerUri(uriString);
       if (_securityStatus == SecurityStatus.blocked) {
@@ -271,14 +267,14 @@ class WebSocketService extends ChangeNotifier {
     String? token;
     String authType = 'api_key';
 
-    // 1. Prioritize OIDC Identity Token
+    // 1. Door One: Prioritize OIDC Identity Token (SSO / Managed Identity)
     if (_authService.isAuthenticated) {
       token = await _authService.getAccessToken();
       authType = 'oidc';
       _logger.info('Using OIDC identity token for handshake');
     }
 
-    // 2. Fallback to manually entered API Key
+    // 2. Door Two: Fallback to manually entered API Key (Static / Service Account)
     if (token == null || token.isEmpty) {
       token = _activeApiKey;
       authType = 'api_key';

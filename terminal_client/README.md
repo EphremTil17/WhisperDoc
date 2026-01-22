@@ -1,4 +1,4 @@
-# WhisperDoc Client (v2.14.0) - High-Performance Handshake
+# WhisperDoc Client (v2.14.1) - High-Performance Handshake
 
 A secure, modular, and high-performance Python terminal client for real-time dictation using the optimized WhisperDoc v2.14.0 backend.
 

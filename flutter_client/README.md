@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.14.0
+# WhisperDoc Flutter Client v2.14.1
 
 A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
 

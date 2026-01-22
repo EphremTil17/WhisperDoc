@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.14.0
+# WhisperDoc - Speech-to-Text System v2.14.1
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It leverages `faster-whisper` GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
 ## Prerequisites
@@ -145,7 +145,7 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows) v2.14.0
+### Flutter Client (Windows) v2.14.1
 
 A native Windows desktop application with integrated **OIDC Identity Hardening** into the user interface. Features include:
 - **Enterprise Security**: Windows Credential Manager enclave storage, Encrypted local history (AES-256), and automated JWT expiry warnings.
@@ -156,7 +156,7 @@ A native Windows desktop application with integrated **OIDC Identity Hardening**
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.14.0
+### Python Terminal Client v2.14.1
 
 A secure, modular, and production-ready terminal client for high-performance dictation. 
 

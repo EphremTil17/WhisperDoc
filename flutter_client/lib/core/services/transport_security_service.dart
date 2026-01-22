@@ -34,37 +34,51 @@ class TransportSecurityService {
   // Whitelist patterns for fast-path local development
   static final List<String> _localPatterns = ['localhost', '127.0.0.1', '::1'];
 
-  /// Normalize URI scheme (e.g. https -> wss, http -> ws)
-  /// and ensure the default path /ws is appended if missing.
+  /// Robust URI normalization.
+  /// Handles protocol upgrades (https -> wss), endpoint appending (/ws),
+  /// and local-dev protocol enforcement (ws:// for localhost).
   String normalizeUri(String uriString) {
     try {
       if (uriString.isEmpty) return uriString;
 
-      var workingUri = uriString.trim();
-      // Add scheme if missing for parsing
-      if (!workingUri.contains('://')) {
-        workingUri = 'wss://$workingUri';
+      var working = uriString.trim();
+
+      // 1. Pre-process to ensure we have a parseable scheme
+      if (!working.contains('://')) {
+        // Temporarily assume wss to facilitate parsing host/port
+        working = 'wss://$working';
       }
 
-      final uri = Uri.parse(workingUri);
+      final uri = Uri.parse(working);
       var scheme = uri.scheme.toLowerCase();
-      final host = uri.host;
+      final host = uri.host.toLowerCase();
       final port = uri.port;
       var path = uri.path;
 
-      // 1. Map schemes
-      if (scheme == 'https' || scheme == 'wss') {
-        scheme = 'wss';
-      } else {
+      // 2. Determine Robust Protocol Scheme
+      // If host is explicitly local or a private IP, force 'ws' to avoid TLS handshake errors
+      if (_isWhitelistedLocal(host) || isPrivateIP(host)) {
         scheme = 'ws';
+      } else {
+        // Remote host: Ensure we use secure 'wss'
+        // Maps https -> wss, http -> wss (upgrade), ws -> wss (upgrade)
+        if (scheme == 'https' ||
+            scheme == 'http' ||
+            scheme == 'ws' ||
+            scheme == 'wss') {
+          scheme = 'wss';
+        } else {
+          scheme = 'ws'; // Fallback for unknown
+        }
       }
 
-      // 2. Ensure path is /ws if empty or root
+      // 3. Robust Path Management
+      // If user provided a base domain, append the canonical /ws endpoint
       if (path.isEmpty || path == '/') {
         path = '/ws';
       }
 
-      // 3. Reconstruct
+      // 4. Reconstruct Normalized URI
       return Uri(
         scheme: scheme,
         host: host,
@@ -73,7 +87,7 @@ class TransportSecurityService {
         query: uri.query.isNotEmpty ? uri.query : null,
       ).toString();
     } catch (e) {
-      _logger.warning('Failed to normalize URI: $uriString ($e)');
+      _logger.warning('Normalization failed for "$uriString": $e');
       return uriString;
     }
   }
@@ -92,7 +106,7 @@ class TransportSecurityService {
         return SecurityStatus.secure;
       }
 
-      // 2. Non-WS/WSS is blocked (though normalizeUri should have handled it)
+      // 2. Non-WS/WSS is blocked
       if (scheme != 'ws') {
         _logger.warning('Transport security: Invalid scheme $scheme (blocked)');
         return SecurityStatus.blocked;
@@ -142,29 +156,29 @@ class TransportSecurityService {
 
   /// Check if an IP address is in RFC 1918 private range
   bool isPrivateIP(String ipString) {
-    try {
-      final ip = InternetAddress(ipString);
+    if (ipString.isEmpty) return false;
 
-      // Handle IPv6 loopback
-      if (ip.type == InternetAddressType.IPv6 && ipString == '::1') {
-        return true;
-      }
+    // tryParse is robust: returns null if not a valid IP (avoids noisy exceptions for hostnames)
+    final ip = InternetAddress.tryParse(ipString);
+    if (ip == null) return false;
 
-      // Only check IPv4 private ranges
-      if (ip.type == InternetAddressType.IPv4) {
-        final ipNum = _ipToInt(ipString);
-        for (final range in _privateRanges) {
-          if (ipNum >= range.start && ipNum <= range.end) {
-            return true;
-          }
+    // Handle IPv6 loopback
+    if (ip.type == InternetAddressType.IPv6 &&
+        (ipString == '::1' || ipString == '0:0:0:0:0:0:0:1')) {
+      return true;
+    }
+
+    // Only check IPv4 private ranges
+    if (ip.type == InternetAddressType.IPv4) {
+      final ipNum = _ipToInt(ipString);
+      for (final range in _privateRanges) {
+        if (ipNum >= range.start && ipNum <= range.end) {
+          return true;
         }
       }
-
-      return false;
-    } catch (e) {
-      _logger.warning('Invalid IP address format: $ipString');
-      return false;
     }
+
+    return false;
   }
 
   // --- Private Helper Methods ---
@@ -191,12 +205,7 @@ class TransportSecurityService {
   }
 
   bool _isValidIPAddress(String host) {
-    try {
-      InternetAddress(host);
-      return true;
-    } catch (e) {
-      return false;
-    }
+    return InternetAddress.tryParse(host) != null;
   }
 
   Future<String?> _resolveHostname(String hostname) async {
