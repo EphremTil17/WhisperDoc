@@ -49,7 +49,7 @@ def setup_interactive():
     """Minimal interactive setup for first-run configuration."""
     logger.info("--- WhisperDoc Client Setup ---")
     
-    current_uri = os.getenv("WHISPER_WS_URI", "ws://localhost:9989/ws")
+    current_uri = cfg.WS_URI
     uri = input(f"Enter Server WebSocket URI [{current_uri}]: ").strip() or current_uri
     
     print("\nSelect Audio API:")

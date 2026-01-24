@@ -145,12 +145,17 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
         # Fallback to OIDC_API_RESOURCE if Client ID is not set.
         target_audience = OIDC_CLIENT_ID or OIDC_API_RESOURCE
 
+        # Fetch the official issuer from the discovery document to ensure 
+        # exact match (including trailing slashes)
+        oidc_config = fetch_oidc_configuration()
+        actual_issuer = oidc_config.get("issuer") if oidc_config else OIDC_ISSUER_URL
+
         payload = jwt.decode(
             token,
             rsa_key,
             algorithms=["RS256"],
             audience=target_audience,
-            issuer=OIDC_ISSUER_URL.rstrip('/'),
+            issuer=actual_issuer,
             options={
                 "verify_signature": True,
                 "verify_exp": True,

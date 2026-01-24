@@ -24,7 +24,7 @@ class Config:
         self._setup_logging()
 
     def _load_env(self):
-        load_dotenv(ENV_PATH)
+        load_dotenv(ENV_PATH, override=True)
         self.WS_URI = os.getenv("WHISPER_WS_URI", "ws://localhost:9989/ws")
         self.RECORD_HOTKEY = os.getenv("RECORD_HOTKEY", "ctrl+alt+w")
         self.AUDIO_DEVICE_ID = int(os.getenv("AUDIO_DEVICE_ID", 0))

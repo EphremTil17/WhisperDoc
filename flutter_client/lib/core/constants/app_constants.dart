@@ -4,7 +4,7 @@
 /// to improve maintainability and reduce scattered hardcoded values.
 class AppConstants {
   // === Server Configuration ===
-  static const String defaultServerUri = 'ws://localhost:9989/ws';
+  static const String defaultServerUri = 'https://whisper.ephremst.com';
 
   // === WebSocket Timeouts ===
   /// Idle timeout before closing the WebSocket connection to save resources.
