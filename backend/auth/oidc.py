@@ -145,17 +145,27 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
         # Fallback to OIDC_API_RESOURCE if Client ID is not set.
         target_audience = OIDC_CLIENT_ID or OIDC_API_RESOURCE
 
-        # Fetch the official issuer from the discovery document to ensure 
-        # exact match (including trailing slashes)
-        oidc_config = fetch_oidc_configuration()
-        actual_issuer = oidc_config.get("issuer") if oidc_config else OIDC_ISSUER_URL
+        # Pre-decode to verify identity and get the actual 'iss' string from the token
+        unverified_claims = jwt.get_unverified_claims(token)
+        token_issuer_raw = unverified_claims.get("iss", "")
 
+        # Identify our expected issuer (Discovery config is the source of truth)
+        oidc_config = fetch_oidc_configuration()
+        expected_issuer_raw = oidc_config.get("issuer") if oidc_config else OIDC_ISSUER_URL
+
+        # Slash-Agnostic Comparison: Compare both without trailing slashes
+        if token_issuer_raw.rstrip('/') != expected_issuer_raw.rstrip('/'):
+            log.warning(f"OIDC Issuer mismatch! Config: {expected_issuer_raw}, Token: {token_issuer_raw}")
+            return None
+
+        # Pass the token's own raw string to jwt.decode to ensure an exact character match 
+        # for its internal validation logic, now that we've verified they match normalized.
         payload = jwt.decode(
             token,
             rsa_key,
             algorithms=["RS256"],
             audience=target_audience,
-            issuer=actual_issuer,
+            issuer=token_issuer_raw,
             options={
                 "verify_signature": True,
                 "verify_exp": True,

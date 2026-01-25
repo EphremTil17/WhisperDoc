@@ -181,6 +181,17 @@ class WebSocketService extends ChangeNotifier {
       final uriString = uriOverride ?? _settingsService.serverUri;
       _activeApiKey = apiKeyOverride ?? await _settingsService.getApiKey();
 
+      // 0. Pre-flight Auth Check: Don't even open the socket if we have no way to authenticate
+      if (!_authService.isAuthenticated &&
+          (_activeApiKey == null || _activeApiKey!.isEmpty)) {
+        _logger.error(
+          'Connection aborted: No OIDC session or API Key available',
+        );
+        _isConnecting = false;
+        _handleDisconnect();
+        return false;
+      }
+
       // 1. Transport Security Validation
       _securityStatus = await _transportSecurity.validateServerUri(uriString);
       if (_securityStatus == SecurityStatus.blocked) {

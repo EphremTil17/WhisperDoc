@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_client/core/services/logging_service.dart';
 import 'package:flutter_client/core/services/secure_vault_service.dart';
@@ -99,13 +100,18 @@ class AuthService extends ChangeNotifier {
 
       _logger.info('Opening system browser for auth...');
 
-      // 4. Authenticate via Default System Browser
+      // 4. Load Success Page HTML and Authenticate
+      final String successHtml = await rootBundle.loadString(
+        'assets/auth/success.html',
+      );
+
       final authResult = await FlutterWebAuth2.authenticate(
         url: authUri.toString(),
         callbackUrlScheme:
             AppConstants.oidcRedirectUri, // Now http://localhost:4242
-        options: const FlutterWebAuth2Options(
+        options: FlutterWebAuth2Options(
           useWebview: false, // Force default browser
+          landingPageHtml: successHtml,
         ),
       );
 
