@@ -92,6 +92,9 @@ class _WhisperDocAppState extends State<WhisperDocApp> with WindowListener {
 
     // Close WebSocket connection
     await getIt<WebSocketService>().disconnect(reason: 'App closure');
+    
+    // Cleanup native audio memory
+    getIt<AudioCueService>().dispose();
 
     // Allow window to close
     await windowManager.destroy();

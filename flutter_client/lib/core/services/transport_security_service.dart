@@ -56,19 +56,22 @@ class TransportSecurityService {
       var path = uri.path;
 
       // 2. Determine Robust Protocol Scheme
-      // If host is explicitly local or a private IP, force 'ws' to avoid TLS handshake errors
-      if (_isWhitelistedLocal(host) || isPrivateIP(host)) {
-        scheme = 'ws';
-      } else {
-        // Remote host: Ensure we use secure 'wss'
-        // Maps https -> wss, http -> wss (upgrade), ws -> wss (upgrade)
-        if (scheme == 'https' ||
-            scheme == 'http' ||
-            scheme == 'ws' ||
-            scheme == 'wss') {
+      final bool hadScheme = uriString.contains('://');
+
+      if (hadScheme) {
+        // Map HTTP schemes to WS equivalents, but preserve ws/wss
+        if (scheme == 'https') {
           scheme = 'wss';
+        } else if (scheme == 'http') {
+          scheme = 'ws';
+        }
+        // If it's already ws or wss, leave it alone to allow validation to catch public ws
+      } else {
+        // No scheme provided: apply defaults based on host
+        if (_isWhitelistedLocal(host) || isPrivateIP(host)) {
+          scheme = 'ws';
         } else {
-          scheme = 'ws'; // Fallback for unknown
+          scheme = 'wss';
         }
       }
 

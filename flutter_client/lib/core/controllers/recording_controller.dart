@@ -5,6 +5,7 @@ import 'package:flutter_client/core/services/audio_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/core/services/audio_cue_service.dart';
 import 'package:flutter_client/core/services/history_service.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
 
@@ -17,6 +18,7 @@ class RecordingController extends ChangeNotifier {
   final AutomationService _automationService;
   final HistoryService _historyService;
   final SettingsService _settingsService;
+  final AudioCueService _audioCueService;
 
   StreamSubscription? _audioSubscription;
   StreamSubscription? _messageSubscription;
@@ -40,11 +42,13 @@ class RecordingController extends ChangeNotifier {
     required AutomationService automationService,
     required HistoryService historyService,
     required SettingsService settingsService,
+    required AudioCueService audioCueService,
   }) : _audioService = audioService,
        _wsService = wsService,
        _automationService = automationService,
        _historyService = historyService,
-       _settingsService = settingsService {
+       _settingsService = settingsService,
+       _audioCueService = audioCueService {
     _initListeners();
     // Listen to AudioService state changes
     _audioService.addListener(_onAudioStateChanged);
@@ -188,6 +192,7 @@ class RecordingController extends ChangeNotifier {
       }
 
       await _audioService.startRecording();
+      _audioCueService.playStartCue();
 
       // Pipe audio to websocket
       _audioSubscription = _audioService.audioStream.listen((data) {
@@ -202,6 +207,7 @@ class RecordingController extends ChangeNotifier {
 
   Future<void> stopRecording() async {
     await _audioService.stopRecording();
+    _audioCueService.playStopCue();
     await _audioSubscription?.cancel();
     _audioSubscription = null;
 

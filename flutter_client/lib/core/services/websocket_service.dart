@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
@@ -12,6 +10,7 @@ import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/core/services/ban_state_service.dart';
 import 'package:flutter_client/core/services/auth_service.dart';
 import 'package:flutter_client/core/constants/app_constants.dart';
+import 'websocket/handshake_payload_builder.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected, banned }
 
@@ -31,6 +30,7 @@ class WebSocketService extends ChangeNotifier {
   final HandshakeStateMachine _handshake = HandshakeStateMachine();
   final BanStateService _banState = BanStateService();
   final AuthService _authService;
+  final HandshakePayloadBuilder _payloadBuilder = HandshakePayloadBuilder();
 
   WebSocketChannel? _channel;
   final StreamController<ConnectionStatus> _statusController =
@@ -111,6 +111,17 @@ class WebSocketService extends ChangeNotifier {
         _status == ConnectionStatus.connecting) {
       await disconnect(reason: 'Identity change');
     }
+
+    // Reset session auth flag if signed out
+    if (!_authService.isAuthenticated) {
+      _isAuthenticatedSession = false;
+    }
+
+    // Auto-connect if newly authenticated
+    if (_authService.isAuthenticated && _status == ConnectionStatus.disconnected) {
+      _logger.info('Automatically connecting after successful authentication');
+      unawaited(connect());
+    }
     notifyListeners();
   }
 
@@ -140,6 +151,12 @@ class WebSocketService extends ChangeNotifier {
       if (_status == ConnectionStatus.connected ||
           _status == ConnectionStatus.connecting) {
         await disconnect(reason: 'Credentials changed');
+      }
+
+      // Auto-connect if valid credentials available
+      if (currentApiKey != null && currentApiKey.isNotEmpty && _status == ConnectionStatus.disconnected) {
+        _logger.info('Automatically connecting after credentials update');
+        unawaited(connect());
       }
       notifyListeners();
       return;
@@ -278,33 +295,33 @@ class WebSocketService extends ChangeNotifier {
     String? token;
     String authType = 'api_key';
 
-    // 1. Door One: Prioritize OIDC Identity Token (SSO / Managed Identity)
+    // 1. Prioritize OIDC Identity Token
     if (_authService.isAuthenticated) {
       token = await _authService.getAccessToken();
-      authType = 'oidc';
-      _logger.info('Using OIDC identity token for handshake');
+      if (token != null && token.isNotEmpty) {
+        authType = 'oidc';
+        _logger.info('Forwarding OIDC identity token for handshake');
+      }
     }
 
-    // 2. Door Two: Fallback to manually entered API Key (Static / Service Account)
+    // 2. Fallback to API Key only if OIDC is not being used
     if (token == null || token.isEmpty) {
       token = _activeApiKey;
-      authType = 'api_key';
-      _logger.info('Using static API key for handshake');
+      if (token != null && token.isNotEmpty) {
+        authType = 'api_key';
+        _logger.info('Forwarding static API key for handshake');
+      }
     }
 
     if (token == null || token.isEmpty) {
       throw Exception('No authentication token available');
     }
 
-    final info = await PackageInfo.fromPlatform();
-    final payload = {
-      'event': 'hello',
-      'client': 'flutter_windows',
-      'version': info.version,
-      'token': token, // Transmitted securely over WSS, masked in logs below
-      'auth_type': authType,
-      'incognito': _settingsService.incognitoMode,
-    };
+    final payload = await _payloadBuilder.buildHello(
+      token: token,
+      authType: authType,
+      incognito: _settingsService.incognitoMode,
+    );
 
     _logger.info(
       'Sending client hello (auth: $authType, incognito: ${payload['incognito']})',
@@ -530,22 +547,31 @@ class WebSocketService extends ChangeNotifier {
   }
 
   int _reconnectAttempts = 0;
-  static const int _maxReconnectDelay = 30;
 
   void _scheduleReconnect() {
     if (_reconnectTimer?.isActive ?? false) return;
     if (_banState.isBanned) return;
 
-    final delaySeconds = (3 * (1 << _reconnectAttempts)).clamp(
-      3,
-      _maxReconnectDelay,
-    );
+    // KILL SWITCH: If the last disconnect was due to a missing/invalid credential,
+    // do NOT auto-reconnect. Hammering correctly results in backend bans.
+    if (_lastHandshakeError != null) {
+      final err = _lastHandshakeError!.toLowerCase();
+      if (err.contains('no oidc session') || 
+          err.contains('authentication token') ||
+          err.contains('access denied') ||
+          err.contains('authentication failed') ||
+          err.contains('invalid credentials')) {
+        _logger.warning('Auto-reconnect aborted: Authentication failure ($err). Please sign in manually.');
+        return;
+      }
+    }
 
+    const delaySeconds = 5;
     _logger.info(
       'Reconnect scheduled in ${delaySeconds}s (Attempt ${_reconnectAttempts + 1})',
     );
 
-    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
+    _reconnectTimer = Timer(const Duration(seconds: delaySeconds), () {
       _reconnectAttempts++;
       unawaited(connect());
     });

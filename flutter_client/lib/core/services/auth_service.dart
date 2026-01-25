@@ -1,25 +1,18 @@
-import 'dart:convert';
-import 'dart:math';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_client/core/services/logging_service.dart';
-import 'package:flutter_client/core/services/secure_vault_service.dart';
-import 'package:flutter_client/core/constants/app_constants.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
-import 'package:jwt_decoder/jwt_decoder.dart';
+import 'auth/oidc_manager.dart';
+import 'auth/session_manager.dart';
 
+/// Coordinator service for Authentication.
+/// Delegates OIDC protocol details and Session persistence to modular managers.
 class AuthService extends ChangeNotifier {
   final LoggingService _logger = LoggingService();
-
-  // Credentials stored in Vault
-  static const String _vaultIdTokenKey = 'oidc_id_token';
-  static const String _vaultAccessTokenKey = 'oidc_access_token';
-  static const String _vaultRefreshTokenKey = 'oidc_refresh_token';
+  final OidcManager _oidc = OidcManager();
+  final SessionManager _session = SessionManager();
 
   bool _isInitialized = false;
   bool _isAuthenticating = false;
+  bool _isRefreshing = false;
   Map<String, dynamic>? _currentUser;
   String? _idToken;
 
@@ -30,6 +23,7 @@ class AuthService extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_isInitialized) return;
+    await _session.initialize();
     await _loadExistingSession();
     _isInitialized = true;
     _logger.info('AuthService initialized');
@@ -37,16 +31,18 @@ class AuthService extends ChangeNotifier {
 
   Future<void> _loadExistingSession() async {
     try {
-      final vault = SecureVaultService();
-      await vault.initialize();
-      _idToken = await vault.retrieveCredential(_vaultIdTokenKey);
+      _idToken = await _session.loadIdToken();
 
       if (_idToken != null) {
-        if (JwtDecoder.isExpired(_idToken!)) {
-          _logger.warning('Stored OIDC session expired. Clearing.');
-          await signOut();
+        if (_session.isExpired(_idToken!)) {
+          _logger.warning('Stored OIDC session expired. Attempting silent refresh...');
+          final success = await silentRefresh();
+          if (!success) {
+            _logger.warning('Silent refresh failed. User must sign in again.');
+            await signOut();
+          }
         } else {
-          _updateUserData(_idToken!);
+          _currentUser = _session.extractUser(_idToken!);
           _logger.info('Restored OIDC session for: ${_currentUser?['email']}');
         }
       }
@@ -56,188 +52,102 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signIn() async {
-    if (_isAuthenticating) {
-      _logger.warning('Authentication already in progress. Ignoring request.');
-      return;
-    }
-
+    if (_isAuthenticating) return;
     _isAuthenticating = true;
     notifyListeners();
 
     try {
-      _logger.info('Initiating OIDC sign-in flow (PKCE)...');
+      _logger.info('Initiating OIDC sign-in flow...');
+      
+      final discovery = await _oidc.discover();
+      final verifier = _oidc.generateRandomString(64);
+      final challenge = _oidc.generateCodeChallenge(verifier);
+      final state = _oidc.generateRandomString(16);
 
-      // 1. Discovery
-      final discoveryResponse = await http.get(
-        Uri.parse(AppConstants.oidcDiscoveryUrl),
-      );
-      if (discoveryResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to discover OIDC endpoints: ${discoveryResponse.body}',
-        );
-      }
-      final discovery = jsonDecode(discoveryResponse.body);
-      final authorizationEndpoint = discovery['authorization_endpoint'];
-      final tokenEndpoint = discovery['token_endpoint'];
-
-      // 2. Prepare PKCE
-      final String codeVerifier = _generateRandomString(64);
-      final String codeChallenge = _generateCodeChallenge(codeVerifier);
-      final String state = _generateRandomString(16);
-
-      // 3. Construct Authorization URL
-      final authUri = Uri.parse(authorizationEndpoint).replace(
-        queryParameters: {
-          'client_id': AppConstants.oidcClientId,
-          'redirect_uri': AppConstants.oidcRedirectUri,
-          'response_type': 'code',
-          'scope': AppConstants.oidcScopes.join(' '),
-          'state': state,
-          'code_challenge': codeChallenge,
-          'code_challenge_method': 'S256',
-        },
-      );
-
-      _logger.info('Opening system browser for auth...');
-
-      // 4. Load Success Page HTML and Authenticate
-      final String successHtml = await rootBundle.loadString(
-        'assets/auth/success.html',
-      );
-
-      final authResult = await FlutterWebAuth2.authenticate(
-        url: authUri.toString(),
-        callbackUrlScheme:
-            AppConstants.oidcRedirectUri, // Now http://localhost:4242
-        options: FlutterWebAuth2Options(
-          useWebview: false, // Force default browser
-          landingPageHtml: successHtml,
-        ),
+      final authResult = await _oidc.authenticate(
+        authorizationEndpoint: discovery['authorization_endpoint'],
+        state: state,
+        codeChallenge: challenge,
       );
 
       final resultUri = Uri.parse(authResult);
       final code = resultUri.queryParameters['code'];
-      final returnedState = resultUri.queryParameters['state'];
+      if (code == null) throw Exception('No code returned');
+      if (resultUri.queryParameters['state'] != state) throw Exception('State mismatch');
 
-      if (code == null) {
-        throw Exception('No code returned from authorization server');
-      }
-      if (returnedState != state) {
-        throw Exception('State mismatch! Potential CSRF attack.');
-      }
-
-      _logger.info('Auth code received. Exchanging for tokens...');
-
-      // 5. Exchange Code for Tokens
-      final tokenResponse = await http.post(
-        Uri.parse(tokenEndpoint),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
-          'grant_type': 'authorization_code',
-          'client_id': AppConstants.oidcClientId,
-          'redirect_uri': AppConstants.oidcRedirectUri,
-          'code': code,
-          'code_verifier': codeVerifier,
-        },
+      final tokens = await _oidc.exchangeToken(
+        tokenEndpoint: discovery['token_endpoint'],
+        code: code,
+        codeVerifier: verifier,
       );
 
-      if (tokenResponse.statusCode != 200) {
-        throw Exception('Token exchange failed: ${tokenResponse.body}');
-      }
-
-      final tokens = jsonDecode(tokenResponse.body);
       _idToken = tokens['id_token'];
-      final accessToken = tokens['access_token'];
-      final refreshToken = tokens['refresh_token'];
+      await _session.saveTokens(
+        idToken: _idToken!,
+        accessToken: tokens['access_token'],
+        refreshToken: tokens['refresh_token'],
+      );
 
-      if (_idToken == null) {
-        throw Exception('No ID Token returned from server');
-      }
-
-      // 6. Persist and Update UI
-      final vault = SecureVaultService();
-      await vault.initialize();
-      await vault.storeCredential(_vaultIdTokenKey, _idToken!);
-      if (accessToken != null) {
-        await vault.storeCredential(_vaultAccessTokenKey, accessToken);
-      }
-      if (refreshToken != null) {
-        await vault.storeCredential(_vaultRefreshTokenKey, refreshToken);
-      }
-
-      _updateUserData(_idToken!);
+      _currentUser = _session.extractUser(_idToken!);
       _logger.info('Sign-in successful: ${_currentUser?['email']}');
     } catch (e) {
-      if (e.toString().contains('CANCELED')) {
-        _logger.warning('OIDC Sign-in was canceled by the user.');
-        return;
+      if (!e.toString().contains('CANCELED')) {
+        _logger.error('OIDC Sign-in failed', error: e);
       }
-      _logger.error('OIDC Sign-in failed', error: e);
-      rethrow;
     } finally {
       _isAuthenticating = false;
       notifyListeners();
     }
   }
 
-  Future<void> signOut() async {
+  Future<bool> silentRefresh() async {
+    if (_isRefreshing) return false;
+    _isRefreshing = true;
+
     try {
-      _logger.info('Signing out...');
-      final vault = SecureVaultService();
-      await vault.initialize();
-      await vault.deleteCredential(_vaultIdTokenKey);
-      await vault.deleteCredential(_vaultAccessTokenKey);
-      await vault.deleteCredential(_vaultRefreshTokenKey);
-      _idToken = null;
-      _currentUser = null;
+      _logger.info('Attempting OIDC silent refresh...');
+      final refreshToken = await _session.loadRefreshToken();
+      if (refreshToken == null) return false;
+
+      final discovery = await _oidc.discover();
+      final tokens = await _oidc.exchangeToken(
+        tokenEndpoint: discovery['token_endpoint'],
+        refreshToken: refreshToken,
+      );
+
+      _idToken = tokens['id_token'];
+      await _session.saveTokens(
+        idToken: _idToken!,
+        accessToken: tokens['access_token'],
+        refreshToken: tokens['refresh_token'],
+      );
+
+      _currentUser = _session.extractUser(_idToken!);
+      _logger.info('Silent refresh successful: ${_currentUser?['email']}');
       notifyListeners();
+      return true;
     } catch (e) {
-      _logger.error('Logout failed', error: e);
+      _logger.error('Silent refresh failed', error: e);
+      return false;
+    } finally {
+      _isRefreshing = false;
     }
   }
 
-  /// Extracts user metadata from the ID Token
-  void _updateUserData(String token) {
-    try {
-      final Map<String, dynamic> decodedToken = JwtDecoder.decode(token);
-      _currentUser = {
-        'id': decodedToken['sub'],
-        'email': decodedToken['email'],
-        'name': decodedToken['name'] ?? decodedToken['preferred_username'],
-        'picture': decodedToken['picture'],
-      };
-    } catch (e) {
-      _logger.error('Failed to decode user data', error: e);
-    }
+  Future<void> signOut() async {
+    _logger.info('Signing out...');
+    await _session.clearSession();
+    _idToken = null;
+    _currentUser = null;
+    notifyListeners();
   }
 
-  /// Returns the current valid ID Token for backend authentication.
-  /// Used by WebSocketService to cage audio transmission.
   Future<String?> getAccessToken() async {
-    if (_idToken == null) {
-      return null;
-    }
-    if (JwtDecoder.isExpired(_idToken!)) {
-      return null;
+    if (_idToken == null) return null;
+    if (_session.isExpired(_idToken!)) {
+      final success = await silentRefresh();
+      if (!success) return null;
     }
     return _idToken;
-  }
-
-  // --- OIDC Helpers ---
-
-  String _generateRandomString(int length) {
-    const chars =
-        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~';
-    final random = Random.secure();
-    return List.generate(
-      length,
-      (index) => chars[random.nextInt(chars.length)],
-    ).join();
-  }
-
-  String _generateCodeChallenge(String verifier) {
-    final bytes = utf8.encode(verifier);
-    final digest = sha256.convert(bytes);
-    return base64UrlEncode(digest.bytes).replaceAll('=', '');
   }
 }

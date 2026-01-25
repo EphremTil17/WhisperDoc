@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/core/services/auth_service.dart';
+import 'package:flutter_client/ui/screens/settings_screen.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 
 class ProfileHubDialog extends StatelessWidget {
@@ -78,39 +80,61 @@ class ProfileHubDialog extends StatelessWidget {
                 const Divider(color: Colors.white10),
                 const SizedBox(height: 16),
 
-                // Sign Out Button
+                // Auth Button (Sign Out or Sign In)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () async {
                       Navigator.pop(context);
-                      await authService.signOut();
+                      if (authService.isAuthenticated) {
+                        await authService.signOut();
+                      } else {
+                        // Open Settings Dialog (as you requested, redirect to settings)
+                        unawaited(
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => const SettingsScreen(),
+                          ),
+                        );
+                      }
                     },
-                    style:
-                        ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent.withValues(
-                            alpha: 0.1,
-                          ),
-                          foregroundColor: Colors.redAccent,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
-                        ).copyWith(
-                          side: WidgetStateProperty.all(
-                            BorderSide(
-                              color: Colors.redAccent.withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                          ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: (authService.isAuthenticated
+                              ? Colors.redAccent
+                              : AppTheme.crimsonPrimary)
+                          .withValues(alpha: 0.1),
+                      foregroundColor: authService.isAuthenticated
+                          ? Colors.redAccent
+                          : AppTheme.crimsonPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ).copyWith(
+                      side: WidgetStateProperty.all(
+                        BorderSide(
+                          color: (authService.isAuthenticated
+                                  ? Colors.redAccent
+                                  : AppTheme.crimsonPrimary)
+                              .withValues(alpha: 0.3),
+                          width: 1,
                         ),
-                    child: const Row(
+                      ),
+                    ),
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.logout, size: 20),
-                        SizedBox(width: 8),
-                        Text('Sign Out'),
+                        Icon(
+                          authService.isAuthenticated
+                              ? Icons.logout
+                              : Icons.login,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          authService.isAuthenticated ? 'Sign Out' : 'Sign In',
+                        ),
                       ],
                     ),
                   ),

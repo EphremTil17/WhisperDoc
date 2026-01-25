@@ -79,7 +79,7 @@ class _FloatingCapsuleState extends State<FloatingCapsule> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  widget.isRecording ? Icons.stop : Icons.mic_off,
+                  widget.isRecording ? Icons.stop : Icons.mic,
                   color: widget.enabled ? Colors.white : Colors.white38,
                   size: 20,
                 ),

@@ -5,6 +5,7 @@ import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/services/websocket_service.dart';
 import 'package:flutter_client/core/services/history_service.dart';
 import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/core/services/audio_cue_service.dart';
 import 'package:flutter_client/core/controllers/recording_controller.dart';
 
 // Mock classes
@@ -18,6 +19,8 @@ class MockHistoryService extends Mock implements HistoryService {}
 
 class MockSettingsService extends Mock implements SettingsService {}
 
+class MockAudioCueService extends Mock implements AudioCueService {}
+
 void main() {
   late RecordingController controller;
   late MockAudioService mockAudioService;
@@ -25,6 +28,7 @@ void main() {
   late MockAutomationService mockAutomationService;
   late MockHistoryService mockHistoryService;
   late MockSettingsService mockSettingsService;
+  late MockAudioCueService mockAudioCueService;
 
   setUp(() {
     mockAudioService = MockAudioService();
@@ -32,10 +36,12 @@ void main() {
     mockAutomationService = MockAutomationService();
     mockHistoryService = MockHistoryService();
     mockSettingsService = MockSettingsService();
+    mockAudioCueService = MockAudioCueService();
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
     when(() => mockWsService.status).thenReturn(ConnectionStatus.disconnected);
+    when(() => mockWsService.isAuthenticatedSession).thenReturn(true);
     when(() => mockWsService.onMessage).thenAnswer((_) => const Stream.empty());
     when(() => mockHistoryService.getHistory()).thenAnswer((_) async => []);
     when(() => mockHistoryService.clearAll()).thenAnswer((_) async {});
@@ -52,6 +58,7 @@ void main() {
       automationService: mockAutomationService,
       historyService: mockHistoryService,
       settingsService: mockSettingsService,
+      audioCueService: mockAudioCueService,
     );
   });
 
@@ -104,6 +111,7 @@ void main() {
 
       verify(() => mockWsService.connect()).called(1);
       verify(() => mockAudioService.startRecording()).called(1);
+      verify(() => mockAudioCueService.playStartCue()).called(1);
     });
 
     test('startRecording connects to WebSocket if disconnected', () async {
@@ -119,6 +127,7 @@ void main() {
       await controller.startRecording();
 
       verify(() => mockWsService.connect()).called(1);
+      verify(() => mockAudioCueService.playStartCue()).called(1);
     });
 
     test('startRecording does not reconnect if already connected', () async {

@@ -6,6 +6,7 @@ import 'package:flutter_client/core/services/hotkey_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/services/history_service.dart';
 import 'package:flutter_client/core/services/auth_service.dart';
+import 'package:flutter_client/core/services/audio_cue_service.dart';
 import 'package:flutter_client/core/controllers/recording_controller.dart';
 
 /// Global service locator instance.
@@ -23,6 +24,10 @@ Future<void> setupServices() async {
   // 2. Core Services
   getIt.registerSingleton<HotkeyService>(HotkeyService());
   getIt.registerSingleton<AudioService>(AudioService());
+  
+  final audioCueService = AudioCueService();
+  await audioCueService.initialize();
+  getIt.registerSingleton<AudioCueService>(audioCueService);
 
   final authService = AuthService();
   await authService.initialize();
@@ -49,6 +54,7 @@ Future<void> setupServices() async {
       automationService: getIt<AutomationService>(),
       historyService: getIt<HistoryService>(),
       settingsService: getIt<SettingsService>(),
+      audioCueService: getIt<AudioCueService>(),
     ),
   );
 }
