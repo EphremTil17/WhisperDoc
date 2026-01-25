@@ -10,6 +10,7 @@ import 'package:flutter_client/core/services/settings_service.dart';
 import 'package:flutter_client/core/services/auth_service.dart';
 import 'package:flutter_client/core/services/automation_service.dart';
 import 'package:flutter_client/core/controllers/recording_controller.dart';
+import 'package:flutter_client/core/services/audio_cue_service.dart';
 import 'package:flutter_client/ui/theme/app_theme.dart';
 import 'package:flutter_client/ui/screens/home_screen.dart';
 

@@ -9,184 +9,95 @@ import 'package:flutter_client/core/services/transport_security_service.dart';
 import 'package:flutter_client/core/services/handshake_state_machine.dart';
 import 'package:flutter_client/core/services/ban_state_service.dart';
 import 'package:flutter_client/core/services/auth_service.dart';
-import 'package:flutter_client/core/constants/app_constants.dart';
+import 'websocket/configuration_manager.dart';
 import 'websocket/handshake_payload_builder.dart';
+import 'websocket/audio_buffer_manager.dart';
+import 'websocket/reconnection_manager.dart';
+import 'websocket/heartbeat_manager.dart';
 
 enum ConnectionStatus { disconnected, connecting, connected, banned }
 
-/// Hardened WebSocket service with integrated security layers.
-///
-/// Security Features:
-/// - Transport Security: WSS enforcement with RFC 1918 validation
-/// - Handshake Protocol: Authentication before data transmission
-/// - Ban Awareness: 1008 close code handling with cooldown
-/// - Audio Buffering: Queue data during handshake, flush after auth
-///
-/// Matches backend v2.8.x security architecture and Python terminal client patterns.
+/// Lean orchestrator for WebSocket connectivity.
+/// Delegates specialized logic to sub-managers for buffering, reconnection, and heartbeats.
 class WebSocketService extends ChangeNotifier {
   final SettingsService _settingsService;
-  final TransportSecurityService _transportSecurity =
-      TransportSecurityService();
+  final AuthService _authService;
+  
+  // Internal Managers
+  final TransportSecurityService _transportSecurity = TransportSecurityService();
   final HandshakeStateMachine _handshake = HandshakeStateMachine();
   final BanStateService _banState = BanStateService();
-  final AuthService _authService;
   final HandshakePayloadBuilder _payloadBuilder = HandshakePayloadBuilder();
+  final AudioBufferManager _audioBuffer = AudioBufferManager();
+  final ReconnectionManager _reconnection = ReconnectionManager();
+  final HeartbeatManager _heartbeat = HeartbeatManager();
+  late final ConfigurationManager _config;
 
   WebSocketChannel? _channel;
-  final StreamController<ConnectionStatus> _statusController =
-      StreamController<ConnectionStatus>.broadcast();
-  final StreamController<Map<String, dynamic>> _messageController =
-      StreamController<Map<String, dynamic>>.broadcast();
-
-  LoggingService get _logger => LoggingService();
-
-  SecurityStatus _securityStatus = SecurityStatus.secure; // Default to secure
-  SecurityStatus get securityStatus => _securityStatus;
+  final StreamController<ConnectionStatus> _statusController = StreamController<ConnectionStatus>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageController = StreamController<Map<String, dynamic>>.broadcast();
 
   ConnectionStatus _status = ConnectionStatus.disconnected;
-  ConnectionStatus get status => _status;
-  bool get isConnecting => _isConnecting;
-  Stream<ConnectionStatus> get onStatusChanged => _statusController.stream;
-  Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
-
-  String? _lastHandshakeError;
-  String? get lastHandshakeError => _lastHandshakeError;
-
-  // Expose ban state for UI
-  BanStateService get banState => _banState;
-  HandshakeStateMachine get handshakeState => _handshake;
-
-  Timer? _reconnectTimer;
-  Timer? _idleTimer;
-  bool _isIntentionalDisconnect = false;
   bool _isConnecting = false;
   bool _isAuthenticatedSession = false;
-  bool get isAuthenticatedSession => _isAuthenticatedSession;
-
-  // Audio buffer with 5s limit (16kHz * 16-bit * 1ch * 5s = ~160KB)
-  final List<Uint8List> _pendingAudioBuffer = [];
-  static const int _maxBufferSize = 160000; // bytes
-  int _currentBufferSize = 0;
+  bool _isIntentionalDisconnect = false;
+  String? _lastHandshakeError;
   String? _activeApiKey;
+  SecurityStatus _securityStatus = SecurityStatus.secure; // Default to secure
 
-  static const Duration idleTimeout = AppConstants.wsIdleTimeout;
-  String _lastKnownUri;
-  String? _lastKnownApiKey;
-  bool _lastKnownIncognito = false;
+  // State Getters
+  ConnectionStatus get status => _status;
+  bool get isConnecting => _isConnecting;
+  bool get isAuthenticatedSession => _isAuthenticatedSession;
+  String? get lastHandshakeError => _lastHandshakeError;
+  SecurityStatus get securityStatus => _securityStatus;
+  BanStateService get banState => _banState;
+  HandshakeStateMachine get handshakeState => _handshake;
+  Stream<ConnectionStatus> get onStatusChanged => _statusController.stream;
+  Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
+  LoggingService get _logger => LoggingService();
 
-  WebSocketService(this._settingsService, this._authService)
-    : _lastKnownUri = _settingsService.serverUri,
-      _lastKnownApiKey = _settingsService.cachedApiKey,
-      _lastKnownIncognito = _settingsService.incognitoMode {
-    _settingsService.addListener(_onSettingsChanged);
-    _authService.addListener(_onAuthChanged);
-    LoggingService().attachWebSocket(this);
+  WebSocketService(this._settingsService, this._authService) {
+    _config = ConfigurationManager(_authService, _settingsService);
+    
+    // Wire up configuration changes
+    _config.startObserving(
+      onReconnectNeeded: () {
+        if (_status == ConnectionStatus.connected || _status == ConnectionStatus.connecting) {
+          disconnect(reason: 'Configuration/Identity update required');
+        }
+      },
+      onAutoConnectDesired: () {
+        if (_status == ConnectionStatus.disconnected) {
+          unawaited(connect());
+        }
+      },
+    );
 
-    // Listen to handshake state changes for logging
     _handshake.stateStream.listen((state) {
-      if (state == HandshakeState.authenticated) {
-        _flushPendingAudioBuffer();
-      } else if (state == HandshakeState.failed) {
-        _clearAudioBuffer();
-      }
+      if (state == HandshakeState.authenticated) _audioBuffer.flush(_channel!);
+      else if (state == HandshakeState.failed) _audioBuffer.clear();
     });
+    _logger.attachWebSocket(this);
   }
 
   @override
   void dispose() {
-    _idleTimer?.cancel();
-    _reconnectTimer?.cancel();
-    _settingsService.removeListener(_onSettingsChanged);
-    _authService.removeListener(_onAuthChanged);
+    _heartbeat.stop();
+    _reconnection.stop();
+    _config.stopObserving();
     _handshake.dispose();
     _banState.dispose();
-    unawaited(_statusController.close());
-    unawaited(_messageController.close());
+    _statusController.close();
+    _messageController.close();
     super.dispose();
   }
 
-  void _onAuthChanged() async {
-    _logger.info('Auth state changed, resetting session if connected');
-    if (_status == ConnectionStatus.connected ||
-        _status == ConnectionStatus.connecting) {
-      await disconnect(reason: 'Identity change');
-    }
-
-    // Reset session auth flag if signed out
-    if (!_authService.isAuthenticated) {
-      _isAuthenticatedSession = false;
-    }
-
-    // Auto-connect if newly authenticated
-    if (_authService.isAuthenticated && _status == ConnectionStatus.disconnected) {
-      _logger.info('Automatically connecting after successful authentication');
-      unawaited(connect());
-    }
-    notifyListeners();
-  }
-
-  void _onSettingsChanged() async {
-    final currentUri = _settingsService.serverUri;
-    final currentIncognito = _settingsService.incognitoMode;
-    final currentApiKey = await _settingsService.getApiKey();
-
-    bool credentialsChanged = false;
-
-    // 1. URI Change
-    if (currentUri != _lastKnownUri) {
-      _logger.info('Server URI changed: $_lastKnownUri -> $currentUri');
-      _lastKnownUri = currentUri;
-      credentialsChanged = true;
-    }
-
-    // 2. API Key Change
-    if (currentApiKey != _lastKnownApiKey) {
-      _logger.info('API Key changed, resetting session auth');
-      _lastKnownApiKey = currentApiKey;
-      credentialsChanged = true;
-    }
-
-    if (credentialsChanged) {
-      _isAuthenticatedSession = false;
-      if (_status == ConnectionStatus.connected ||
-          _status == ConnectionStatus.connecting) {
-        await disconnect(reason: 'Credentials changed');
-      }
-
-      // Auto-connect if valid credentials available
-      if (currentApiKey != null && currentApiKey.isNotEmpty && _status == ConnectionStatus.disconnected) {
-        _logger.info('Automatically connecting after credentials update');
-        unawaited(connect());
-      }
-      notifyListeners();
-      return;
-    }
-
-    // 3. Incognito mode change (Session remains authorized)
-    if (currentIncognito != _lastKnownIncognito) {
-      _lastKnownIncognito = currentIncognito;
-      if (_status == ConnectionStatus.connected) {
-        _logger.info(
-          'Incognito mode changed, reconnecting with new privacy flag (Session Auth maintained)',
-        );
-        await disconnect(reason: 'Incognito mode toggle');
-      }
-    }
-  }
+  // --- External API ---
 
   Future<bool> connect({String? uriOverride, String? apiKeyOverride}) async {
-    if (_status == ConnectionStatus.connected &&
-        uriOverride == null &&
-        apiKeyOverride == null) {
-      return true;
-    }
-    if (_isConnecting) return false;
-    if (_banState.isBanned) {
-      _logger.warning(
-        'Cannot connect: IP is banned for ${_banState.cooldownRemaining}s',
-      );
-      return false;
-    }
+    if (_status == ConnectionStatus.connected && uriOverride == null && apiKeyOverride == null) return true;
+    if (_isConnecting || _banState.isBanned) return false;
 
     _isConnecting = true;
     _isIntentionalDisconnect = false;
@@ -198,124 +109,58 @@ class WebSocketService extends ChangeNotifier {
       final uriString = uriOverride ?? _settingsService.serverUri;
       _activeApiKey = apiKeyOverride ?? await _settingsService.getApiKey();
 
-      // 0. Pre-flight Auth Check: Don't even open the socket if we have no way to authenticate
-      if (!_authService.isAuthenticated &&
-          (_activeApiKey == null || _activeApiKey!.isEmpty)) {
-        _logger.error(
-          'Connection aborted: No OIDC session or API Key available',
-        );
-        _isConnecting = false;
-        _handleDisconnect();
-        return false;
+      if (!_authService.isAuthenticated && (_activeApiKey?.isEmpty ?? true)) {
+        throw Exception('No authentication available');
       }
 
-      // 1. Transport Security Validation
-      _securityStatus = await _transportSecurity.validateServerUri(uriString);
-      if (_securityStatus == SecurityStatus.blocked) {
-        _logger.error(
-          'Transport security violation: WS connection to public IP blocked',
-        );
-        _isConnecting = false;
-        _handleDisconnect();
-        return false;
-      }
+      final security = await _transportSecurity.validateServerUri(uriString);
+      _securityStatus = security;
+      if (security == SecurityStatus.blocked) throw Exception('Security violation');
 
-      final normalizedUri = _transportSecurity.normalizeUri(uriString);
-      final uri = Uri.parse(normalizedUri);
-      _logger.info('Connecting to WebSocket: $uri (${securityStatus.name})');
-
-      _channel = IOWebSocketChannel.connect(uri);
-
-      // 2. Wait for connection establishment
+      _channel = IOWebSocketChannel.connect(Uri.parse(_transportSecurity.normalizeUri(uriString)));
       await _channel!.ready;
-      _logger.info('WebSocket TCP connection established');
 
-      // 3. Set up message listener BEFORE handshake
-      _channel!.stream.listen(
-        (data) => _handleMessage(data),
-        onError: (error) => _handleError(error),
-        onDone: () => _handleClose(),
-      );
+      _channel!.stream.listen(_handleRawMessage, onError: _handleSocketError, onDone: _handleSocketClose);
+      
+      final hello = await _waitForServerHello();
+      if (hello == null) throw Exception('Handshake timeout');
 
-      // 4. Wait for server hello
-      final serverHello = await _waitForServerHello();
-      if (serverHello == null) {
-        throw Exception('Server hello timeout');
-      }
-
-      // 5. Send client hello with auth
       await _sendClientHello();
-
-      // 6. Wait for authenticated event (handled by message listener)
-      // Handshake state machine will transition to authenticated
-      // Connection status updated to connected after authentication
-
       _isConnecting = false;
       return true;
     } catch (e) {
-      _isConnecting = false;
       _logger.error('Connection failed', error: e);
+      _isConnecting = false;
       _handleDisconnect();
       return false;
     }
   }
 
-  Future<Map<String, dynamic>?> _waitForServerHello() async {
-    try {
-      final completer = Completer<Map<String, dynamic>?>();
-      StreamSubscription? sub;
+  Future<void> disconnect({String reason = 'Client closed'}) async {
+    _isIntentionalDisconnect = true;
+    _reconnection.reset();
+    if (_channel != null) await _channel!.sink.close(1000, reason);
+  }
 
-      sub = onMessage.listen((msg) {
-        if (msg['event'] == 'hello') {
-          unawaited(sub?.cancel());
-          completer.complete(msg);
-        }
-      });
-
-      // 5s timeout for server hello
-      Future.delayed(const Duration(seconds: 5), () {
-        if (!completer.isCompleted) {
-          unawaited(sub?.cancel());
-          completer.complete(null);
-        }
-      });
-
-      final hello = await completer.future;
-      if (hello != null) {
-        _logger.info('Received server hello: v${hello['version']}');
-      }
-      return hello;
-    } catch (e) {
-      _logger.error('Error waiting for server hello', error: e);
-      return null;
+  void sendAudioChunk(Uint8List data) {
+    if (_handshake.canSendAudio() && _channel != null) {
+      _channel!.sink.add(data);
+      _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
+    } else if (_handshake.state == HandshakeState.authenticating) {
+      _audioBuffer.add(data);
     }
   }
 
+  void sendEndSignal() => _sendJson({'event': 'end-of-stream'});
+  void sendLog(String level, String msg) => _sendJson({'event': 'log', 'level': level, 'message': msg});
+
+  // --- Internal Logic ---
+
   Future<void> _sendClientHello() async {
-    String? token;
-    String authType = 'api_key';
+    String? token = _authService.isAuthenticated ? await _authService.getAccessToken() : _activeApiKey;
+    String authType = _authService.isAuthenticated ? 'oidc' : 'api_key';
 
-    // 1. Prioritize OIDC Identity Token
-    if (_authService.isAuthenticated) {
-      token = await _authService.getAccessToken();
-      if (token != null && token.isNotEmpty) {
-        authType = 'oidc';
-        _logger.info('Forwarding OIDC identity token for handshake');
-      }
-    }
-
-    // 2. Fallback to API Key only if OIDC is not being used
-    if (token == null || token.isEmpty) {
-      token = _activeApiKey;
-      if (token != null && token.isNotEmpty) {
-        authType = 'api_key';
-        _logger.info('Forwarding static API key for handshake');
-      }
-    }
-
-    if (token == null || token.isEmpty) {
-      throw Exception('No authentication token available');
-    }
+    if (token == null) throw Exception('Auth token missing');
 
     final payload = await _payloadBuilder.buildHello(
       token: token,
@@ -323,264 +168,90 @@ class WebSocketService extends ChangeNotifier {
       incognito: _settingsService.incognitoMode,
     );
 
-    _logger.info(
-      'Sending client hello (auth: $authType, incognito: ${payload['incognito']})',
-    );
-    _channel?.sink.add(jsonEncode(payload));
+    _sendJson(payload);
     _handshake.transitionTo(HandshakeState.authenticating);
   }
 
-  void _handleMessage(dynamic data) {
-    _resetIdleTimer();
+  void _handleRawMessage(dynamic data) {
+    _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
+    if (data is! String) return;
 
-    if (data is String) {
-      final trimmed = data.trim();
-      if (trimmed.startsWith('{')) {
-        try {
-          final json = jsonDecode(data) as Map<String, dynamic>;
-          final event = json['event'] as String?;
+    try {
+      final json = jsonDecode(data) as Map<String, dynamic>;
+      final event = json['event'];
 
-          // Handle authentication event
-          if (event == 'authenticated') {
-            _logger.info('Handshake complete: Authenticated');
-            _isAuthenticatedSession = true;
-            _handshake.transitionTo(HandshakeState.authenticated);
-            _updateStatus(ConnectionStatus.connected);
-            _resetIdleTimer();
-            return;
-          }
-
-          // Handle authentication errors
-          if (event == 'error') {
-            final code = json['code'];
-            final message = json['message'];
-            if (code == 403 ||
-                message?.toString().contains('Authentication') == true) {
-              _logger.error('Authentication failed: $message');
-              _lastHandshakeError =
-                  message?.toString() ?? 'Authentication failed';
-              _isAuthenticatedSession = false;
-              _handshake.transitionTo(HandshakeState.failed);
-              _isIntentionalDisconnect =
-                  true; // Stop auto-reconnect on auth failure
-              _handleDisconnect();
-              return;
-            }
-          }
-
-          // Forward all messages to controller
-          _messageController.add(json);
-        } catch (e) {
-          _logger.error('JSON parse error', error: e);
-        }
+      if (event == 'authenticated') {
+        _isAuthenticatedSession = true;
+        _handshake.transitionTo(HandshakeState.authenticated);
+        _updateStatus(ConnectionStatus.connected);
+      } else if (event == 'error' && (json['code'] == 403 || json['message']?.contains('Auth') == true)) {
+        _handleAuthError(json['message']);
       } else {
-        _logger.warning('Received non-JSON text from server: $data');
+        _messageController.add(json);
       }
+    } catch (e) {
+      _logger.error('Message parse error', error: e);
     }
   }
 
-  void _handleError(dynamic error) {
-    _isConnecting = false;
-    _logger.error('WebSocket error', error: error);
+  void _handleAuthError(dynamic message) {
+    _lastHandshakeError = message?.toString() ?? 'Auth failed';
+    _handshake.transitionTo(HandshakeState.failed);
+    _isIntentionalDisconnect = true;
     _handleDisconnect();
   }
 
-  void _handleClose() {
-    _isConnecting = false;
+  void _handleSocketError(dynamic error) => _handleDisconnect();
 
-    // Extract close code and reason
-    final closeCode = _channel?.closeCode;
-    final closeReason = _channel?.closeReason;
+  void _handleSocketClose() {
+    final code = _channel?.closeCode;
+    final reason = _channel?.closeReason;
 
-    if (closeCode == 1000 || _isIntentionalDisconnect) {
-      // Normal closure or expected disconnect
-      _logger.info(
-        'WebSocket closed normally (code: ${closeCode ?? 1000}, reason: ${closeReason ?? "Intentional"})',
-      );
-    } else if (closeCode == 1008) {
-      // Protocol violation / Ban / Auth Failure
-      _logger.error('Connection closed: 1008 Policy Violation - $closeReason');
-
-      final isBan =
-          closeReason?.toLowerCase().contains('ban') == true ||
-          closeReason?.toLowerCase().contains('cooldown') == true ||
-          closeReason?.toLowerCase().contains('retry') == true;
-
-      if (isBan) {
-        _banState.parseBanMessage(closeReason);
-        _handshake.transitionTo(HandshakeState.banned);
+    if (code == 1008) {
+      if (reason?.contains('ban') == true) {
+        _banState.parseBanMessage(reason);
         _updateStatus(ConnectionStatus.banned);
       } else {
-        // Assume authentication or policy failure if doesn't look like a ban
-        _lastHandshakeError = closeReason ?? 'Authentication refused by server';
-        _handshake.transitionTo(HandshakeState.failed);
-        _updateStatus(ConnectionStatus.disconnected);
-
-        // Notify of auth failure
-        _messageController.add({
-          'event': 'error',
-          'code': 'AUTH_FAILED',
-          'message': _lastHandshakeError,
-        });
+        _handleAuthError(reason);
       }
-
-      _isIntentionalDisconnect = true; // Disable auto-reconnect on 1008
-      _clearReconnectState();
-    } else {
-      _logger.warning(
-        'WebSocket closed unexpectedly (code: $closeCode, reason: $closeReason)',
-      );
+      return;
     }
-
     _handleDisconnect();
   }
 
   void _handleDisconnect() {
-    final wasActive =
-        _status != ConnectionStatus.disconnected &&
-        _status != ConnectionStatus.banned;
-
-    if (_status != ConnectionStatus.banned) {
-      _updateStatus(ConnectionStatus.disconnected);
-    }
-
+    bool wasActive = _status == ConnectionStatus.connected;
+    if (_status != ConnectionStatus.banned) _updateStatus(ConnectionStatus.disconnected);
+    
     _channel = null;
-    _idleTimer?.cancel();
+    _heartbeat.stop();
     _isConnecting = false;
 
-    // Only reset handshake to locked if it's not in a terminal error state
-    // (failed or banned). This ensures the UI remembers the failure.
-    if (_handshake.state != HandshakeState.failed &&
-        _handshake.state != HandshakeState.banned) {
-      _handshake.reset();
-    }
-
-    // Auto-reconnect only if not intentional and not banned
     if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
-      _scheduleReconnect();
+      _reconnection.schedule(
+        onRetry: () => connect(),
+        lastError: _lastHandshakeError,
+        isBanned: _banState.isBanned,
+      );
     }
   }
 
-  void sendAudioChunk(Uint8List data) {
-    // Audio can only be sent after authentication
-    if (_handshake.canSendAudio() && _channel != null) {
-      try {
-        _channel!.sink.add(data);
-        _resetIdleTimer();
-      } catch (e) {
-        _logger.error('Failed to send audio', error: e);
-      }
-    } else if (_handshake.state == HandshakeState.authenticating) {
-      // Buffer audio during handshake (with size limit)
-      if (_currentBufferSize < _maxBufferSize) {
-        _pendingAudioBuffer.add(data);
-        _currentBufferSize += data.length;
-      } else {
-        _logger.warning('Audio buffer full, dropping chunk');
-      }
-    } else {
-      // Avoid spamming logs if we already know why it's failing
-      if (_handshake.state != HandshakeState.failed &&
-          _handshake.state != HandshakeState.banned) {
-        _logger.warning('Cannot send audio in ${_handshake.state.name} state');
-      }
-    }
-  }
-
-  void sendEndSignal() {
-    if (_handshake.canSendAudio() && _channel != null) {
-      try {
-        _channel!.sink.add(jsonEncode({'event': 'end-of-stream'}));
-        _resetIdleTimer();
-      } catch (e) {
-        _logger.error('Failed to send end signal', error: e);
-      }
-    }
-  }
-
-  void sendLog(String level, String message) {
-    if (_handshake.canSendAudio() && _channel != null) {
-      try {
-        _channel!.sink.add(
-          jsonEncode({'event': 'log', 'level': level, 'message': message}),
-        );
-      } catch (e) {
-        // Silently fail - avoid infinite logging loop
-      }
-    }
-  }
-
-  Future<void> disconnect({String reason = 'Client reconnecting'}) async {
-    _isIntentionalDisconnect = true;
-    _clearReconnectState();
-    // Close with code 1000 (Normal Closure)
+  void _sendJson(Map<String, dynamic> json) {
     if (_channel != null) {
-      await _channel!.sink.close(1000, reason);
+      _channel!.sink.add(jsonEncode(json));
+      _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
     }
   }
 
-  // --- Private Helper Methods ---
-
-  void _resetIdleTimer() {
-    _idleTimer?.cancel();
-    _idleTimer = Timer(idleTimeout, () {
-      _logger.info('Idle timeout reached, closing connection');
-      unawaited(disconnect(reason: 'Idle timeout'));
+  Future<Map<String, dynamic>?> _waitForServerHello() async {
+    final completer = Completer<Map<String, dynamic>?>();
+    final sub = onMessage.listen((msg) {
+      if (msg['event'] == 'hello' && !completer.isCompleted) completer.complete(msg);
     });
-  }
-
-  void _flushPendingAudioBuffer() {
-    if (_pendingAudioBuffer.isEmpty) return;
-
-    _logger.info(
-      'Flushing ${_pendingAudioBuffer.length} buffered audio chunks',
-    );
-    for (final chunk in _pendingAudioBuffer) {
-      _channel?.sink.add(chunk);
-    }
-    _clearAudioBuffer();
-  }
-
-  void _clearAudioBuffer() {
-    _pendingAudioBuffer.clear();
-    _currentBufferSize = 0;
-  }
-
-  int _reconnectAttempts = 0;
-
-  void _scheduleReconnect() {
-    if (_reconnectTimer?.isActive ?? false) return;
-    if (_banState.isBanned) return;
-
-    // KILL SWITCH: If the last disconnect was due to a missing/invalid credential,
-    // do NOT auto-reconnect. Hammering correctly results in backend bans.
-    if (_lastHandshakeError != null) {
-      final err = _lastHandshakeError!.toLowerCase();
-      if (err.contains('no oidc session') || 
-          err.contains('authentication token') ||
-          err.contains('access denied') ||
-          err.contains('authentication failed') ||
-          err.contains('invalid credentials')) {
-        _logger.warning('Auto-reconnect aborted: Authentication failure ($err). Please sign in manually.');
-        return;
-      }
-    }
-
-    const delaySeconds = 5;
-    _logger.info(
-      'Reconnect scheduled in ${delaySeconds}s (Attempt ${_reconnectAttempts + 1})',
-    );
-
-    _reconnectTimer = Timer(const Duration(seconds: delaySeconds), () {
-      _reconnectAttempts++;
-      unawaited(connect());
-    });
-  }
-
-  void _clearReconnectState() {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-    _reconnectAttempts = 0;
+    return completer.future.timeout(const Duration(seconds: 5), onTimeout: () {
+      sub.cancel();
+      return null;
+    }).then((val) { sub.cancel(); return val; });
   }
 
   void _updateStatus(ConnectionStatus newStatus) {
