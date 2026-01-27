@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/settings_service.dart';
-import 'package:flutter_client/core/services/websocket_service.dart';
-import 'package:flutter_client/core/services/auth_service.dart';
+import 'package:flutter_client/services/utility/settings_service.dart';
+import 'package:flutter_client/services/transport/websocket_service.dart';
+import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AuthSection extends StatefulWidget {

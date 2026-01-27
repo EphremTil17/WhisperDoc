@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/core/services/settings_service.dart';
-import 'package:flutter_client/core/services/websocket_service.dart';
-import 'package:flutter_client/core/services/handshake_state_machine.dart';
+import 'package:flutter_client/services/utility/settings_service.dart';
+import 'package:flutter_client/services/transport/websocket_service.dart';
+import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/audio_visualizer.dart';
 import 'package:flutter_client/ui/shared/widgets/floating_capsule.dart';

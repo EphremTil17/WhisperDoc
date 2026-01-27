@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class RefinedIconButton extends StatefulWidget {
@@ -22,7 +23,8 @@ class RefinedIconButton extends StatefulWidget {
   State<RefinedIconButton> createState() => _RefinedIconButtonState();
 }
 
-class _RefinedIconButtonState extends State<RefinedIconButton> with SingleTickerProviderStateMixin {
+class _RefinedIconButtonState extends State<RefinedIconButton>
+    with SingleTickerProviderStateMixin {
   bool _isHovering = false;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -40,7 +42,7 @@ class _RefinedIconButtonState extends State<RefinedIconButton> with SingleTicker
     );
 
     if (widget.isPulsing) {
-      _pulseController.repeat(reverse: true);
+      unawaited(_pulseController.repeat(reverse: true));
     }
   }
 
@@ -49,7 +51,7 @@ class _RefinedIconButtonState extends State<RefinedIconButton> with SingleTicker
     super.didUpdateWidget(oldWidget);
     if (widget.isPulsing != oldWidget.isPulsing) {
       if (widget.isPulsing) {
-        _pulseController.repeat(reverse: true);
+        unawaited(_pulseController.repeat(reverse: true));
       } else {
         _pulseController.stop();
         _pulseController.reset();
@@ -92,8 +94,8 @@ class _RefinedIconButtonState extends State<RefinedIconButton> with SingleTicker
                   color: _isHovering
                       ? Colors.white.withValues(alpha: 0.5)
                       : widget.isPulsing
-                          ? glowColor.withValues(alpha: 0.15 + (pulseVal * 0.35))
-                          : Colors.white.withValues(alpha: 0.15),
+                      ? glowColor.withValues(alpha: 0.15 + (pulseVal * 0.35))
+                      : Colors.white.withValues(alpha: 0.15),
                   width: widget.isPulsing ? 1.0 + (pulseVal * 0.5) : 1.0,
                 ),
                 boxShadow: widget.isPulsing

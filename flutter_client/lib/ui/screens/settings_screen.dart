@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/connection_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_section.dart';

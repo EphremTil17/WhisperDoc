@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// A reusable glassmorphic dialog container.

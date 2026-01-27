@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/hotkey_service.dart';
-import 'package:flutter_client/core/services/logging_service.dart';
-import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/services/hardware/hotkey_service.dart';
+import 'package:flutter_client/services/utility/logging_service.dart';
+import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
 import 'package:flutter_client/ui/shared/widgets/profile_hub.dart';
@@ -15,7 +15,7 @@ import 'package:flutter_client/ui/screens/home/widgets/recording_view.dart';
 import 'package:flutter_client/ui/screens/home/widgets/ban_overlay.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/auth_error_dialog.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/incognito_toggle_dialog.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

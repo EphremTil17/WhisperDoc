@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.14.1
+# WhisperDoc Flutter Client v2.19.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
 
@@ -20,25 +20,23 @@ The Flutter client has been hardened to match server-side security standards thr
 - **Data-at-Rest Encryption**: Transcription history is stored in an **AES-256 encrypted Isar database**. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
 
-## Architecture
-
-The client follows a **feature-sliced architecture** with clear separation of concerns:
+The client follows a **Smart Modular Architecture** designed for high scalability and zero-latency performance:
 
 ```
 lib/
-├── core/
-│   ├── constants/       # Centralized configuration (AppConstants)
-│   ├── controllers/     # Business logic controllers (RecordingController)
-│   ├── di/              # Dependency injection (ServiceLocator with get_it)
-│   ├── models/          # Data structures (TranscriptionEntry)
-│   ├── services/        # Core services (Audio, WebSocket, Settings, SecureVault)
-│   └── utils/           # Helpers (Win32 key mapping)
-├── ui/
-│   ├── features/        # Feature modules (recording, settings)
-│   ├── screens/         # Top-level screens (Home, Settings, Dialogs)
-│   ├── shared/widgets/  # Reusable UI components (GlassDialog, etc.)
-│   └── theme/           # Design tokens and theming
-└── main.dart            # App entry point
+├── controllers/      # State orchestration (RecordingController)
+├── infrastructure/   # System foundations (DI, Theme, Constants)
+├── logic/            # Pure domain logic (Processors, Mappers, Models)
+├── services/         # Functional domain specialized services
+│   ├── auth/         # OIDC & Session management
+│   ├── hardware/     # Audio capture & Hotkey listeners
+│   ├── transport/    # WebSocket orchestration & Handshake
+│   └── utility/      # Logging, Secure Vault, Settings
+├── ui/               # Presentation layer
+│   ├── features/     # Feature modules (recording, settings)
+│   ├── screens/      # Main screens & contextual dialogs
+│   └── shared/       # Global widgets & theme tokens
+└── main.dart         # Clean entry point with service bootstrap
 ```
 
 ### Key Design Principles
@@ -61,8 +59,8 @@ lib/
 | Native APIs | Win32 via ffi/win32 packages |
 | Encryption | encrypt (AES/CBC) |
 
-## Features
-
+- **Instantaneous Connection**: Implements a "Zero-Latency" recording flow. Audio capture and UI feedback initiate instantly while the WebSocket handshake completes in parallel.
+- **Background Auto-Wake**: The transport layer automatically resumes connectivity when a recording is initiated, removing the need for manual connection management.
 - **Advanced Security Indicators**: Visual feedback (Lock/Warning/Block) for connection security status.
 - **JWT Expiry Warnings**: Automatic detection of session tokens with user-friendly expiry countdowns.
 - **Deep Sleep Proof Hotkeys**: Native `GetMessage` blocking loop ensures hotkeys work after system sleep.

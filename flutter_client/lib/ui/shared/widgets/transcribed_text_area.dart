@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/core/services/clipboard_service.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/services/utility/clipboard_service.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class TranscribedTextArea extends StatefulWidget {

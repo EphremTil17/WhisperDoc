@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/settings_service.dart';
+import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/features/settings/settings.dart';
 
 class AutomationSection extends StatelessWidget {

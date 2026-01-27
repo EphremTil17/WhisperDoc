@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/auth_service.dart';
+import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_hub_dialog.dart';
 
 class ProfileHub extends StatefulWidget {
@@ -40,23 +40,25 @@ class _ProfileHubState extends State<ProfileHub> {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: _isHovered 
-                  ? Colors.white.withValues(alpha: 0.1) 
+              color: _isHovered
+                  ? Colors.white.withValues(alpha: 0.1)
                   : Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: _isHovered 
-                    ? Colors.white.withValues(alpha: 0.2) 
+                color: _isHovered
+                    ? Colors.white.withValues(alpha: 0.2)
                     : Colors.white.withValues(alpha: 0.1),
                 width: 1,
               ),
-              boxShadow: _isHovered ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                )
-              ] : null,
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -80,8 +82,8 @@ class _ProfileHubState extends State<ProfileHub> {
                 Icon(
                   Icons.menu,
                   size: 20,
-                  color: _isHovered 
-                      ? Colors.white 
+                  color: _isHovered
+                      ? Colors.white
                       : Colors.white.withValues(alpha: 0.7),
                 ),
                 const SizedBox(width: 4),

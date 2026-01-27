@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_client/core/utils/win32_key_mapper.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/utils/win32_key_mapper.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
 class HotkeyRecorderDialog extends StatefulWidget {
   final Function(String display, int mods, int vKey) onSelected;

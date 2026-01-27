@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/websocket_service.dart';
+import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/ui/shared/widgets/ban_countdown_overlay.dart';
 
 class BanOverlay extends StatelessWidget {

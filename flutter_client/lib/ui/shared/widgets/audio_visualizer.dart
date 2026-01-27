@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/core/services/audio_service.dart';
-import 'package:flutter_client/ui/theme/app_theme.dart';
+import 'package:flutter_client/services/hardware/audio_service.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
 /// Configuration for the waveform visualizer (easily adjustable)
 class WaveformConfig {
