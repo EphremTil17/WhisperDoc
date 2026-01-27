@@ -14,6 +14,12 @@ from security.governance import SecurityGovernance, MAX_CONNECTIONS, IDLE_TIMEOU
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
 
+# Whisper Performance & Hallucination Control
+BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+NO_SPEECH_THRESHOLD = float(os.getenv("WHISPER_NO_SPEECH_THRESHOLD", "0.6"))
+LOG_PROB_THRESHOLD = float(os.getenv("WHISPER_LOG_PROB_THRESHOLD", "-1.0"))
+CONDITION_ON_PREVIOUS = os.getenv("WHISPER_CONDITION_ON_PREVIOUS", "True").lower() == "true"
+
 class ConnectionManager:
     """Manages WebSocket connection lifecycle, protocol state, and audio processing."""
     def __init__(self, model_manager: ModelManager, app_version: str):
@@ -248,7 +254,14 @@ class ConnectionManager:
             start_time = time.time()
             # Run transcription in a thread to keep WebSocket loop alive
             def run_transcription():
-                segments, info = model.transcribe(tmp_path, language="en")
+                segments, info = model.transcribe(
+                    tmp_path, 
+                    language="en",
+                    beam_size=BEAM_SIZE,
+                    no_speech_threshold=NO_SPEECH_THRESHOLD,
+                    log_prob_threshold=LOG_PROB_THRESHOLD,
+                    condition_on_previous_text=CONDITION_ON_PREVIOUS
+                )
                 return list(segments), info
 
             segments_list, info = await asyncio.to_thread(run_transcription)
