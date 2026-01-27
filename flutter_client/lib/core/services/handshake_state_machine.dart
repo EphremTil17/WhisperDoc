@@ -87,7 +87,7 @@ class HandshakeStateMachine {
 
     switch (from) {
       case HandshakeState.locked:
-        return to == HandshakeState.authenticating;
+        return to == HandshakeState.authenticating || to == HandshakeState.failed;
 
       case HandshakeState.authenticating:
         return to == HandshakeState.authenticated ||

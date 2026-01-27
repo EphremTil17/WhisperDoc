@@ -110,6 +110,8 @@ class WebSocketService extends ChangeNotifier {
       _activeApiKey = apiKeyOverride ?? await _settingsService.getApiKey();
 
       if (!_authService.isAuthenticated && (_activeApiKey?.isEmpty ?? true)) {
+        _lastHandshakeError = 'Authentication required';
+        _handshake.transitionTo(HandshakeState.failed);
         throw Exception('No authentication available');
       }
 
@@ -130,6 +132,10 @@ class WebSocketService extends ChangeNotifier {
       return true;
     } catch (e) {
       _logger.error('Connection failed', error: e);
+      if (e.toString().contains('Auth token missing')) {
+        _lastHandshakeError = 'Identity session expired or missing';
+        _handshake.transitionTo(HandshakeState.failed);
+      }
       _isConnecting = false;
       _handleDisconnect();
       return false;

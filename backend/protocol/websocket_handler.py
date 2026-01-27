@@ -170,6 +170,10 @@ class ConnectionManager:
                     log.info(f"[{conn_id}] Handshake Verified ({auth_type}). Incognito: {connection_data['incognito']}")
 
                     await websocket.send_json({"event": "authenticated", "status": "success", "cid": conn_id})
+                    
+                    # TRIGGER WARMUP: Load model in background if not already loaded
+                    # This utilizes the user's "thinking time" before they start recording.
+                    asyncio.create_task(self._warmup_model())
                     return
 
                 if event == "hello":
@@ -203,6 +207,16 @@ class ConnectionManager:
                 await websocket.close(code=1009, reason="Buffer limit exceeded")
                 self.disconnect(websocket)
 
+    async def _warmup_model(self):
+        """Background task to ensure model is loaded into GPU."""
+        try:
+            log.info("BACKGROUND: Triggering model warmup...")
+            # to_thread prevents blocking the event loop during the 2-5s load
+            await asyncio.to_thread(self.model_manager.get_model)
+            log.debug("BACKGROUND: Model warmup attempt completed.")
+        except Exception as e:
+            log.error(f"BACKGROUND: Model warmup failed: {e}")
+
     async def transcribe_and_send(self, websocket: WebSocket):
         data = self.active_connections.get(websocket)
         if not data: return
@@ -216,9 +230,11 @@ class ConnectionManager:
             await websocket.send_json({"event": "error", "code": "NO_AUDIO", "message": "No audio data received"})
             return
 
-        tmp_path = None
         try:
-            model, _ = self.model_manager.get_model()
+            # NON-BLOCKING: Run model retrieval (which might include load_model) in a thread.
+            # This ensures other WebSocket connections remain responsive during cold starts.
+            log.debug(f"[{conn_id}] Retrieving model...")
+            model, _ = await asyncio.to_thread(self.model_manager.get_model)
             
             # Wrap the raw PCM buffer in a proper WAV header before writing to file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:

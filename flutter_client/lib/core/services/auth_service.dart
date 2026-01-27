@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/core/services/logging_service.dart';
 import 'auth/oidc_manager.dart';
@@ -12,9 +13,9 @@ class AuthService extends ChangeNotifier {
 
   bool _isInitialized = false;
   bool _isAuthenticating = false;
-  bool _isRefreshing = false;
   Map<String, dynamic>? _currentUser;
   String? _idToken;
+  Completer<bool>? _refreshCompleter;
 
   Map<String, dynamic>? get currentUser => _currentUser;
   bool get isAuthenticated => _idToken != null;
@@ -89,7 +90,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _currentUser = _session.extractUser(_idToken!);
-      _logger.info('Sign-in successful: ${_currentUser?['email']}');
+      _logger.info('Sign-in successful: ${_currentUser?['email']} (Refresh Token: ${tokens['refresh_token'] != null ? 'YES' : 'NO'})');
     } catch (e) {
       if (!e.toString().contains('CANCELED')) {
         _logger.error('OIDC Sign-in failed', error: e);
@@ -101,13 +102,21 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> silentRefresh() async {
-    if (_isRefreshing) return false;
-    _isRefreshing = true;
+    if (_refreshCompleter != null) {
+      _logger.info('Silent refresh already in progress, waiting...');
+      return _refreshCompleter!.future;
+    }
+    _refreshCompleter = Completer<bool>();
 
     try {
       _logger.info('Attempting OIDC silent refresh...');
       final refreshToken = await _session.loadRefreshToken();
-      if (refreshToken == null) return false;
+      if (refreshToken == null) {
+        _logger.warning('Silent refresh aborted: No refresh token found in vault. Signing out user.');
+        await signOut();
+        _refreshCompleter?.complete(false);
+        return false;
+      }
 
       final discovery = await _oidc.discover();
       final tokens = await _oidc.exchangeToken(
@@ -125,12 +134,15 @@ class AuthService extends ChangeNotifier {
       _currentUser = _session.extractUser(_idToken!);
       _logger.info('Silent refresh successful: ${_currentUser?['email']}');
       notifyListeners();
+      _refreshCompleter?.complete(true);
       return true;
     } catch (e) {
-      _logger.error('Silent refresh failed', error: e);
+      _logger.error('Silent refresh failed. Signing out user.', error: e);
+      await signOut();
+      _refreshCompleter?.complete(false);
       return false;
     } finally {
-      _isRefreshing = false;
+      _refreshCompleter = null;
     }
   }
 

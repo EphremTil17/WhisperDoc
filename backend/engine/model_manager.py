@@ -5,6 +5,7 @@ import torch
 import asyncio
 import ctypes
 import platform
+import threading
 from faster_whisper import WhisperModel
 from logging_config import log
 
@@ -19,6 +20,7 @@ class ModelManager:
         self.compute_type = compute_type
         self.model = None
         self.last_used = time.time()
+        self._lock = threading.Lock()
         
         # Initial load
         self.load_model()
@@ -27,27 +29,29 @@ class ModelManager:
         asyncio.create_task(self._monitor_usage())
 
     def load_model(self):
-        if self.model: return
-        log.info(f"Loading Whisper model ({self.model_name}) into {self.device}...")
-        try:
-            start = time.time()
-            self.model = WhisperModel(
-                self.model_name, 
-                device=self.device, 
-                compute_type=self.compute_type,
-                download_root="/app/model-cache"
-            )
-            log.success(f"Model loaded in {time.time() - start:.2f}s")
-        except Exception as e:
-            log.error(f"Failed to load model: {e}")
-            raise
+        with self._lock:
+            if self.model: return
+            log.info(f"Loading Whisper model ({self.model_name}) into {self.device}...")
+            try:
+                start = time.time()
+                self.model = WhisperModel(
+                    self.model_name, 
+                    device=self.device, 
+                    compute_type=self.compute_type,
+                    download_root="/app/model-cache"
+                )
+                log.success(f"Model loaded in {time.time() - start:.2f}s")
+            except Exception as e:
+                log.error(f"Failed to load model: {e}")
+                raise
 
     def unload_model(self):
-        if not self.model: return
-        log.info("Unloading IDLE model from GPU...")
-        del self.model
-        self.model = None
-        gc.collect()
+        with self._lock:
+            if not self.model: return
+            log.info("Unloading IDLE model from GPU...")
+            del self.model
+            self.model = None
+            gc.collect()
         
         # Clear Torch CUDA cache if available
         if torch.cuda.is_available():
