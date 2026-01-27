@@ -170,34 +170,39 @@ class RecordingController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Hard Block: Authentication session must be verified.
-      // We check for the session auth flag which persists across incognito toggles.
-      if (!_wsService.isAuthenticatedSession) {
-        final error =
-            _wsService.lastHandshakeError ?? 'Authentication required';
-        _errorController.add('Please authenticate in Settings first: $error');
-        LoggingService().warning(
-          'Recording blocked: Session not authenticated',
-        );
+      // 1. Security & Pre-Check: Do we have credentials to even attempt this?
+      // We check locally first to prevent spamming background connection attempts without auth.
+      if (!_wsService.hasValidCredentials) {
+        _errorController.add('Please authenticate in Settings first.');
+        LoggingService().warning('Recording blocked: No credentials found');
         return;
       }
 
-      // 2. Simple connection check (transport level)
-      if (_wsService.status != ConnectionStatus.connected) {
-        final connected = await _wsService.connect();
-        if (!connected) {
-          _errorController.add('Failed to reconnect to session.');
-          return;
-        }
-      }
-
+      // 2. ZERO-LATENCY START: 
+      // Trigger local audio capture and UI cues IMMEDIATELY.
       await _audioService.startRecording();
       _audioCueService.playStartCue();
+      
+      // Notify listeners so UI (FloatingCapsule) turns red instantly
+      notifyListeners();
 
-      // Pipe audio to websocket
+      // Pipe audio to websocket (WebSocketService will buffer if disconnected)
       _audioSubscription = _audioService.audioStream.listen((data) {
         _wsService.sendAudioChunk(data);
       });
+
+      // 3. BACKGROUND CONNECTION:
+      // If disconnected, wake up the server connection in parallel.
+      if (_wsService.status != ConnectionStatus.connected) {
+        LoggingService().info('Auto-wake: Initiating background server connection...');
+        unawaited(_wsService.connect().then((connected) {
+          if (!connected && _isRecording) {
+            // If connection fails after start, stop and notify
+            unawaited(stopRecording());
+            _errorController.add('Failed to wake up server connection.');
+          }
+        }));
+      }
     } catch (e) {
       LoggingService().error('Failed to start recording', error: e);
       _isRecording = false;

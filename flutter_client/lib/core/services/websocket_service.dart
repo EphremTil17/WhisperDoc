@@ -57,6 +57,10 @@ class WebSocketService extends ChangeNotifier {
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
   LoggingService get _logger => LoggingService();
 
+  /// Returns true if the app has valid credentials (OIDC or API Key) to attempt a connection.
+  bool get hasValidCredentials => 
+      _authService.isAuthenticated || (_settingsService.cachedApiKey?.isNotEmpty ?? false);
+
   WebSocketService(this._settingsService, this._authService) {
     _config = ConfigurationManager(_authService, _settingsService);
     
@@ -152,7 +156,8 @@ class WebSocketService extends ChangeNotifier {
     if (_handshake.canSendAudio() && _channel != null) {
       _channel!.sink.add(data);
       _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
-    } else if (_handshake.state == HandshakeState.authenticating) {
+    } else if (_handshake.state == HandshakeState.authenticating || _isConnecting) {
+      // Buffer chunks while connecting or authenticating to prevent audio loss
       _audioBuffer.add(data);
     }
   }
@@ -229,6 +234,7 @@ class WebSocketService extends ChangeNotifier {
     bool wasActive = _status == ConnectionStatus.connected;
     if (_status != ConnectionStatus.banned) _updateStatus(ConnectionStatus.disconnected);
     
+    _isAuthenticatedSession = false; // Reset session flag on any disconnect
     _channel = null;
     _heartbeat.stop();
     _isConnecting = false;

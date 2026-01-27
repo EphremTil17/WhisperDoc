@@ -30,6 +30,14 @@ class ConfigurationManager extends ChangeNotifier {
 
     _authService.addListener(_handleAuthChange);
     _settingsService.addListener(_handleSettingsChange);
+
+    // CRITICAL: Initial state check for launch.
+    // If we are already authenticated or have an API key, trigger auto-connect attempt.
+    _logger.info('ConfigurationManager: Starting observation, checking initial state...');
+    if (_authService.isAuthenticated || (_lastKnownApiKey?.isNotEmpty ?? false)) {
+      _logger.info('ConfigurationManager: Valid credentials found on launch, requesting auto-connect');
+      _onAutoConnectDesired?.call();
+    }
   }
 
   void stopObserving() {
