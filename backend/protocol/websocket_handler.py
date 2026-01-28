@@ -22,10 +22,12 @@ CONDITION_ON_PREVIOUS = os.getenv("WHISPER_CONDITION_ON_PREVIOUS", "True").lower
 
 class ConnectionManager:
     """Manages WebSocket connection lifecycle, protocol state, and audio processing."""
-    def __init__(self, model_manager: ModelManager, app_version: str):
+    def __init__(self, model_manager: ModelManager, app_version: str, min_client_version: str = "0.0.0", sec_client_version: str = "0.0.0"):
         self.active_connections: Dict[WebSocket, Dict[str, Any]] = {}
         self.model_manager = model_manager
         self.app_version = app_version
+        self.min_client_version = min_client_version
+        self.sec_client_version = sec_client_version
         self.governance = SecurityGovernance()
         self.last_tracker_cleanup = time.time()
         
@@ -41,6 +43,7 @@ class ConnectionManager:
         if is_banned:
             log.warning(f"BANNED CLIENT: {ip} rejected. Active ban in effect. Retry in {remaining}s.")
             await websocket.accept()
+            await websocket.send_json({"event": "error", "code": 1008, "message": f"IP Banned. Cooldown: {remaining}s"})
             await websocket.close(code=1008, reason=f"IP Banned. Cooldown: {remaining}s")
             return
 
@@ -48,6 +51,7 @@ class ConnectionManager:
         if len(self.active_connections) >= MAX_CONNECTIONS:
             log.warning(f"Connection rejected for {websocket.client}: Max connections reached.")
             await websocket.accept()
+            await websocket.send_json({"event": "error", "code": 1008, "message": "Max concurrent connections reached"})
             await websocket.close(code=1008, reason="Max concurrent connections reached")
             return
 
@@ -71,6 +75,8 @@ class ConnectionManager:
             "event": "hello",
             "server": "WhisperDoc Backend",
             "version": self.app_version,
+            "min_version": self.min_client_version,
+            "sec_version": self.sec_client_version,
             "status": "ready" if self.model_manager.model else "idle",
             "cid": conn_id
         })
@@ -130,6 +136,7 @@ class ConnectionManager:
                 except json.JSONDecodeError:
                     log.warning(f"[{conn_id}] Protocol Violation: Malformed JSON.")
                     self.governance.record_protocol_violation(ip)
+                    await websocket.send_json({"event": "error", "code": 1008, "message": "Malformed JSON"})
                     await websocket.close(code=1008, reason="Malformed JSON")
                     return
 
@@ -139,11 +146,43 @@ class ConnectionManager:
                     if event != "hello":
                         log.warning(f"[{conn_id}] Protocol Violation: Expected 'hello', got '{event}'.")
                         self.governance.record_protocol_violation(ip)
+                        await websocket.send_json({"event": "error", "code": 1008, "message": "Handshake required"})
                         await websocket.close(code=1008, reason="Handshake required")
                         return
 
                     token = data.get("token")
                     auth_type = data.get("auth_type", "api_key")
+                    client_version = data.get("version", "0.0.0")
+                    client_type = data.get("client", "unknown")
+
+                    # 1. Version Validation (Hardened Gate)
+                    def is_lower(v1, v2):
+                        try:
+                            v1_parts = [int(p) for p in v1.split('+')[0].split('-')[0].split('.')]
+                            v2_parts = [int(p) for p in v2.split('+')[0].split('-')[0].split('.')]
+                            for i in range(3):
+                                p1 = v1_parts[i] if i < len(v1_parts) else 0
+                                p2 = v2_parts[i] if i < len(v2_parts) else 0
+                                if p1 < p2: return True
+                                if p1 > p2: return False
+                            return False
+                        except: return False
+
+                    if is_lower(client_version, self.min_client_version):
+                        log.warning(f"[{conn_id}] BLOCKED: Outdated client ({client_version}) < MIN ({self.min_client_version})")
+                        await websocket.send_json({
+                            "event": "error", 
+                            "code": 1008, 
+                            "message": f"Update required: v{self.min_client_version} (Client: {client_version})"
+                        })
+                        await websocket.close(code=1008)
+                        self.governance.record_protocol_violation(ip)
+                        return
+                    
+                    if is_lower(client_version, self.sec_client_version):
+                        log.info(f"[{conn_id}] ADVISORY: Outdated client ({client_version}) < SEC ({self.sec_client_version})")
+                    else:
+                        log.debug(f"[{conn_id}] HANDSHAKE: Client version {client_version} verified.")
 
                     if auth_type == "oidc":
                         # Validate JWT and extract identity
@@ -173,7 +212,7 @@ class ConnectionManager:
                     connection_data["handshake_completed"] = True
                     connection_data["auth_type"] = auth_type
                     connection_data["incognito"] = data.get("incognito", False)
-                    log.info(f"[{conn_id}] Handshake Verified ({auth_type}). Incognito: {connection_data['incognito']}")
+                    log.info(f"[{conn_id}] Handshake Verified ({auth_type}) | {client_type} (v{client_version}) | Incognito: {connection_data['incognito']}")
 
                     await websocket.send_json({"event": "authenticated", "status": "success", "cid": conn_id})
                     

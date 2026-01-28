@@ -49,6 +49,12 @@ MODEL_COMPUTE_TYPE = os.getenv('MODEL_COMPUTE_TYPE', 'float16')
 # Read version from environment variable (Docker)
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
 
+# Versioning requirements for clients
+# Minimum: Blocking version (below this, client is rejected)
+# Security: Advisory version (below this, client is prompted to update)
+MIN_CLIENT_VERSION = os.getenv("MIN_CLIENT_VERSION", "0.0.0")
+SEC_CLIENT_VERSION = os.getenv("SEC_CLIENT_VERSION", "0.0.0")
+
 # --- Security & Validation Configuration ---
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
@@ -70,6 +76,7 @@ async def lifespan(app: FastAPI):
     """
     global manager
     log.info(f"Starting WhisperDoc API (v{APP_VERSION})...")
+    log.info(f"Version Requirements: MIN={MIN_CLIENT_VERSION}, ADVISORY={SEC_CLIENT_VERSION}")
     
     try:
         # Enforce "Fail Secure" Policy
@@ -81,7 +88,12 @@ async def lifespan(app: FastAPI):
         model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
         
         # Initialize the connection manager
-        manager = ConnectionManager(model_manager, app_version=APP_VERSION)
+        manager = ConnectionManager(
+            model_manager, 
+            app_version=APP_VERSION,
+            min_client_version=MIN_CLIENT_VERSION,
+            sec_client_version=SEC_CLIENT_VERSION
+        )
         
         # Warmup OIDC (graceful degradation: logs warnings if provider unreachable)
         warmup_oidc()
