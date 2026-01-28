@@ -34,7 +34,10 @@ class RecordingView extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
               isFailed
-                  ? 'Authentication Failed. Please check Settings.'
+                  ? (wsService.lastHandshakeError?.contains('Update') == true
+                        ? 'Update Required. Please check Profile Hub.'
+                        : (wsService.lastHandshakeError ??
+                              'Authentication Failed.'))
                   : 'Please authenticate in Settings to begin.',
               style: TextStyle(
                 color: isFailed ? Colors.redAccent : Colors.white38,

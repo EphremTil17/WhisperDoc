@@ -3,6 +3,7 @@ import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/transport_security_service.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/services/utility/update_service.dart';
 
 /// Descriptor for how the connection UI should look and behave.
 class ConnectionUIDescriptor {
@@ -29,19 +30,31 @@ class ConnectionStateMapper {
     required HandshakeState handshake,
     required SecurityStatus security,
     required bool hasAnyCreds,
+    required UpdateStatus updateStatus,
   }) {
     IconData iconData = Icons.lock_outline;
     Color iconColor;
     String tooltipMsg;
 
     final bool isDisconnected = status == ConnectionStatus.disconnected;
-    final bool shouldPulse = isDisconnected;
-    final Color pulseColor = hasAnyCreds
-        ? Colors.greenAccent
-        : Colors.orangeAccent;
+
+    // Traffic Light Pulsing Logic
+    bool shouldPulse = isDisconnected;
+    Color pulseColor = hasAnyCreds ? Colors.greenAccent : Colors.orangeAccent;
+
+    if (updateStatus == UpdateStatus.required) {
+      pulseColor = AppTheme.crimsonPrimary;
+      shouldPulse = true;
+    } else if (updateStatus == UpdateStatus.advisory && isDisconnected) {
+      pulseColor = Colors.orangeAccent;
+      shouldPulse = true;
+    }
 
     // Determine Icon and Color
-    if (handshake == HandshakeState.failed) {
+    if (updateStatus == UpdateStatus.required) {
+      iconColor = AppTheme.crimsonPrimary;
+      iconData = Icons.system_update;
+    } else if (handshake == HandshakeState.failed) {
       iconColor = AppTheme.crimsonPrimary;
       iconData = Icons.lock_open;
     } else if (status == ConnectionStatus.connected) {
@@ -62,7 +75,9 @@ class ConnectionStateMapper {
     }
 
     // Determine Tooltip
-    if (status == ConnectionStatus.connected) {
+    if (updateStatus == UpdateStatus.required) {
+      tooltipMsg = 'Critical Update Required. Click to Update.';
+    } else if (status == ConnectionStatus.connected) {
       tooltipMsg = security == SecurityStatus.secure
           ? 'Securely Connected'
           : 'Connected (Unencrypted)';
@@ -70,6 +85,8 @@ class ConnectionStateMapper {
       tooltipMsg = 'Connecting to Server...';
     } else if (status == ConnectionStatus.banned) {
       tooltipMsg = 'Access Denied (Banned)';
+    } else if (updateStatus == UpdateStatus.advisory && isDisconnected) {
+      tooltipMsg = 'Update Available. Recommended for Security.';
     } else if (isDisconnected && hasAnyCreds) {
       tooltipMsg = 'Identity Verified. Click to Connect.';
     } else if (isDisconnected && !hasAnyCreds) {

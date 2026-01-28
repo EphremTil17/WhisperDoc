@@ -7,7 +7,9 @@ import 'package:flutter_client/services/utility/automation_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
+import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
+import 'package:flutter_client/controllers/profile_controller.dart';
 
 /// Global service locator instance.
 final GetIt getIt = GetIt.instance;
@@ -46,6 +48,10 @@ Future<void> setupServices() async {
   await historyService.initialize();
   getIt.registerSingleton<HistoryService>(historyService);
 
+  getIt.registerSingleton<UpdateService>(
+    UpdateService(getIt<WebSocketService>()),
+  );
+
   // 4. Controllers
   getIt.registerSingleton<RecordingController>(
     RecordingController(
@@ -55,6 +61,12 @@ Future<void> setupServices() async {
       historyService: getIt<HistoryService>(),
       settingsService: getIt<SettingsService>(),
       audioCueService: getIt<AudioCueService>(),
+    ),
+  );
+  getIt.registerSingleton<ProfileController>(
+    ProfileController(
+      authService: getIt<AuthService>(),
+      updateService: getIt<UpdateService>(),
     ),
   );
 }

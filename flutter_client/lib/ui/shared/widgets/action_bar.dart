@@ -9,6 +9,8 @@ import 'package:flutter_client/ui/screens/settings_screen.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/log_viewer_dialog.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/history_dialog.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/ui/screens/home/dialogs/profile_hub_dialog.dart';
+import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_client/logic/mappers/connection_ui_map.dart';
 
 /// Bottom action bar with icon buttons for app controls
@@ -61,15 +63,20 @@ class ActionBar extends StatelessWidget {
         const SizedBox(width: 8),
 
         // 3. Connection Status Lock Icon (CENTER)
-        Consumer3<WebSocketService, AuthService, SettingsService>(
-          builder: (context, wsService, authService, settings, child) {
+        Consumer4<
+          WebSocketService,
+          AuthService,
+          SettingsService,
+          UpdateService
+        >(
+          builder: (context, wsService, authService, settings, updateService, child) {
             // Map service states to UI descriptors using the pure logic mapper.
-            // This decouples the view from "how" the state is calculated.
             final descriptor = ConnectionStateMapper.mapState(
               status: wsService.status,
               handshake: wsService.handshakeState.state,
               security: wsService.securityStatus,
               hasAnyCreds: wsService.hasValidCredentials,
+              updateStatus: updateService.status,
             );
 
             return Tooltip(
@@ -83,6 +90,12 @@ class ActionBar extends StatelessWidget {
                 isPulsing: descriptor.isPulsing,
                 pulseColor: descriptor.pulseColor,
                 onTap: () {
+                  // Direct Action: If update required, go straight to Profile Hub
+                  if (updateService.status == UpdateStatus.required) {
+                    _showProfileHub(context);
+                    return;
+                  }
+
                   final status = wsService.status;
                   if (status == ConnectionStatus.connected ||
                       status == ConnectionStatus.connecting) {
@@ -142,6 +155,12 @@ class ActionBar extends StatelessWidget {
   void _showSettingsDialog(BuildContext context) {
     unawaited(
       showDialog(context: context, builder: (ctx) => const SettingsScreen()),
+    );
+  }
+
+  void _showProfileHub(BuildContext context) {
+    unawaited(
+      showDialog(context: context, builder: (ctx) => const ProfileHubDialog()),
     );
   }
 

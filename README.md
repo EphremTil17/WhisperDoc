@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.19.0
+# WhisperDoc - Speech-to-Text System v2.20.0
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It leverages `faster-whisper` GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
 ## Prerequisites
@@ -113,6 +113,10 @@ WhisperDoc v2.13.0 represents a significant leap in enterprise-grade security, m
 - **Memory Hygiene (malloc_trim)**: Aggressive RAM reclamation using `malloc_trim` to force the Linux kernel to reclaim heap memory immediately after models are unloaded from VRAM.
 - **Drift-Proof Security Tracking**: Re-engineered the security maintenance loop to be time-interval based rather than clock-modulo based, ensuring robust IP-ban cleanup regardless of event-loop timing.
 
+### 7. Error Handling & Update Controls 
+- **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol, ensuring descriptive error messages for bans or version mismatches.
+- Added **Profile-Based Logic** to prevent "Update Available" notifications from appearing during active transcription sessions and Ensures that if a security patch is available, the user is immediately notified and blocked from using the service until updated.
+
 ## Configuration
 WhisperDoc is entirely configuration-driven via the `.env` file. These variables are passed to the backend during startup.
 
@@ -145,7 +149,7 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows) v2.19.0
+### Flutter Client (Windows) v2.20.0
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
@@ -157,7 +161,7 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.19.0
+### Python Terminal Client v2.20.0
 
 A secure, modular, and production-ready terminal client for high-performance dictation. 
 
@@ -199,5 +203,6 @@ This means Docker cannot find the NVIDIA runtime.
 | Phase 8 | Client and Backend Hardening | ✅ Complete |
 | Phase 9 | OIDC Identity Hardening & Verification Suite (v2.13.0) | ✅ Complete |
 | Phase 10 | Optimization and Weight Shedding (v2.14.0) | ✅ Complete |
-| Phase 11 | UI and Functional Improvements | 🚧 In Progress |
+| Phase 11 | Error Handling & Update Controls (v2.20.0) | ✅ Complete |
+| Phase 12 | UI and Functional Improvements | 🚧 In Progress |
 

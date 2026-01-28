@@ -47,6 +47,10 @@ class WebSocketService extends ChangeNotifier {
   String? _lastHandshakeError;
   String? _activeApiKey;
   SecurityStatus _securityStatus = SecurityStatus.secure; // Default to secure
+  String? _backendMinVersion;
+  String? _backendSecVersion;
+  String? _backendServerVersion;
+  String? _connectionId;
 
   // State Getters
   ConnectionStatus get status => _status;
@@ -56,6 +60,10 @@ class WebSocketService extends ChangeNotifier {
   SecurityStatus get securityStatus => _securityStatus;
   BanStateService get banState => _banState;
   HandshakeStateMachine get handshakeState => _handshake;
+  String? get backendMinVersion => _backendMinVersion;
+  String? get backendSecVersion => _backendSecVersion;
+  String? get backendServerVersion => _backendServerVersion;
+  String? get connectionId => _connectionId;
   Stream<ConnectionStatus> get onStatusChanged => _statusController.stream;
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
   LoggingService get _logger => LoggingService();
@@ -235,8 +243,11 @@ class WebSocketService extends ChangeNotifier {
         _isAuthenticatedSession = true;
         _handshake.transitionTo(HandshakeState.authenticated);
         _updateStatus(ConnectionStatus.connected);
+        _logger.info('Handshake success | CID: $_connectionId');
       } else if (event == 'error' &&
-          (json['code'] == 403 || json['message']?.contains('Auth') == true)) {
+          (json['code'] == 403 ||
+              json['code'] == 1008 ||
+              json['message']?.contains('Auth') == true)) {
         _handleAuthError(json['message']);
       } else {
         _messageController.add(json);
@@ -247,8 +258,16 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void _handleAuthError(dynamic message) {
-    _lastHandshakeError = message?.toString() ?? 'Auth failed';
+    final msgStr = message?.toString() ?? 'Auth failed';
+    _lastHandshakeError = msgStr;
     _handshake.transitionTo(HandshakeState.failed);
+
+    if (msgStr.toLowerCase().contains('ban') ||
+        msgStr.toLowerCase().contains('cooldown')) {
+      _banState.parseBanMessage(msgStr);
+      _updateStatus(ConnectionStatus.banned);
+    }
+
     _isIntentionalDisconnect = true;
     _handleDisconnect();
   }
@@ -260,11 +279,10 @@ class WebSocketService extends ChangeNotifier {
     final reason = _channel?.closeReason;
 
     if (code == 1008) {
-      if (reason?.contains('ban') == true) {
-        _banState.parseBanMessage(reason);
-        _updateStatus(ConnectionStatus.banned);
-      } else {
+      if (_lastHandshakeError == null) {
         _handleAuthError(reason);
+      } else {
+        _handleDisconnect();
       }
       return;
     }
@@ -279,6 +297,7 @@ class WebSocketService extends ChangeNotifier {
 
     _isAuthenticatedSession = false; // Reset session flag on any disconnect
     _channel = null;
+    _connectionId = null;
     _heartbeat.stop();
     _isConnecting = false;
 
@@ -314,6 +333,13 @@ class WebSocketService extends ChangeNotifier {
           },
         )
         .then((val) {
+          if (val != null) {
+            _backendMinVersion = val['min_version']?.toString();
+            _backendSecVersion = val['sec_version']?.toString();
+            _backendServerVersion = val['version']?.toString();
+            _connectionId = val['cid']?.toString();
+            notifyListeners(); // Signal that version requirements are now available
+          }
           unawaited(sub.cancel());
           return val;
         });

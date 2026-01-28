@@ -7,6 +7,7 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
 import 'package:flutter_client/ui/shared/widgets/profile_hub.dart';
+import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/ui/shared/widgets/app_footer.dart';
 import 'package:flutter_client/ui/shared/widgets/action_bar.dart';
 import 'package:flutter_client/ui/screens/home/widgets/transcription_view.dart';
@@ -43,8 +44,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _errorSubscription = controller.onError.listen((error) {
       if (!mounted) return;
+
+      // 1. Prioritize Ban Awareness (Overlay handles this)
+      if (context.read<WebSocketService>().status == ConnectionStatus.banned ||
+          error.toLowerCase().contains('ban')) {
+        return;
+      }
+
+      // 2. Handle Update Errors
+      if (error.toLowerCase().contains('update required')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Update Required. Redirecting...'),
+            backgroundColor: AppTheme.crimsonPrimary.withValues(alpha: 0.9),
+            behavior: SnackBarBehavior.floating,
+            width: 350,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+        return;
+      }
+
+      // 3. Handle Auth Errors (Modular Dialog)
       if (error.contains('Authentication Failed') ||
-          error.contains('AUTH_FAILED')) {
+          error.contains('AUTH_FAILED') ||
+          error.contains('API Key Authentication failed')) {
         unawaited(
           showDialog(
             context: context,
@@ -53,12 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       } else {
+        // 4. Default: Ephemeral Notification
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(error),
             backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
             behavior: SnackBarBehavior.floating,
             width: 350,
+            duration: const Duration(seconds: 1),
           ),
         );
       }

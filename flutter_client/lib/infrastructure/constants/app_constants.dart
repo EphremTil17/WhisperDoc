@@ -3,12 +3,25 @@
 /// Centralizes magic numbers, default values, and configuration parameters
 /// to improve maintainability and reduce scattered hardcoded values.
 class AppConstants {
+  // === Build Configuration ===
+
+  /// The GitHub repository path.
+  static const String githubRepo = 'EphremTil17/whisperdoc_release';
+
+  /// URL for the latest releases page (User Fallback).
+  static const String updateUrl =
+      'https://github.com/$githubRepo/releases/latest';
+
+  /// GitHub API endpoint for the latest release metadata.
+  static const String githubApiLatestRelease =
+      'https://api.github.com/repos/$githubRepo/releases/latest';
+
   // === Server Configuration ===
   static const String defaultServerUri = 'https://whisper.ephremst.com';
 
   // === WebSocket Timeouts ===
   /// Idle timeout before closing the WebSocket connection to save resources.
-  static const Duration wsIdleTimeout = Duration(minutes: 3);
+  static const Duration wsIdleTimeout = Duration(minutes: 5);
 
   /// Maximum delay between reconnection attempts (exponential backoff cap).
   static const Duration wsMaxReconnectDelay = Duration(seconds: 30);

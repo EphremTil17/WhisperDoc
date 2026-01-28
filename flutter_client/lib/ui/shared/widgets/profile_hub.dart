@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_hub_dialog.dart';
+import 'package:flutter_client/controllers/profile_controller.dart';
 
 class ProfileHub extends StatefulWidget {
   const ProfileHub({super.key});
@@ -11,13 +11,44 @@ class ProfileHub extends StatefulWidget {
   State<ProfileHub> createState() => _ProfileHubState();
 }
 
-class _ProfileHubState extends State<ProfileHub> {
+class _ProfileHubState extends State<ProfileHub>
+    with SingleTickerProviderStateMixin {
   bool _isHovered = false;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+
+    _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final authService = context.watch<AuthService>();
-    final user = authService.currentUser;
+    final profileController = context.watch<ProfileController>();
+    final user = profileController.currentUser;
+    final updateUI = profileController.updateUI;
+    final isPulsing = updateUI.isPulsing;
+
+    if (isPulsing && !_pulseController.isAnimating) {
+      unawaited(_pulseController.repeat(reverse: true));
+    } else if (!isPulsing && _pulseController.isAnimating) {
+      _pulseController.stop();
+      _pulseController.reset();
+    }
 
     return Tooltip(
       message: 'Manage Profile',
@@ -36,59 +67,78 @@ class _ProfileHubState extends State<ProfileHub> {
               ),
             );
           },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: _isHovered
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _isHovered
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : Colors.white.withValues(alpha: 0.1),
-                width: 1,
-              ),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (user?['picture'] != null)
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundImage: NetworkImage(user!['picture'] as String),
-                  )
-                else
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.white.withValues(alpha: 0.1),
-                    child: const Icon(
-                      Icons.person,
-                      size: 16,
-                      color: Colors.white70,
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.menu,
-                  size: 20,
+          child: AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              final pulseVal = isPulsing ? _pulseAnimation.value : 0.0;
+              final glowColor = updateUI.glowColor;
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
                   color: _isHovered
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.7),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : glowColor.withValues(alpha: 0.05 + (pulseVal * 0.05)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _isHovered
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : isPulsing
+                        ? glowColor.withValues(alpha: 0.15 + (pulseVal * 0.35))
+                        : Colors.white.withValues(alpha: 0.1),
+                    width: isPulsing ? 1.0 + (pulseVal * 0.5) : 1,
+                  ),
+                  boxShadow: _isHovered || isPulsing
+                      ? [
+                          BoxShadow(
+                            color: isPulsing
+                                ? glowColor.withValues(alpha: 0.2 * pulseVal)
+                                : Colors.black.withValues(alpha: 0.2),
+                            blurRadius: isPulsing ? 10 * pulseVal : 10,
+                            offset: isPulsing
+                                ? Offset.zero
+                                : const Offset(0, 4),
+                            spreadRadius: isPulsing ? 2 * pulseVal : 0,
+                          ),
+                        ]
+                      : null,
                 ),
-                const SizedBox(width: 4),
-              ],
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (user?['picture'] != null)
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundImage: NetworkImage(
+                          user!['picture'] as String,
+                        ),
+                      )
+                    else
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: Colors.white.withValues(alpha: 0.1),
+                        child: const Icon(
+                          Icons.person,
+                          size: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.menu,
+                      size: 20,
+                      color: _isHovered
+                          ? Colors.white
+                          : isPulsing
+                          ? glowColor
+                          : Colors.white.withValues(alpha: 0.7),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
