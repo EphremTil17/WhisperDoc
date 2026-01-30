@@ -21,22 +21,40 @@ class AudioService extends ChangeNotifier {
   bool _isRecording = false;
   bool get isRecording => _isRecording;
 
-  Future<void> startRecording() async {
+  /// Lists available audio input devices (WASAPI on Windows).
+  Future<List<InputDevice>> listInputDevices() async {
+    return _audioRecorder.listInputDevices();
+  }
+
+  Future<void> startRecording({String? deviceId, String? deviceLabel}) async {
     if (_isRecording) return;
 
     if (await _audioRecorder.hasPermission()) {
       // Configuration for raw PCM (16-bit)
-      const config = RecordConfig(
-        encoder: AudioEncoder.pcm16bits,
-        sampleRate: 16000,
-        numChannels: 1,
-      );
+      // If deviceId is null, we use the library's native default path (SAFE)
+      final config = deviceId != null
+          ? RecordConfig(
+              encoder: AudioEncoder.pcm16bits,
+              sampleRate: 16000,
+              numChannels: 1,
+              device: InputDevice(id: deviceId, label: deviceLabel ?? ''),
+            )
+          : const RecordConfig(
+              encoder: AudioEncoder.pcm16bits,
+              sampleRate: 16000,
+              numChannels: 1,
+            );
 
       final stream = await _audioRecorder.startStream(config);
       _isRecording = true;
       notifyListeners();
 
       LoggingService().info('Audio recording started: 16kHz PCM 16-bit Mono');
+      if (deviceLabel != null) {
+        LoggingService().info('Device: $deviceLabel');
+      } else {
+        LoggingService().info('Device: Default');
+      }
 
       _recordSubscription = stream.listen(
         (data) {

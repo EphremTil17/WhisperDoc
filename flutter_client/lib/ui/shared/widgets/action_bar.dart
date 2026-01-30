@@ -12,6 +12,7 @@ import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_hub_dialog.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_client/logic/mappers/connection_ui_map.dart';
+import 'package:flutter_client/controllers/recording_controller.dart';
 
 /// Bottom action bar with icon buttons for app controls
 class ActionBar extends StatelessWidget {
@@ -141,6 +142,30 @@ class ActionBar extends StatelessWidget {
             iconSize: 16,
             onTap: () => _showLogDialog(context),
           ),
+        ),
+
+        // 6. Silence Warning (Conditional)
+        Consumer<RecordingController>(
+          builder: (context, controller, child) {
+            if (!controller.showSilenceWarning) return const SizedBox.shrink();
+
+            return Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Tooltip(
+                message: 'No audio detected. Check Microphone Settings.',
+                preferBelow: false,
+                verticalOffset: 20,
+                child: RefinedIconButton(
+                  icon: Icons.warning_amber_rounded,
+                  iconColor: Colors.orangeAccent,
+                  iconSize: 18,
+                  isPulsing: true,
+                  pulseColor: Colors.orangeAccent.withValues(alpha: 0.3),
+                  onTap: () => _showSettingsDialog(context),
+                ),
+              ),
+            );
+          },
         ),
       ],
     );

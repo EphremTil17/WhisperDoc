@@ -7,6 +7,7 @@ import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/connection_section.dart';
+import 'package:flutter_client/ui/screens/settings/widgets/audio_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/hotkey_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/automation_section.dart';
@@ -79,6 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ConnectionSection(uriController: _uriController),
+            const SizedBox(height: 16),
+            const AudioSection(),
             const SizedBox(height: 16),
             AuthSection(
               uriController: _uriController,

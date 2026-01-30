@@ -9,6 +9,7 @@ import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/logic/processors/transcription_processor.dart';
+import 'package:flutter_client/logic/processors/audio_signal_processor.dart';
 
 /// Controller managing recording state, transcription, and automation.
 ///
@@ -21,6 +22,7 @@ class RecordingController extends ChangeNotifier {
   final SettingsService _settingsService;
   final AudioCueService _audioCueService;
   final TranscriptionProcessor _processor;
+  final AudioSignalProcessor _signalProcessor = AudioSignalProcessor();
 
   StreamSubscription? _audioSubscription;
   StreamSubscription? _messageSubscription;
@@ -34,6 +36,10 @@ class RecordingController extends ChangeNotifier {
 
   // Single source of truth for recording state
   bool _isRecording = false;
+
+  // Liveness check - warning if no audio signal is detected
+  bool _showSilenceWarning = false;
+  bool get showSilenceWarning => _showSilenceWarning;
 
   // Incognito mode - when ON, transcriptions are not saved to history
   bool get incognitoMode => _settingsService.incognitoMode;
@@ -164,6 +170,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> startRecording() async {
     _currentBuffer = '';
     _awaitingFinalTranscription = false;
+    _showSilenceWarning = false;
     notifyListeners();
 
     try {
@@ -175,7 +182,15 @@ class RecordingController extends ChangeNotifier {
       }
 
       // 2. ZERO-LATENCY START: Initiate capture and cues instantly.
-      await _audioService.startRecording();
+      // We use the library's native default path (null) unless a specific device is selected.
+      // This is the most stable approach on Windows; silence detection will catch role issues.
+      final String? deviceId = _settingsService.microphoneId;
+      final String? deviceLabel = _settingsService.microphoneLabel;
+
+      await _audioService.startRecording(
+        deviceId: deviceId,
+        deviceLabel: deviceLabel,
+      );
       _audioCueService.playStartCue();
 
       notifyListeners();
@@ -185,7 +200,22 @@ class RecordingController extends ChangeNotifier {
         _wsService.sendAudioChunk(data);
       });
 
-      // 4. TRANSPORT AUTONOMY: Ensure server is awake in parallel.
+      // 4. Liveness Probe (Reactive Silence Detection)
+      unawaited(
+        _signalProcessor.detectSilence(_audioService.amplitudeStream).then((
+          isSilent,
+        ) {
+          if (isSilent && _isRecording) {
+            _showSilenceWarning = true;
+            notifyListeners();
+            LoggingService().warning(
+              'No audio detected after 3 seconds. Virtual driver conflict suspected.',
+            );
+          }
+        }),
+      );
+
+      // 5. TRANSPORT AUTONOMY: Ensure server is awake in parallel.
       unawaited(
         _wsService.ensureConnected().then((connected) {
           if (!connected && _isRecording) {
@@ -247,6 +277,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> _clearSensitiveData() async {
     _currentBuffer = '';
     _history.clear();
+    _showSilenceWarning = false;
     await _historyService.clearAll();
     LoggingService().info('Sensitive data purged from memory and disk');
     notifyListeners();

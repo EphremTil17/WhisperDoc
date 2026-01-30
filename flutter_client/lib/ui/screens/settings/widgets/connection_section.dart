@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
 class ConnectionSection extends StatelessWidget {
   final TextEditingController uriController;
@@ -10,15 +11,7 @@ class ConnectionSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'CONNECTION',
-          style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.0,
-          ),
-        ),
+        Text('CONNECTION', style: AppTheme.sectionTitleStyle),
         const SizedBox(height: 8),
         const Text(
           'Server URI',

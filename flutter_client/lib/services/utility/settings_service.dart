@@ -15,6 +15,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyHotkeyModifiers = 'hotkey_modifiers';
   static const String _keyHotkeyVKey = 'hotkey_vkey';
   static const String _keyMicrophoneId = 'microphone_id';
+  static const String _keyMicrophoneLabel = 'microphone_label';
   static const String _keyAutoCopy = 'auto_copy';
   static const String _keyAutoPaste = 'auto_paste';
   static const String _keyShowVisualizer = 'show_visualizer';
@@ -40,6 +41,7 @@ class SettingsService extends ChangeNotifier {
   int _hotkeyModifiers = _defaultHotkeyModifiers;
   int _hotkeyVKey = _defaultHotkeyVKey;
   String? _microphoneId;
+  String? _microphoneLabel;
   bool _autoCopy = _defaultAutoCopy;
   bool _autoPaste = _defaultAutoPaste;
   bool _showVisualizer = _defaultShowVisualizer;
@@ -54,6 +56,7 @@ class SettingsService extends ChangeNotifier {
   int get hotkeyModifiers => _hotkeyModifiers;
   int get hotkeyVKey => _hotkeyVKey;
   String? get microphoneId => _microphoneId;
+  String? get microphoneLabel => _microphoneLabel;
   bool get autoCopy => _autoCopy;
   bool get autoPaste => _autoPaste;
   bool get showVisualizer => _showVisualizer;
@@ -93,6 +96,7 @@ class SettingsService extends ChangeNotifier {
           _prefs.getInt(_keyHotkeyModifiers) ?? _defaultHotkeyModifiers;
       _hotkeyVKey = _prefs.getInt(_keyHotkeyVKey) ?? _defaultHotkeyVKey;
       _microphoneId = _prefs.getString(_keyMicrophoneId);
+      _microphoneLabel = _prefs.getString(_keyMicrophoneLabel);
       _autoCopy = _prefs.getBool(_keyAutoCopy) ?? _defaultAutoCopy;
       _autoPaste = _prefs.getBool(_keyAutoPaste) ?? _defaultAutoPaste;
       _showVisualizer =
@@ -189,18 +193,24 @@ class SettingsService extends ChangeNotifier {
     );
   }
 
-  Future<void> setMicrophoneId(String? id) async {
+  Future<void> setMicrophoneSelection(String? id, String? label) async {
     _ensureInitialized();
-    if (_microphoneId == id) return;
+    if (_microphoneId == id && _microphoneLabel == label) return;
 
     _microphoneId = id;
+    _microphoneLabel = label;
+
     if (id == null) {
       await _prefs.remove(_keyMicrophoneId);
+      await _prefs.remove(_keyMicrophoneLabel);
     } else {
       await _prefs.setString(_keyMicrophoneId, id);
+      if (label != null) {
+        await _prefs.setString(_keyMicrophoneLabel, label);
+      }
     }
     notifyListeners();
-    LoggingService().info('Microphone ID updated to: $id');
+    LoggingService().info('Microphone updated: ${label ?? "Default"}');
   }
 
   Future<void> setApiKey(String key) async {
