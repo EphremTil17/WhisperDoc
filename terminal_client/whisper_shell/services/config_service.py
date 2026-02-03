@@ -2,7 +2,7 @@ import os
 import sys
 import argparse
 from pathlib import Path
-from dotenv import load_dotenv, set_key
+from dotenv import load_dotenv
 import keyring
 from getpass import getpass
 from loguru import logger
@@ -16,9 +16,12 @@ SERVICE_NAME = "WhisperDoc_Client"
 ENV_PATH = Path(".env")
 DEFAULT_VERSION = "2.20.0"
 
-class Config:
+class ConfigService:
+    """
+    Configuration Service managing environment variables and CLI arguments.
+    """
     def __init__(self):
-        self.ENV_PATH = ENV_PATH # Expose for manager
+        self.ENV_PATH = ENV_PATH
         self._load_env()
         self._parse_args()
         self._setup_logging()
@@ -30,6 +33,7 @@ class Config:
         self.AUDIO_DEVICE_ID = int(os.getenv("AUDIO_DEVICE_ID", 0))
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.VERSION = os.getenv("CLIENT_VERSION", DEFAULT_VERSION)
+        self.IDLE_TIMEOUT = int(os.getenv("IDLE_TIMEOUT", 300))
 
     def _parse_args(self):
         parser = argparse.ArgumentParser(description="WhisperDoc Terminal Client")
@@ -42,18 +46,24 @@ class Config:
 
     def _setup_logging(self):
         logger.remove()
-        # Add custom level for Incognito Mode
         try:
+            # Custom log level for Incognito (Ghost) mode
             logger.level("GHOST", no=25, color="<magenta>")
-        except TypeError: 
-            pass # Already exists
+        except TypeError:
+            pass
             
-        logger.add(sys.stdout, level=self.LOG_LEVEL, format="<white>{time:HH:mm:ss}</white> | <level>{level: <8}</level> | <white>{message}</white>")
+        logger.add(
+            sys.stdout, 
+            level=self.LOG_LEVEL, 
+            format="<white>{time:HH:mm:ss}</white> | <level>{level: <8}</level> | <white>{message}</white>"
+        )
 
-class SecureConfig:
+class SecureConfigService:
+    """
+    Secure Configuration Service for managing credentials in OS Keyring.
+    """
     @staticmethod
     def get_api_key(host: str) -> str:
-        """Retrieves API Key from OS Keyring or prompts user."""
         key = keyring.get_password(SERVICE_NAME, host)
         if key:
             return key
@@ -72,12 +82,12 @@ class SecureConfig:
 
     @staticmethod
     def clear_key(host: str):
-        """Removes API Key from keyring (Auth Failure)."""
         try:
             keyring.delete_password(SERVICE_NAME, host)
             logger.warning(f"Invalid API Key removed from secure storage for {host}.")
         except keyring.errors.PasswordDeleteError:
             pass 
 
-# Singleton instance
-cfg = Config()
+# Singleton instance for easy access
+cfg = ConfigService()
+sec_cfg = SecureConfigService()
