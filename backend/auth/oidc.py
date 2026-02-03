@@ -151,11 +151,20 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
 
         # Identify our expected issuer (Discovery config is the source of truth)
         oidc_config = fetch_oidc_configuration()
-        expected_issuer_raw = oidc_config.get("issuer") if oidc_config else OIDC_ISSUER_URL
+        if not oidc_config:
+            log.warning("OIDC Validation failed: Configuration unavailable.")
+            return None
+            
+        expected_issuer_raw = oidc_config.get("issuer")
+        if not expected_issuer_raw:
+             log.warning("OIDC Validation failed: Discovery doc missing 'issuer'.")
+             return None
 
-        # Slash-Agnostic Comparison: Compare both without trailing slashes
-        if token_issuer_raw.rstrip('/') != expected_issuer_raw.rstrip('/'):
-            log.warning(f"OIDC Issuer mismatch! Config: {expected_issuer_raw}, Token: {token_issuer_raw}")
+        # Principal-Level Pinning: Direct comparison of raw strings
+        # This prevents an attacker from providing a valid token from a DIFFERENT
+        # tenant/identity-provider if the server was misconfigured to trust any JWT.
+        if token_issuer_raw != expected_issuer_raw:
+            log.warning(f"OIDC PINNING VIOLATION! Expected: {expected_issuer_raw}, Found: {token_issuer_raw}")
             return None
 
         # Pass the token's own raw string to jwt.decode to ensure an exact character match 

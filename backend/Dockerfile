@@ -80,4 +80,12 @@ HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
     CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
 
 # We use shell form for CMD to allow environment variable expansion
-CMD uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT} --proxy-headers --forwarded-allow-ips='*' --timeout-keep-alive 300
+# Internal Bind: 0.0.0.0 (Necessary for Docker networking)
+# Security is enforced at the Host level (127.0.0.1 mapping) and Middleware.
+CMD uvicorn api_server:app \
+    --host 0.0.0.0 \
+    --port ${API_PORT} \
+    --proxy-headers \
+    --forwarded-allow-ips='*' \
+    --ws-max-size 1048576 \
+    --timeout-keep-alive 60

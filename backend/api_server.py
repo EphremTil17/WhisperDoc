@@ -133,12 +133,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"], # Restrict methods
+    allow_headers=["Authorization", "Content-Type"], # Restrict headers
 )
-# Ensure the app trusts the proxy headers (Cloudflare)
-# This is handled by uvicorn's proxy_headers, but we add host validation here
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+# Ensure the app trusts ONLY the local proxy (Cloudflare Tunnel)
+# Tunnel runs on the same loop/host, so we only trust 127.0.0.1
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost").split(",")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 # --- Global Exception Handler (Error Masking) ---
@@ -161,38 +161,23 @@ async def global_exception_handler(request, exc):
 
 @app.get("/health")
 async def health_check():
-    """Enhanced health check with GPU status verification"""
+    """Opaque health check to prevent information disclosure."""
     if manager is None or manager.model_manager is None:
-        log.warning("Health check failed: system not initialized.")
-        return JSONResponse(
-             status_code=503,
-             content={"status": "unhealthy", "message": "System not initialized"}
-        )
+        return JSONResponse(status_code=503, content={"status": "uninitialized"})
     
-    # Check GPU availability via ctranslate2 (lighter than Torch for this check)
+    # Minimal check for GPU - don't leak device details
     try:
-        cuda_device_count = ctranslate2.get_cuda_device_count()
-        cuda_available = cuda_device_count > 0
-    except Exception:
+        cuda_available = ctranslate2.get_cuda_device_count() > 0
+    except:
         cuda_available = False
     
-    # Check if model is loaded (don't force load)
-    is_loaded = manager.model_manager.model is not None
-    
-    status = "healthy" if cuda_available else "degraded"
-    status_code = 200 if cuda_available else 500 # Return 500 if GPU is dead so Docker restarts
-    
-    log.info(f"Health check: {status}. Model loaded: {is_loaded}, CUDA: {cuda_available}")
-    
+    # Return binary status only
+    status_code = 200 if cuda_available else 503
     return JSONResponse(
         status_code=status_code,
         content={
-            "status": status,
-            "model_loaded": is_loaded,
-            "cuda_available": cuda_available,
-            "device": str(manager.model_manager.device),
-            "timestamp": time.time(),
-            "version": APP_VERSION
+            "status": "online" if cuda_available else "degraded",
+            "timestamp": int(time.time())
         }
     )
 

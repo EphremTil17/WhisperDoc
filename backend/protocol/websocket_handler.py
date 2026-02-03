@@ -10,6 +10,8 @@ from logging_config import log
 from auth import validate_token
 from engine.model_manager import ModelManager
 from security.governance import SecurityGovernance, MAX_CONNECTIONS, IDLE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS
+from security.sanitizer import Sanitizer
+from collections import defaultdict
 
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
@@ -30,6 +32,12 @@ class ConnectionManager:
         self.sec_client_version = sec_client_version
         self.governance = SecurityGovernance()
         self.last_tracker_cleanup = time.time()
+        
+        # Identity-Pinned Concurrency (IPC) Guard: 1 transcription per user at a time
+        self.user_semaphores = defaultdict(lambda: asyncio.Semaphore(1))
+        
+        # Performance & Throughput Monitoring
+        self.bytes_received: Dict[WebSocket, int] = defaultdict(int)
         
         # Start background cleanup
         self.cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())
@@ -85,6 +93,8 @@ class ConnectionManager:
         if websocket in self.active_connections:
             conn_id = self.active_connections[websocket].get("id", "????")
             del self.active_connections[websocket]
+            if websocket in self.bytes_received:
+                del self.bytes_received[websocket]
             log.info(f"[{conn_id}] WebSocket client disconnected: {websocket.client}")
 
     async def _cleanup_inactive_connections(self):
@@ -106,6 +116,17 @@ class ConnectionManager:
                     if idle_time > IDLE_TIMEOUT_SECONDS:
                         log.warning(f"Closing inactive connection for client {websocket.client}")
                         to_disconnect.append((websocket, 4000, "Inactivity timeout"))
+                        continue
+
+                    # Anti-Slowloris: Minimum Throughput Check (1KB/s after initial grace)
+                    # This catches 'bytes-per-minute' attackers while allowing human pauses.
+                    connection_age = now - data["connected_at"]
+                    if connection_age > 60 and data["handshake_completed"]:
+                        bytes_sent = self.bytes_received.get(websocket, 0)
+                        throughput = bytes_sent / connection_age
+                        if throughput < 1024: # 1KB/s
+                            log.warning(f"Closing Slowloris connection from {websocket.client} ({throughput/1024:.1f} KB/s)")
+                            to_disconnect.append((websocket, 1008, "Insufficient throughput"))
 
                 for websocket, code, reason in to_disconnect:
                     try: await websocket.close(code=code, reason=reason)
@@ -166,7 +187,9 @@ class ConnectionManager:
                                 if p1 < p2: return True
                                 if p1 > p2: return False
                             return False
-                        except: return False
+                        except: 
+                            # Fail-Secure: Invalid version format is treated as "Outdated/Rejected"
+                            return True
 
                     if is_lower(client_version, self.min_client_version):
                         log.warning(f"[{conn_id}] BLOCKED: Outdated client ({client_version}) < MIN ({self.min_client_version})")
@@ -247,6 +270,7 @@ class ConnectionManager:
             buffer = connection_data["buffer"]
             if len(buffer) < MAX_BUFFER_SIZE:
                 buffer.extend(message)
+                self.bytes_received[websocket] += len(message)
             else:
                 log.warning(f"[{conn_id}] Resource Exhaustion: Buffer limit reached.")
                 await websocket.close(code=1009, reason="Buffer limit exceeded")
@@ -276,39 +300,52 @@ class ConnectionManager:
             return
 
         try:
-            # NON-BLOCKING: Run model retrieval (which might include load_model) in a thread.
-            # This ensures other WebSocket connections remain responsive during cold starts.
-            log.debug(f"[{conn_id}] Retrieving model...")
-            model, _ = await asyncio.to_thread(self.model_manager.get_model)
+            user_id = data.get("user_id", "anonymous")
             
-            # Wrap the raw PCM buffer in a proper WAV header before writing to file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-                with wave.open(tmp, 'wb') as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2) # 16-bit
-                    wf.setframerate(16000)
-                    wf.writeframes(buffer)
-                tmp_path = tmp.name
-            
-            start_time = time.time()
-            # Run transcription in a thread to keep WebSocket loop alive
-            def run_transcription():
-                segments, info = model.transcribe(
-                    tmp_path, 
-                    language="en",
-                    beam_size=BEAM_SIZE,
-                    no_speech_threshold=NO_SPEECH_THRESHOLD,
-                    log_prob_threshold=LOG_PROB_THRESHOLD,
-                    condition_on_previous_text=CONDITION_ON_PREVIOUS
-                )
-                return list(segments), info
+            # IPC GUARD: Per-Identity Concurrency Lock
+            # Ensures User A cannot bomb the GPU while User B remains unblocked.
+            async with self.user_semaphores[user_id]:
+                # NON-BLOCKING: Run model retrieval (which might include load_model) in a thread.
+                log.debug(f"[{conn_id}] IPC-LOCK ACQUIRED. Retrieving model...")
+                model, _ = await asyncio.to_thread(self.model_manager.get_model)
+                
+                # Wrap the raw PCM buffer in a proper WAV header
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    with wave.open(tmp, 'wb') as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(2) # 16-bit
+                        wf.setframerate(16000)
+                        wf.writeframes(buffer)
+                    tmp_path = tmp.name
+                
+                start_time = time.time()
+                # Run transcription in a thread to keep WebSocket loop alive
+                def run_transcription():
+                    segments, info = model.transcribe(
+                        tmp_path, 
+                        language="en",
+                        beam_size=BEAM_SIZE,
+                        no_speech_threshold=NO_SPEECH_THRESHOLD,
+                        log_prob_threshold=LOG_PROB_THRESHOLD,
+                        condition_on_previous_text=CONDITION_ON_PREVIOUS
+                    )
+                    return list(segments), info
 
-            segments_list, info = await asyncio.to_thread(run_transcription)
+                segments_list, info = await asyncio.to_thread(run_transcription)
             duration = time.time() - start_time
             
-            full_text = " ".join([s.text.strip() for s in segments_list])
+            # 1. Backend Sanitization (Zero-Latency Security Gate)
+            full_text = Sanitizer.sanitize(" ".join([s.text.strip() for s in segments_list]))
+            safe_segments = [
+                {
+                    "start": s.start, 
+                    "end": s.end, 
+                    "text": Sanitizer.sanitize(s.text.strip())
+                } 
+                for s in segments_list
+            ]
             
-            # Security: Wipe buffer immediately
+            # 2. Security: Wipe buffer immediately
             data["buffer"] = bytearray()
 
             if not is_incognito:
@@ -319,7 +356,7 @@ class ConnectionManager:
             await websocket.send_json({
                 "event": "transcription",
                 "text": full_text,
-                "segments": [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in segments_list],
+                "segments": safe_segments,
                 "processing_time": duration
             })
             

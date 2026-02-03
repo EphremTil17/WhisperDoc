@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.22.1
+# WhisperDoc - Speech-to-Text System v2.22.2
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It leverages `faster-whisper` GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
 ## Prerequisites
@@ -149,7 +149,7 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows) v2.22.1
+### Flutter Client (Windows) v2.22.2
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
@@ -161,7 +161,7 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.22.1
+### Python Terminal Client v2.22.2
 
 A secure, modular, and production-ready terminal client for high-performance dictation. 
 
