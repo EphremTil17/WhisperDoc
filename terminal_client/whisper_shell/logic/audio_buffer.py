@@ -11,8 +11,17 @@ class AudioBufferManager:
         self._buffer: List[bytes] = []
         self._is_buffering = True
 
+    # Safety Cap: 16kHz Mono 16-bit = ~32KB/sec. 
+    # 600 seconds (10 mins) = ~19.2MB = ~18,750 chunks (at 1024 frames)
+    # We cap at 20,000 chunks for safety.
+    MAX_CHUNKS = 20000
+
     def add(self, chunk: bytes):
         if self._is_buffering:
+            if len(self._buffer) >= self.MAX_CHUNKS:
+                # Prevent OOM: Pop oldest chunk before adding new one
+                self._buffer.pop(0)
+                logger.warning("Audio buffer limit reached. Dropping oldest chunk to prevent memory exhaustion.")
             self._buffer.append(chunk)
         else:
             # This shouldn't happen if the controller is logic-correct, 

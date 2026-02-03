@@ -1,5 +1,7 @@
 import asyncio
 import json
+import ssl
+import gc
 from urllib.parse import urlparse
 from loguru import logger
 import websockets
@@ -66,13 +68,23 @@ class TransportService:
         self.handshake.reset()
 
         try:
-            self._ws = await websockets.connect(self._final_uri)
+            # 1. Prepare Strict SSL Context
+            scheme = urlparse(self._final_uri).scheme
+            ssl_context = None
+            if scheme == "wss":
+                ssl_context = ssl.create_default_context()
+                # Zero-Trust Enforcement: Explicitly ensure hostname and cert verification
+                ssl_context.check_hostname = True
+                ssl_context.verify_mode = ssl.CERT_REQUIRED
+                logger.debug(f"TLS Verification Enabled for {self.hostname}")
+
+            self._ws = await websockets.connect(
+                self._final_uri, 
+                ssl=ssl_context
+            )
             
             # Start background receiver
             self._receive_task = asyncio.create_task(self._listen_loop())
-            
-            # Wait for Server Hello (Protocol initiation)
-            # The listen_loop will handle incoming messages and update state
             
             # Send Client Hello
             api_key = sec_cfg.get_api_key(self.hostname)
@@ -86,11 +98,13 @@ class TransportService:
             )
             
             await self._send_json(payload)
-            self.handshake.transition_to(HandshakeState.AUTHENTICATING)
             
-            # Wait for Authentication confirmation or timeout
-            # We'll poll or wait on a future, but for now we'll assume the 
-            # state machine handles the timeout.
+            # Immediate Memory Hygiene: Clear sensitive strings from local scope
+            del api_key
+            del payload
+            gc.collect()
+            
+            self.handshake.transition_to(HandshakeState.AUTHENTICATING)
             return True
             
         except Exception as e:
@@ -131,6 +145,8 @@ class TransportService:
             elif event == "authenticated":
                 self.handshake.transition_to(HandshakeState.AUTHENTICATED)
                 logger.success(f"Authenticated CID: {msg.get('cid', 'unknown')}")
+                # Memory Hygiene: Trigger GC after security-sensitive handshake
+                gc.collect()
             elif event == "error":
                 code = msg.get("code")
                 if code in [401, 403, 1008]:

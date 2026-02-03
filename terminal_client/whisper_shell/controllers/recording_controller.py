@@ -128,12 +128,16 @@ class RecordingController:
     def _paste_text(self, text: str):
         if not text or not text.strip(): return
         
+        from ..logic.sanitizer import Sanitizer
+        safe_text = Sanitizer.sanitize(text)
+        if not safe_text: return
+
         if cfg.args.incognito:
-             logger.log("GHOST", f"Result: {text}")
+             logger.log("GHOST", f"Result: {safe_text}")
         else:
-            logger.success(f"Result: {text}")
+            logger.success(f"Result: {safe_text}")
         
-        pyperclip.copy(text)
+        pyperclip.copy(safe_text)
         # Native simulate paste
         with self.kb.pressed(keyboard.Key.ctrl):
             self.kb.press('v')
