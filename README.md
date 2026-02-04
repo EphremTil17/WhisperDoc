@@ -1,6 +1,15 @@
 # WhisperDoc - Speech-to-Text System v2.22.2
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It leverages `faster-whisper` GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
+
+<img width="3375" height="3363" alt="WhisperDoc Github Preview" src="https://github.com/user-attachments/assets/c2c3037a-171c-42dc-a3e6-e72b8ef94d09" />
+
+## Demo Video:
+
+
+https://github.com/user-attachments/assets/906170ee-6d2a-4bf5-a881-926f03e0862a
+
+
 ## Prerequisites
 Before starting, ensure your system meets the following requirements:
 
