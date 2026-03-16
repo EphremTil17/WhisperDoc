@@ -1,12 +1,162 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
+import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
+import 'package:flutter_client/services/transport/handshake_state_machine.dart';
+import 'package:flutter_client/services/transport/configuration_manager.dart';
+import 'package:stream_channel/stream_channel.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
-// Mock SettingsService
-class MockSettingsService extends Mock implements SettingsService {}
+// ---------------------------------------------------------------------------
+// Minimal stubs — only implement what ConfigurationManager / WebSocketService
+// constructor calls. Everything else throws UnimplementedError at runtime.
+// ---------------------------------------------------------------------------
+
+class _StubAuthService extends ChangeNotifier implements AuthService {
+  bool _isAuthenticated = false;
+
+  @override
+  bool get isAuthenticated => _isAuthenticated;
+
+  @override
+  String? get idToken => _isAuthenticated ? 'stub_token' : null;
+
+  @override
+  bool get isAuthenticating => false;
+
+  @override
+  Map<String, dynamic>? get currentUser => null;
+
+  void setAuthenticated(bool value) {
+    _isAuthenticated = value;
+    notifyListeners();
+  }
+
+  // Remaining AuthService members are not exercised by these tests.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _StubSettingsService extends ChangeNotifier implements SettingsService {
+  String _serverUri;
+  String? _apiKey;
+
+  _StubSettingsService({String serverUri = 'ws://localhost', String? apiKey})
+      : _serverUri = serverUri,
+        _apiKey = apiKey;
+
+  @override
+  String get serverUri => _serverUri;
+
+  @override
+  String? get cachedApiKey => _apiKey;
+
+  @override
+  bool get incognitoMode => false;
+
+  @override
+  Future<String?> getApiKey() async => _apiKey;
+
+  void changeUri(String newUri) {
+    _serverUri = newUri;
+    notifyListeners();
+  }
+
+  // Remaining SettingsService members are not exercised by these tests.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeWebSocketChannel with StreamChannelMixin implements WebSocketChannel {
+  final List<dynamic> sent = [];
+  final StreamController<dynamic> _controller =
+      StreamController<dynamic>.broadcast();
+
+  int? _closeCode;
+  String? _closeReason;
+
+  @override
+  Stream<dynamic> get stream => _controller.stream;
+
+  @override
+  WebSocketSink get sink => _FakeWebSocketSink(
+    onAdd: sent.add,
+    onClose: (code, reason) async {
+      _closeCode = code;
+      _closeReason = reason;
+      await _controller.close();
+    },
+  );
+
+  @override
+  int? get closeCode => _closeCode;
+
+  @override
+  String? get closeReason => _closeReason;
+
+  @override
+  String? get protocol => null;
+
+  @override
+  Future<void> get ready async {}
+}
+
+class _FakeWebSocketSink implements WebSocketSink {
+  _FakeWebSocketSink({
+    required this.onAdd,
+    required this.onClose,
+  });
+
+  final void Function(dynamic data) onAdd;
+  final Future<void> Function(int? code, String? reason) onClose;
+  final Completer<void> _done = Completer<void>();
+
+  @override
+  void add(dynamic data) => onAdd(data);
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) {}
+
+  @override
+  Future<void> addStream(Stream<dynamic> stream) async {
+    await for (final data in stream) {
+      add(data);
+    }
+  }
+
+  @override
+  Future<void> close([int? closeCode, String? closeReason]) async {
+    await onClose(closeCode, closeReason);
+    if (!_done.isCompleted) {
+      _done.complete();
+    }
+  }
+
+  @override
+  Future<void> get done => _done.future;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+WebSocketService _makeService({String? apiKey}) {
+  return WebSocketService(
+    _StubSettingsService(apiKey: apiKey),
+    _StubAuthService(),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 void main() {
+  // --- Existing placeholder tests (kept for compatibility) ------------------
+
   group('WebSocketService Connection States', () {
     test('ConnectionStatus enum has expected values', () {
       expect(ConnectionStatus.values, contains(ConnectionStatus.disconnected));
@@ -15,33 +165,237 @@ void main() {
     });
   });
 
-  group('WebSocketService Selective Reconnect', () {
-    // Note: Full WebSocket testing requires integration tests
-    // These are conceptual tests for the logic
+  // --- Regression: config change during in-flight connect ------------------
+  //
+  // ConfigurationManager._handleAuthChange fires onReconnectNeeded on every
+  // auth notification, including during a connecting state. WebSocketService
+  // must not silently drop that signal. The test verifies the contract at the
+  // ConfigurationManager boundary: the callback is always called.
 
-    test('should track lastKnownUri for selective reconnect', () {
-      // This tests the concept - actual implementation requires
-      // mocking the WebSocket channel which is complex
+  group('ConfigurationManager contract', () {
+    test('onReconnectNeeded is called on every auth pulse, not only when connected', () {
+      final auth = _StubAuthService();
+      final settings = _StubSettingsService();
+      final cm = ConfigurationManager(auth, settings);
 
-      // The key behavior we want to verify:
-      // 1. _lastKnownUri is updated when connecting
-      // 2. _onSettingsChanged only reconnects if URI changed
-      // 3. Other settings changes don't trigger reconnect
+      int reconnectFires = 0;
+      cm.startObserving(
+        onReconnectNeeded: () => reconnectFires++,
+        onAutoConnectDesired: () {},
+      );
 
-      // For now, this is a placeholder for integration tests
-      expect(true, isTrue);
+      auth.setAuthenticated(true); // first pulse
+      expect(reconnectFires, greaterThanOrEqualTo(1),
+          reason: 'onReconnectNeeded must fire when auth becomes true');
+
+      auth.setAuthenticated(false); // second pulse (sign-out)
+      expect(reconnectFires, greaterThanOrEqualTo(2),
+          reason: 'onReconnectNeeded must fire on every auth change, not once');
+
+      cm.stopObserving();
+    });
+
+    // Regression: the original fix narrowed the guard from
+    // (connected || connecting) to only (connected), silently dropping config
+    // pulses that arrived while a connection was in-flight.
+    // The corrected path sets _pendingConfigChange during 'connecting' and
+    // consumes it in _handleDisconnect(). This test drives that path directly.
+    //
+    // Expected lifecycle:
+    //   1. _handleDisconnect sees configPending=true → fires connect() immediately.
+    //   2. connect() fails (no credentials in this stub) → returns false.
+    //   3. The .then fallback arms the backoff timer so the app does not go
+    //      silently idle — this is intentional, not a regression.
+    test('pending config change fires immediate reconnect then falls back to timer on failure', () async {
+      final svc = _makeService(); // no API key → immediate connect() will fail
+
+      svc.forceConnectedForTesting();
+      svc.pendingConfigChangeForTesting = true;
+      final statuses = <ConnectionStatus>[];
+      svc.onStatusChanged.listen(statuses.add);
+
+      svc.processCloseForTesting(null, null);
+      await Future<void>.delayed(Duration.zero);
+
+      // Step 1: immediate connect() was attempted — status hit 'connecting'.
+      expect(
+        statuses,
+        contains(ConnectionStatus.connecting),
+        reason: 'config-driven reconnect must fire connect() immediately, '
+            'not wait for the backoff timer',
+      );
+      // Step 2: connect() failed (no credentials) → fallback timer is now armed.
+      expect(
+        svc.reconnectionManagerForTesting.isScheduled,
+        isTrue,
+        reason: 'when the immediate config-change reconnect fails, the backoff '
+            'timer must be armed so the app does not go silently idle',
+      );
+      // The pending flag must always be consumed exactly once.
+      expect(svc.pendingConfigChangeForTesting, isFalse,
+          reason: 'flag must be consumed, not left dangling');
+
+      svc.dispose();
     });
   });
 
-  group('WebSocketService Idle Timeout', () {
-    test('idle timeout should be 5 minutes', () {
-      // Verify the timeout constant
-      // Note: We can't easily access private fields, but we can
-      // document expected behavior
+  // --- Regression: close code 4001 must not schedule reconnect -------------
+  //
+  // When the server evicts an idle authenticated session (close code 4001),
+  // the client must go quietly idle. The prior code matched on both code AND
+  // a human-readable reason string, which was a brittle contract. The fix uses
+  // only the numeric close code 4001.
 
-      // Expected: Connection should close after 5 minutes of no activity
-      // This would require a fake_async test with timer manipulation
-      expect(true, isTrue);
+  group('WebSocketService idle-close handling', () {
+    // Regression: close code 4001 (no-audio-activity eviction) must not arm the
+    // reconnect timer. The prior implementation matched on a reason string which
+    // was brittle; the fix uses only the numeric close code.
+    // This test verifies the timer is not scheduled — not just that 'connecting'
+    // was not emitted in the instant after the close (a delayed timer would pass
+    // that weaker assertion).
+    test('close code 4001 leaves service idle with no reconnect timer armed', () async {
+      final svc = _makeService(apiKey: 'test-key');
+
+      svc.forceConnectedForTesting();
+      expect(svc.pendingConfigChangeForTesting, isFalse);
+
+      svc.processCloseForTesting(4001, 'No audio activity');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(svc.status, ConnectionStatus.disconnected,
+          reason: 'service must go idle after a 4001 eviction');
+      expect(
+        svc.reconnectionManagerForTesting.isScheduled,
+        isFalse,
+        reason: '4001 eviction must not arm the reconnect timer — a scheduled '
+            'timer would re-evict the client immediately after reconnect',
+      );
+
+      svc.dispose();
+    });
+
+    test('non-intentional server close (code null) does not loop when already disconnected', () async {
+      // Guard: a plain unexpected close from a non-connected state must not
+      // schedule a reconnect (wasActive=false).
+      final svc = _makeService();
+      expect(svc.status, ConnectionStatus.disconnected);
+
+      svc.processCloseForTesting(null, null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(svc.status, ConnectionStatus.disconnected);
+      svc.dispose();
+    });
+  });
+
+  // --- Regression: HandshakeState.failed persists through disconnect --------
+  //
+  // Covered more directly in handshake_state_machine_test.dart.
+  // This group verifies the behaviour through the WebSocketService surface.
+
+  group('WebSocketService auth failure state', () {
+    test('handshake state is failed after _handleAuthError and before next connect', () async {
+      final svc = _makeService(apiKey: 'test-key');
+      svc.forceConnectedForTesting();
+
+      // Drive _handleAuthError via processCloseForTesting with code 1008 and
+      // a non-ban message.  _lastHandshakeError is null at this point, so the
+      // 1008 branch calls _handleAuthError(reason).
+      svc.processCloseForTesting(1008, 'Unauthorized');
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        svc.handshakeState.state,
+        HandshakeState.failed,
+        reason:
+            'HandshakeState.failed must survive the disconnect so the UI can '
+            'show the real error instead of the generic disconnected message',
+      );
+
+      svc.dispose();
+    });
+  });
+
+  // --- Regression: mid-handshake config change must not flush stale audio ---
+  //
+  // Before the fix, _handshake.stateStream.listen fired flush(_channel!) the
+  // moment transitionTo(authenticated) was called — before _handleRawMessage
+  // had a chance to check _pendingConfigChange. The fix moves flush inline
+  // in _handleRawMessage, gated on !_pendingConfigChange.
+
+  group('WebSocketService mid-handshake config-change ordering', () {
+    test('buffered audio is cleared and new audio stays off the stale channel when config changed mid-handshake', () async {
+      final svc = _makeService(apiKey: 'test-key');
+      final channel = _FakeWebSocketChannel();
+      svc.channelForTesting = channel;
+
+      // Seed the buffer — simulates audio captured while the handshake was
+      // in-flight (e.g. user started recording before connection completed).
+      svc.bufferAudioForTesting(Uint8List.fromList([1, 2, 3, 4]));
+      expect(svc.audioBufferForTesting.isEmpty, isFalse);
+
+      // Simulate a config/identity change that arrived during the handshake.
+      svc.pendingConfigChangeForTesting = true;
+
+      // Drive the authenticated event through _handleRawMessage.
+      // Without a real socket _channel is null, so if the old code ran
+      // flush(_channel!) it would throw a null-check failure here.
+      svc.receiveAuthenticatedForTesting();
+
+      expect(
+        svc.audioBufferForTesting.isEmpty,
+        isTrue,
+        reason: 'buffer must be cleared, not flushed to the stale channel, '
+            'when a config change is pending at authentication time',
+      );
+      expect(
+        channel.sent,
+        isEmpty,
+        reason: 'no buffered audio should be flushed to the stale socket',
+      );
+
+      // Fresh chunks arriving during the brief shutdown window must also stay
+      // off the stale channel and be held locally for the replacement connect.
+      svc.sendAudioChunk(Uint8List.fromList([9, 9]));
+      expect(
+        channel.sent,
+        isEmpty,
+        reason: 'live audio must not slip onto the stale socket during rollover',
+      );
+      expect(
+        svc.audioBufferForTesting.isEmpty,
+        isFalse,
+        reason: 'fresh audio should be buffered locally for the reconnect path',
+      );
+
+      svc.dispose();
+    });
+
+    test('buffered audio is flushed normally when no config change is pending', () async {
+      final svc = _makeService(apiKey: 'test-key');
+      final channel = _FakeWebSocketChannel();
+      svc.channelForTesting = channel;
+
+      svc.bufferAudioForTesting(Uint8List.fromList([10, 20, 30]));
+      expect(svc.audioBufferForTesting.isEmpty, isFalse);
+
+      // No pending config change — authenticated path should flush immediately.
+      svc.receiveAuthenticatedForTesting();
+
+      expect(
+        svc.audioBufferForTesting.isEmpty,
+        isTrue,
+        reason: 'flush() must clear the buffer on the normal authenticated path',
+      );
+      expect(
+        channel.sent,
+        hasLength(1),
+        reason: 'happy-path authentication should flush the queued audio chunk',
+      );
+      expect(channel.sent.single, isA<Uint8List>());
+
+      svc.dispose();
     });
   });
 }

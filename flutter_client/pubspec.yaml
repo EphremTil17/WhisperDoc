@@ -1,7 +1,7 @@
 name: flutter_client
 description: "WhisperDoc Native Windows Client"
-publish_to: 'none'
-version: 2.22.2+1
+publish_to: "none"
+version: 2.22.4+1
 
 environment:
   sdk: ^3.10.4
@@ -24,7 +24,7 @@ dependencies:
   get_it: ^9.2.0
   package_info_plus: ^9.0.0
   url_launcher: ^6.3.1
-  
+
   # Security Dependencies
   flutter_secure_storage: ^9.2.2
   device_info_plus: ^11.2.0

@@ -9,7 +9,7 @@ from fastapi import WebSocket
 from logging_config import log
 from auth import validate_token
 from engine.model_manager import ModelManager
-from security.governance import SecurityGovernance, MAX_CONNECTIONS, IDLE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS
+from security.governance import SecurityGovernance, MAX_CONNECTIONS, IDLE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS, NO_AUDIO_GRACE_SECONDS
 from security.sanitizer import Sanitizer
 from collections import defaultdict
 
@@ -70,9 +70,10 @@ class ConnectionManager:
         conn_id = str(id(websocket))[-4:]
         now = time.time()
         self.active_connections[websocket] = {
-            "buffer": bytearray(), 
+            "buffer": bytearray(),
             "last_activity": now,
             "connected_at": now,
+            "last_audio_received": None,
             "handshake_completed": False,
             "id": conn_id,
             "incognito": False
@@ -118,24 +119,36 @@ class ConnectionManager:
                         to_disconnect.append((websocket, 4000, "Inactivity timeout"))
                         continue
 
-                    # Anti-Slowloris: Minimum Throughput Check (1KB/s after initial grace)
-                    # This catches 'bytes-per-minute' attackers while allowing human pauses.
-                    connection_age = now - data["connected_at"]
-                    if connection_age > 60 and data["handshake_completed"]:
-                        bytes_sent = self.bytes_received.get(websocket, 0)
-                        throughput = bytes_sent / connection_age
-                        if throughput < 1024: # 1KB/s
-                            log.warning(f"Closing Slowloris connection from {websocket.client} ({throughput/1024:.1f} KB/s)")
-                            to_disconnect.append((websocket, 1008, "Insufficient throughput"))
+                    # Anti-slot-hogging: kick authenticated connections with no audio activity.
+                    # Catches clients that hold a slot via keep-alive pings without ever transcribing.
+                    # Uses last_audio_received (set only on binary audio chunks) rather than a
+                    # lifetime throughput average, which false-positives on short push-to-talk clips.
+                    if data["handshake_completed"]:
+                        connection_age = now - data["connected_at"]
+                        last_audio = data.get("last_audio_received")
+                        no_audio_ever = last_audio is None and connection_age > NO_AUDIO_GRACE_SECONDS
+                        audio_stale = last_audio is not None and (now - last_audio) > IDLE_TIMEOUT_SECONDS
+                        if no_audio_ever or audio_stale:
+                            log.warning(f"Closing slot-hogging connection from {websocket.client} (no audio activity)")
+                            to_disconnect.append((websocket, 4001, "No audio activity"))
 
                 for websocket, code, reason in to_disconnect:
-                    try: await websocket.close(code=code, reason=reason)
-                    except: pass
+                    try:
+                        await websocket.close(code=code, reason=reason)
+                    except Exception as e:
+                        log.debug(f"Error closing WebSocket ({reason}): {e}")
                     self.disconnect(websocket)
                     
                 # Robust Tracker Cleanup: Every 1 hour
                 if now - self.last_tracker_cleanup > 3600:
                     self.governance.clear_old_trackers()
+                    # Prune IPC semaphores for users with no active connections to prevent unbounded growth
+                    active_user_ids = {d.get("user_id") for d in self.active_connections.values() if d.get("user_id")}
+                    stale_ids = [uid for uid in self.user_semaphores if uid not in active_user_ids]
+                    for uid in stale_ids:
+                        del self.user_semaphores[uid]
+                    if stale_ids:
+                        log.debug(f"Maintenance: Pruned {len(stale_ids)} stale IPC semaphore(s).")
                     self.last_tracker_cleanup = now
                     log.debug("Maintenance: Security trackers cleared.")
 
@@ -258,8 +271,10 @@ class ConnectionManager:
             
             except Exception as e:
                 log.error(f"[{conn_id}] Error in text handler: {e}")
-                try: await websocket.close(code=1011)
-                except: pass
+                try:
+                    await websocket.close(code=1011)
+                except Exception as ce:
+                    log.debug(f"[{conn_id}] Error closing WebSocket after handler error: {ce}")
 
         elif isinstance(message, bytes):
             if not handshake_done:
@@ -267,6 +282,7 @@ class ConnectionManager:
                 await websocket.close(code=1008, reason="Handshake required")
                 return
             
+            connection_data["last_audio_received"] = time.time()
             buffer = connection_data["buffer"]
             if len(buffer) < MAX_BUFFER_SIZE:
                 buffer.extend(message)
@@ -299,9 +315,10 @@ class ConnectionManager:
             await websocket.send_json({"event": "error", "code": "NO_AUDIO", "message": "No audio data received"})
             return
 
+        tmp_path = None
         try:
             user_id = data.get("user_id", "anonymous")
-            
+
             # IPC GUARD: Per-Identity Concurrency Lock
             # Ensures User A cannot bomb the GPU while User B remains unblocked.
             async with self.user_semaphores[user_id]:
@@ -365,5 +382,7 @@ class ConnectionManager:
             await websocket.send_json({"event": "error", "message": "Transcription failed"})
         finally:
             if tmp_path and os.path.exists(tmp_path):
-                try: os.unlink(tmp_path)
-                except: pass
+                try:
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    log.debug(f"[{conn_id}] Failed to delete temp file {tmp_path}: {e}")

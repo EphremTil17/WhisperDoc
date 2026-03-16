@@ -62,6 +62,27 @@ void main() {
       machine.reset();
       expect(machine.state, equals(HandshakeState.locked));
     });
+
+    // Regression: _handleDisconnect() used to unconditionally call reset(), wiping
+    // HandshakeState.failed before the UI could read it. The fix guards the reset
+    // with (state != failed). This test encodes that invariant directly.
+    test('failed state is preserved when reset is skipped (disconnect guard)', () {
+      machine.transitionTo(HandshakeState.authenticating);
+      machine.transitionTo(HandshakeState.failed);
+
+      // Simulate what the guarded _handleDisconnect() now does:
+      if (machine.state != HandshakeState.failed) machine.reset();
+
+      expect(
+        machine.state,
+        equals(HandshakeState.failed),
+        reason: 'UI needs the failed state to survive the disconnect path',
+      );
+
+      // The next connect() call issues an unconditional reset — verify recovery.
+      machine.reset();
+      expect(machine.state, equals(HandshakeState.locked));
+    });
   });
 
   group('HandshakeStateMachine - Timeout', () {

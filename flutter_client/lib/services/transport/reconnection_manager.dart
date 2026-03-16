@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../utility/logging_service.dart';
 
 /// Orchestrates WebSocket reconnection attempts with security "Kill Switch" enforcement.
@@ -8,6 +9,9 @@ class ReconnectionManager {
   int _attempts = 0;
 
   int get attempts => _attempts;
+
+  @visibleForTesting
+  bool get isScheduled => _timer?.isActive ?? false;
 
   /// Schedules a reconnection attempt if not blocked by security policy.
   void schedule({

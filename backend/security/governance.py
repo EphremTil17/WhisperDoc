@@ -6,6 +6,7 @@ from logging_config import log
 # --- Configuration ---
 IDLE_TIMEOUT_SECONDS = int(os.getenv("IDLE_TIMEOUT_SECONDS", "300"))
 HANDSHAKE_TIMEOUT_SECONDS = int(os.getenv("HANDSHAKE_TIMEOUT_SECONDS", "15"))
+NO_AUDIO_GRACE_SECONDS = int(os.getenv("NO_AUDIO_GRACE_SECONDS", "120"))
 
 BAN_FAILURE_THRESHOLD = int(os.getenv("BAN_FAILURE_THRESHOLD", "5"))
 BAN_FAILURE_WINDOW_SECONDS = int(os.getenv("BAN_FAILURE_WINDOW_SECONDS", "60"))

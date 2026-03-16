@@ -55,6 +55,9 @@ void main() {
     when(() => mockSettingsService.removeListener(any())).thenReturn(null);
     when(() => mockAudioCueService.playStartCue()).thenReturn(null);
     when(() => mockAudioCueService.playStopCue()).thenReturn(null);
+    when(
+      () => mockAudioService.amplitudeStream,
+    ).thenAnswer((_) => Stream<double>.empty());
 
     controller = RecordingController(
       audioService: mockAudioService,
@@ -107,7 +110,12 @@ void main() {
       when(() => mockAudioService.isRecording).thenReturn(false);
       when(() => mockWsService.connect()).thenAnswer((_) async => true);
       // The default stub for ensureConnected is true in setUp
-      when(() => mockAudioService.startRecording()).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
       when(
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());
@@ -118,7 +126,12 @@ void main() {
       ); // Give the unawaited ensureConnected time to run if needed
 
       verify(() => mockWsService.ensureConnected()).called(1);
-      verify(() => mockAudioService.startRecording()).called(1);
+      verify(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).called(1);
       verify(() => mockAudioCueService.playStartCue()).called(1);
     });
 
@@ -127,7 +140,12 @@ void main() {
         () => mockWsService.status,
       ).thenReturn(ConnectionStatus.disconnected);
       when(() => mockWsService.ensureConnected()).thenAnswer((_) async => true);
-      when(() => mockAudioService.startRecording()).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
       when(
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());
@@ -141,7 +159,12 @@ void main() {
 
     test('startRecording does not reconnect if already connected', () async {
       when(() => mockWsService.status).thenReturn(ConnectionStatus.connected);
-      when(() => mockAudioService.startRecording()).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
       when(
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());
@@ -163,7 +186,12 @@ void main() {
       when(
         () => mockWsService.ensureConnected(),
       ).thenAnswer((_) async => false);
-      when(() => mockAudioService.startRecording()).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
       when(
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());
@@ -173,7 +201,12 @@ void main() {
       await Future.delayed(Duration.zero);
 
       // Audio recording starts INSTANTLY (Zero-Latency)
-      verify(() => mockAudioService.startRecording()).called(1);
+      verify(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).called(1);
       verify(() => mockWsService.ensureConnected()).called(1);
       verify(() => mockAudioCueService.playStartCue()).called(1);
 
@@ -189,7 +222,12 @@ void main() {
 
     test('startRecording clears current buffer', () async {
       when(() => mockWsService.status).thenReturn(ConnectionStatus.connected);
-      when(() => mockAudioService.startRecording()).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
       when(
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());

@@ -44,6 +44,7 @@ class WebSocketService extends ChangeNotifier {
   bool _isConnecting = false;
   bool _isAuthenticatedSession = false;
   bool _isIntentionalDisconnect = false;
+  bool _pendingConfigChange = false;
   String? _lastHandshakeError;
   String? _activeApiKey;
   SecurityStatus _securityStatus = SecurityStatus.secure; // Default to secure
@@ -79,11 +80,14 @@ class WebSocketService extends ChangeNotifier {
     // Wire up configuration changes
     _config.startObserving(
       onReconnectNeeded: () {
-        if (_status == ConnectionStatus.connected ||
-            _status == ConnectionStatus.connecting) {
+        if (_status == ConnectionStatus.connected) {
           unawaited(
             disconnect(reason: 'Configuration/Identity update required'),
           );
+        } else if (_status == ConnectionStatus.connecting) {
+          // Can't safely tear down a half-open connection; remember to apply
+          // the new config once the current attempt settles.
+          _pendingConfigChange = true;
         }
       },
       onAutoConnectDesired: () {
@@ -93,10 +97,11 @@ class WebSocketService extends ChangeNotifier {
       },
     );
 
+    // Only clear on failure here. Flush on success is handled explicitly in
+    // _handleRawMessage so the _pendingConfigChange guard runs before any audio
+    // is written to the channel.
     _handshake.stateStream.listen((state) {
-      if (state == HandshakeState.authenticated) {
-        _audioBuffer.flush(_channel!);
-      } else if (state == HandshakeState.failed) {
+      if (state == HandshakeState.failed) {
         _audioBuffer.clear();
       }
     });
@@ -165,6 +170,9 @@ class WebSocketService extends ChangeNotifier {
       final hello = await _waitForServerHello();
       if (hello == null) throw Exception('Handshake timeout');
 
+      // _pendingConfigChange is checked in _handleRawMessage when the
+      // 'authenticated' event arrives — the first moment _status is confirmed
+      // connected. Nothing useful can be checked here while still connecting.
       await _sendClientHello();
       _isConnecting = false;
       return true;
@@ -175,7 +183,7 @@ class WebSocketService extends ChangeNotifier {
         _handshake.transitionTo(HandshakeState.failed);
       }
       _isConnecting = false;
-      _handleDisconnect();
+      _handleDisconnect(); // consumes _pendingConfigChange for the failure path
       return false;
     }
   }
@@ -197,6 +205,14 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void sendAudioChunk(Uint8List data) {
+    if (_pendingConfigChange) {
+      // A config/identity change is being applied. Keep fresh audio local
+      // until the replacement connection is ready rather than leaking it
+      // onto the stale socket during shutdown.
+      _audioBuffer.add(data);
+      return;
+    }
+
     if (_handshake.canSendAudio() && _channel != null) {
       _channel!.sink.add(data);
       _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
@@ -244,6 +260,21 @@ class WebSocketService extends ChangeNotifier {
         _handshake.transitionTo(HandshakeState.authenticated);
         _updateStatus(ConnectionStatus.connected);
         _logger.info('Handshake success | CID: $_connectionId');
+        if (_pendingConfigChange) {
+          // A config/identity change arrived mid-handshake. Discard buffered
+          // audio — it must not be sent on a session whose URI, credentials, or
+          // incognito flag are already stale. The buffer will refill after the
+          // reconnect completes with fresh settings.
+          _audioBuffer.clear();
+          unawaited(disconnect(reason: 'Configuration/Identity update required'));
+        } else {
+          // Happy path: flush any audio that was buffered during the handshake.
+          // _channel is non-null here by construction — it is assigned in
+          // connect() before the stream listener that delivers this event is
+          // attached — but the guard makes that ordering invariant explicit.
+          final ch = _channel;
+          if (ch != null) _audioBuffer.flush(ch);
+        }
       } else if (event == 'error' &&
           (json['code'] == 403 ||
               json['code'] == 1008 ||
@@ -274,9 +305,17 @@ class WebSocketService extends ChangeNotifier {
 
   void _handleSocketError(dynamic error) => _handleDisconnect();
 
-  void _handleSocketClose() {
-    final code = _channel?.closeCode;
-    final reason = _channel?.closeReason;
+  void _handleSocketClose() =>
+      _processClose(_channel?.closeCode, _channel?.closeReason);
+
+  void _processClose(int? code, String? reason) {
+    if (code == 4001) {
+      // Server evicted an idle authenticated session with no audio activity.
+      // Go quietly idle — reconnecting would only produce an immediate re-eviction loop.
+      _isIntentionalDisconnect = true;
+      _handleDisconnect();
+      return;
+    }
 
     if (code == 1008) {
       if (_lastHandshakeError == null) {
@@ -289,19 +328,93 @@ class WebSocketService extends ChangeNotifier {
     _handleDisconnect();
   }
 
+  // --- Test seams ---
+
+  /// Simulates a server-initiated close without a real socket.
+  /// Use only in tests annotated with @visibleForTesting.
+  @visibleForTesting
+  void processCloseForTesting(int? code, String? reason) =>
+      _processClose(code, reason);
+
+  /// Forces the service into a connected state without a real socket.
+  /// Lets tests exercise disconnect/reconnect logic in isolation.
+  @visibleForTesting
+  void forceConnectedForTesting() {
+    _status = ConnectionStatus.connected;
+    _isAuthenticatedSession = true;
+    _isIntentionalDisconnect = false;
+  }
+
+  @visibleForTesting
+  bool get pendingConfigChangeForTesting => _pendingConfigChange;
+
+  @visibleForTesting
+  set pendingConfigChangeForTesting(bool value) => _pendingConfigChange = value;
+
+  @visibleForTesting
+  ReconnectionManager get reconnectionManagerForTesting => _reconnection;
+
+  @visibleForTesting
+  set channelForTesting(WebSocketChannel? channel) => _channel = channel;
+
+  /// Exercises the _handleRawMessage authenticated branch without a real socket.
+  /// Advances through the authenticating state first so the state machine does
+  /// not log a spurious invalid-transition warning in test output.
+  @visibleForTesting
+  void receiveAuthenticatedForTesting() {
+    _handshake.transitionTo(HandshakeState.authenticating);
+    _handleRawMessage('{"event":"authenticated"}');
+  }
+
+  /// Exposes the audio buffer so tests can inspect whether it was flushed or cleared.
+  @visibleForTesting
+  AudioBufferManager get audioBufferForTesting => _audioBuffer;
+
+  /// Seeds the audio buffer with a test chunk to exercise the flush/clear paths.
+  @visibleForTesting
+  void bufferAudioForTesting(Uint8List chunk) => _audioBuffer.add(chunk);
+
   void _handleDisconnect() {
     final bool wasActive = _status == ConnectionStatus.connected;
     if (_status != ConnectionStatus.banned) {
       _updateStatus(ConnectionStatus.disconnected);
     }
 
-    _isAuthenticatedSession = false; // Reset session flag on any disconnect
+    _isAuthenticatedSession = false;
     _channel = null;
     _connectionId = null;
     _heartbeat.stop();
     _isConnecting = false;
+    // Preserve the failed state so UI can display auth error messaging.
+    // connect() resets it at the start of the next attempt.
+    if (_handshake.state != HandshakeState.failed) {
+      _handshake.reset();
+    }
 
-    if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
+    final bool configPending = _pendingConfigChange;
+    _pendingConfigChange = false;
+
+    if (configPending && !_banState.isBanned) {
+      // Config/identity changed mid-session: reconnect immediately with fresh
+      // settings. Bypassing ReconnectionManager's backoff timer avoids a gap
+      // where connect() has already returned true but the socket is gone and
+      // live audio can neither be sent nor buffered.
+      //
+      // If the immediate attempt fails (e.g. bad new credentials, unreachable
+      // URI), fall back to the normal backoff timer so the app does not go
+      // silently idle with no recovery path.
+      unawaited(connect().then((success) {
+        if (!success && !_banState.isBanned) {
+          _reconnection.schedule(
+            onRetry: () => connect(),
+            lastError: _lastHandshakeError,
+            isBanned: _banState.isBanned,
+          );
+        }
+      }));
+    } else if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
+      // Genuine unexpected drop: use the backoff timer so we don't hammer the
+      // server after a transient network failure.
       _reconnection.schedule(
         onRetry: () => connect(),
         lastError: _lastHandshakeError,

@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.22.2
+# WhisperDoc Flutter Client v2.22.4
 
 A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
 
@@ -15,7 +15,7 @@ The Flutter client has been hardened to match server-side security standards thr
 - **Identity Federation (OIDC/PKCE)**: Implements industry-standard OAuth2 PKCE (Proof Key for Code Exchange) flow via the **System Browser**. Verified via a custom Dart implementation for maximum transparency and Windows compatibility.
 - **Credential Isolation**: API keys and OIDC JWTs are stored exclusively in the **Windows Credential Manager** (Secure Vault). Sensitive tokens are never written to plain-text configuration files.
 - **Transport Security & RFC 1918**: Mandatory `wss://` (TLS 1.2+) is enforced for all public connections. Plain-text `ws://` is permitted **only** after validating the target as a verified local private network IP (RFC 1918).
-- **Hardened Handshake (Handshake Cage)**: Implements a strict state machine that buffers audio locally and only flushes to the socket *after* the identity-verified handshake is acknowledged by the backend.
+- **Hardened Handshake (Handshake Cage)**: Implements a strict state machine that buffers audio locally and only flushes to the socket _after_ the identity-verified handshake is acknowledged by the backend.
 - **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The UI provides real-time "Ban Cooldown" countdowns and respects server-mandated wait periods.
 - **Data-at-Rest Encryption**: Transcription history is stored in an **AES-256 encrypted Isar database**. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
@@ -49,15 +49,15 @@ lib/
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Framework | Flutter 3.x (Windows) |
-| State Management | Provider + ChangeNotifier |
-| Database | Isar (AES-256 Encrypted) |
-| Secure Storage | flutter_secure_storage (WinCred) |
-| Networking | WebSocket (web_socket_channel) |
-| Native APIs | Win32 via ffi/win32 packages |
-| Encryption | encrypt (AES/CBC) |
+| Component        | Technology                       |
+| ---------------- | -------------------------------- |
+| Framework        | Flutter 3.x (Windows)            |
+| State Management | Provider + ChangeNotifier        |
+| Database         | Isar (AES-256 Encrypted)         |
+| Secure Storage   | flutter_secure_storage (WinCred) |
+| Networking       | WebSocket (web_socket_channel)   |
+| Native APIs      | Win32 via ffi/win32 packages     |
+| Encryption       | encrypt (AES/CBC)                |
 
 - **Instantaneous Connection**: Implements a "Zero-Latency" recording flow. Audio capture and UI feedback initiate instantly while the WebSocket handshake completes in parallel.
 - **Background Auto-Wake**: The transport layer automatically resumes connectivity when a recording is initiated, removing the need for manual connection management.
@@ -112,6 +112,7 @@ Access settings via the gear icon or hamburger menu:
 Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isolate, **hot reload will hang indefinitely**. This is a trade-off for having bulletproof, deep-sleep-resistant hotkey handling.
 
 **Workarounds:**
+
 - Use **Hot Restart** (`Shift+R` in terminal) instead of hot reload.
 - Press the hotkey before attempting hot reload (unblocks the isolate momentarily).
 - Full app restart (`q` to stop, then `flutter run` again).
@@ -121,21 +122,24 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 ## Recent Improvements (v2.20.0)
 
 ### 🧩 Modular Profile Hub & Controllers
+
 - **Profile Controller Architecture**: Decoupled authentication and update logic from the UI using a dedicated controller.
 - **Update Card & Profile Block**: Atomic, shared widgets that provide clean visual feedback for user identity and version status.
 - **Pulse Indicators**: Context-aware glowing animations for "Update Available" (Amber) and "Critical Required" (Red) states.
 
 ### 🚦 Intelligent Error Handling & Update Controls
+
 - **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol, ensuring descriptive error messages for bans or version mismatches.
-- **Throttled Update Service**: 
-    - Implemented a **6-hour GitHub cooldown** to prevent API rate limiting.
-    - Handshake-gated re-evaluations: Only checks for updates when connecting/authenticating, reducing idle CPU load.
+- **Throttled Update Service**:
+  - Implemented a **6-hour GitHub cooldown** to prevent API rate limiting.
+  - Handshake-gated re-evaluations: Only checks for updates when connecting/authenticating, reducing idle CPU load.
 - **CID Synchronization**: Captures and logs the 4-digit **Connection ID** from the server hello, allowing perfect log correlation between client and backend.
 - **Snappier Feedback**: Error notifications (SnackBars) optimized to 1-second duration for a more responsive UI flow.
 
 ## Older Improvements (v2.14.0)
 
 ### Performance & Stability
+
 - **uvloop & orjson Support**: Client communication is now faster due to the backend's move to ultra-high performance I/O and JSON serialization.
 - **Drift-Proof Handshake**: Handshake timing is more resilient to network jitter and backend scheduling.
 - **Improved Resource Cleanup**: Accelerated model unloading and RAM reclamation on the backend reduces idle latency for new sessions.
@@ -143,26 +147,31 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 ## Older Improvements (v2.13.0)
 
 ### Hotkey Resilience
+
 - Replaced `Timer.periodic` polling with native `GetMessage` blocking loop
 - Hotkeys now work reliably after system sleep/hibernate
 - Implemented "Immutable Isolate" pattern: service respawns on settings change
 
 ### WebSocket Resilience
+
 - Fixed reconnection logic bug (status was checked after update, not before)
 - Added exponential backoff for reconnections to prevent resource waste
 - Idle timeout reduced to 3 minutes for faster resource cleanup
 
 ### OIDC Identity Integration
+
 - Implemented manual OAuth2 PKCE flow for Windows compatibility
 - Replaced third-party OIDC libraries with a lean Dart implementation
 - Added **System Browser** authentication for enhanced user trust and security
 
 ### Security Hardening
+
 - Implemented the **Handshake Cage** (buffer-then-flush) strategy
 - Added OIDC session persistence using hardware-bound secure storage
 - Explicitly masked sensitive authentication tokens in technical logs
 
 ### Architecture Refactoring
+
 - Added `get_it` for dependency injection
 - Created `AppConstants` for centralized configuration
 - Moved `RecordingController` from UI layer to core layer
