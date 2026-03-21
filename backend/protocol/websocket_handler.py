@@ -8,7 +8,7 @@ from typing import Dict, Any
 from fastapi import WebSocket
 from logging_config import log
 from auth import validate_token
-from engine.model_manager import ModelManager
+from engine.base_engine import BaseEngine
 from security.governance import SecurityGovernance, MAX_CONNECTIONS, IDLE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS, NO_AUDIO_GRACE_SECONDS
 from security.sanitizer import Sanitizer
 from collections import defaultdict
@@ -16,17 +16,11 @@ from collections import defaultdict
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
 
-# Whisper Performance & Hallucination Control
-BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
-NO_SPEECH_THRESHOLD = float(os.getenv("WHISPER_NO_SPEECH_THRESHOLD", "0.6"))
-LOG_PROB_THRESHOLD = float(os.getenv("WHISPER_LOG_PROB_THRESHOLD", "-1.0"))
-CONDITION_ON_PREVIOUS = os.getenv("WHISPER_CONDITION_ON_PREVIOUS", "True").lower() == "true"
-
 class ConnectionManager:
     """Manages WebSocket connection lifecycle, protocol state, and audio processing."""
-    def __init__(self, model_manager: ModelManager, app_version: str, min_client_version: str = "0.0.0", sec_client_version: str = "0.0.0"):
+    def __init__(self, engine: BaseEngine, app_version: str, min_client_version: str = "0.0.0", sec_client_version: str = "0.0.0"):
         self.active_connections: Dict[WebSocket, Dict[str, Any]] = {}
-        self.model_manager = model_manager
+        self.engine = engine
         self.app_version = app_version
         self.min_client_version = min_client_version
         self.sec_client_version = sec_client_version
@@ -39,8 +33,13 @@ class ConnectionManager:
         # Performance & Throughput Monitoring
         self.bytes_received: Dict[WebSocket, int] = defaultdict(int)
         
-        # Start background cleanup
-        self.cleanup_task = asyncio.create_task(self._cleanup_inactive_connections())
+        # Start background cleanup — guard against sync contexts (tests, scripts)
+        _coro = self._cleanup_inactive_connections()
+        try:
+            self.cleanup_task = asyncio.create_task(_coro)
+        except RuntimeError:
+            _coro.close()
+            self.cleanup_task = None
         log.info(f"ConnectionManager initialized. Proxy-Ready. Max Connections: {MAX_CONNECTIONS}")
 
     async def connect(self, websocket: WebSocket):
@@ -86,7 +85,7 @@ class ConnectionManager:
             "version": self.app_version,
             "min_version": self.min_client_version,
             "sec_version": self.sec_client_version,
-            "status": "ready" if self.model_manager.model else "idle",
+            "status": "ready" if self.engine.is_loaded() else "idle",
             "cid": conn_id
         })
 
@@ -251,10 +250,12 @@ class ConnectionManager:
                     log.info(f"[{conn_id}] Handshake Verified ({auth_type}) | {client_type} (v{client_version}) | Incognito: {connection_data['incognito']}")
 
                     await websocket.send_json({"event": "authenticated", "status": "success", "cid": conn_id})
-                    
-                    # TRIGGER WARMUP: Load model in background if not already loaded
-                    # This utilizes the user's "thinking time" before they start recording.
-                    asyncio.create_task(self._warmup_model())
+
+                    # TRIGGER WARMUP: Load model in background if not already loaded.
+                    # Guard skips the task entirely for reconnecting clients whose model is still hot,
+                    # avoiding a pointless thread spawn and last_used timestamp churn.
+                    if not self.engine.is_loaded():
+                        asyncio.create_task(self._warmup_model())
                     return
 
                 if event == "hello":
@@ -297,7 +298,7 @@ class ConnectionManager:
         try:
             log.info("BACKGROUND: Triggering model warmup...")
             # to_thread prevents blocking the event loop during the 2-5s load
-            await asyncio.to_thread(self.model_manager.get_model)
+            await asyncio.to_thread(self.engine.warmup)
             log.debug("BACKGROUND: Model warmup attempt completed.")
         except Exception as e:
             log.error(f"BACKGROUND: Model warmup failed: {e}")
@@ -322,10 +323,8 @@ class ConnectionManager:
             # IPC GUARD: Per-Identity Concurrency Lock
             # Ensures User A cannot bomb the GPU while User B remains unblocked.
             async with self.user_semaphores[user_id]:
-                # NON-BLOCKING: Run model retrieval (which might include load_model) in a thread.
-                log.debug(f"[{conn_id}] IPC-LOCK ACQUIRED. Retrieving model...")
-                model, _ = await asyncio.to_thread(self.model_manager.get_model)
-                
+                log.debug(f"[{conn_id}] IPC-LOCK ACQUIRED. Running transcription...")
+
                 # Wrap the raw PCM buffer in a proper WAV header
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
                     with wave.open(tmp, 'wb') as wf:
@@ -334,32 +333,20 @@ class ConnectionManager:
                         wf.setframerate(16000)
                         wf.writeframes(buffer)
                     tmp_path = tmp.name
-                
-                start_time = time.time()
-                # Run transcription in a thread to keep WebSocket loop alive
-                def run_transcription():
-                    segments, info = model.transcribe(
-                        tmp_path, 
-                        language="en",
-                        beam_size=BEAM_SIZE,
-                        no_speech_threshold=NO_SPEECH_THRESHOLD,
-                        log_prob_threshold=LOG_PROB_THRESHOLD,
-                        condition_on_previous_text=CONDITION_ON_PREVIOUS
-                    )
-                    return list(segments), info
 
-                segments_list, info = await asyncio.to_thread(run_transcription)
-            duration = time.time() - start_time
-            
+                # engine.transcribe() is synchronous and handles load-on-demand
+                # internally. Run in a thread to keep the WebSocket loop alive.
+                result = await asyncio.to_thread(self.engine.transcribe, tmp_path)
+
             # 1. Backend Sanitization (Zero-Latency Security Gate)
-            full_text = Sanitizer.sanitize(" ".join([s.text.strip() for s in segments_list]))
+            full_text = Sanitizer.sanitize(result.text)
             safe_segments = [
                 {
-                    "start": s.start, 
-                    "end": s.end, 
-                    "text": Sanitizer.sanitize(s.text.strip())
-                } 
-                for s in segments_list
+                    "start": s.start,
+                    "end": s.end,
+                    "text": Sanitizer.sanitize(s.text),
+                }
+                for s in result.segments
             ]
             
             # 2. Security: Wipe buffer immediately
@@ -374,7 +361,7 @@ class ConnectionManager:
                 "event": "transcription",
                 "text": full_text,
                 "segments": safe_segments,
-                "processing_time": duration
+                "processing_time": result.processing_time
             })
             
         except Exception as e:

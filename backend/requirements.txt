@@ -1,26 +1,27 @@
 # Heavy Libraries (Least frequent changes)
+# torch & nvidia libs are unpinned — version is locked by the base CUDA image.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 nvidia-cublas-cu12
 nvidia-cudnn-cu12
-faster-whisper
-ctranslate2>=4.4.0
+faster-whisper==1.2.1
+ctranslate2>=4.7.1
 
 # Framework & IO
-fastapi
-uvicorn
-python-multipart
-websockets
+fastapi==0.135.1
+uvicorn==0.42.0
+python-multipart==0.0.22
+websockets==16.0
 # requests is kept for OIDC stability
-requests
+requests==2.32.5
 
 # Authentication & Security
-python-jose[cryptography]
-cachetools
+python-jose[cryptography]==3.5.0
+cachetools==7.0.5
 
 # Utilities & Testing
-loguru
-uvloop
-orjson
-pytest
-pytest-asyncio
+loguru==0.7.3
+uvloop==0.22.1
+orjson==3.11.7
+pytest==9.0.2
+pytest-asyncio==1.3.0

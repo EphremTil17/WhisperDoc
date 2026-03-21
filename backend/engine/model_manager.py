@@ -25,8 +25,13 @@ class ModelManager:
         # Initial load
         self.load_model()
         
-        # Start cleanup task
-        asyncio.create_task(self._monitor_usage())
+        # Start cleanup task — guard against sync contexts (tests, scripts)
+        _coro = self._monitor_usage()
+        try:
+            self._monitor_task = asyncio.create_task(_coro)
+        except RuntimeError:
+            _coro.close()
+            self._monitor_task = None
 
     def load_model(self):
         with self._lock:
@@ -34,12 +39,23 @@ class ModelManager:
             log.info(f"Loading Whisper model ({self.model_name}) into {self.device}...")
             try:
                 start = time.time()
-                self.model = WhisperModel(
-                    self.model_name, 
-                    device=self.device, 
-                    compute_type=self.compute_type,
-                    download_root="/app/model-cache"
-                )
+                try:
+                    # Prefer cache-only load to skip the HuggingFace revision check
+                    self.model = WhisperModel(
+                        self.model_name,
+                        device=self.device,
+                        compute_type=self.compute_type,
+                        download_root="/app/model-cache",
+                        local_files_only=True,
+                    )
+                except Exception:
+                    # Cache miss — download and cache the model
+                    self.model = WhisperModel(
+                        self.model_name,
+                        device=self.device,
+                        compute_type=self.compute_type,
+                        download_root="/app/model-cache",
+                    )
                 log.success(f"Model loaded in {time.time() - start:.2f}s")
             except Exception as e:
                 log.error(f"Failed to load model: {e}")

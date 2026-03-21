@@ -1,0 +1,17 @@
+# Parakeet service dependencies
+# NeMo ASR toolkit — pulls in torch, torchaudio, and CUDA extensions automatically.
+# Pin to a known-good NeMo release that supports parakeet-tdt-0.6b-v2.
+nemo_toolkit[asr]==2.1.0
+
+# Audio I/O (NeMo depends on soundfile; wav reading already handled by scipy in NeMo)
+soundfile>=0.13.1
+
+# Shared with Whisper image
+fastapi==0.135.1
+uvicorn==0.42.0
+python-jose[cryptography]==3.5.0
+httpx==0.28.1
+loguru==0.7.3
+orjson==3.11.7
+python-multipart==0.0.22
+uvloop==0.22.1

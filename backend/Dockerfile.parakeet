@@ -1,0 +1,33 @@
+# ============================================================
+# WhisperDoc — Parakeet Backend
+# NVIDIA NeMo parakeet-tdt-0.6b-v3 (English-only TDT ASR)
+# ============================================================
+# Base: NeMo container already has CUDA, cuDNN, torch, and NeMo pre-installed.
+# We layer only our application code on top.
+FROM nvcr.io/nvidia/nemo:24.09
+
+ARG API_PORT=9990
+ARG VERSION=0.0.0-dev
+
+ENV API_PORT=${API_PORT} \
+    WHISPER_DOC_VERSION=${VERSION} \
+    ASR_ENGINE=parakeet \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Install shared Python dependencies that are not in the NeMo base image
+COPY requirements_parakeet.txt .
+RUN pip install --no-cache-dir -r requirements_parakeet.txt
+
+# Application source
+COPY . .
+
+# Non-root user for security
+RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE ${API_PORT}
+
+CMD ["sh", "-c", "uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT} --workers 1"]

@@ -19,7 +19,7 @@ except ImportError:
 from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import ORJSONResponse as JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uuid
 import ctranslate2
@@ -42,9 +42,6 @@ class LogBatch(BaseModel):
 
 # Load configuration from environment variables
 API_PORT = int(os.getenv('API_PORT', '9989'))
-MODEL_NAME = os.getenv('MODEL_NAME', 'medium.en')
-MODEL_DEVICE = os.getenv('MODEL_DEVICE', 'cuda')
-MODEL_COMPUTE_TYPE = os.getenv('MODEL_COMPUTE_TYPE', 'float16')
 
 # Read version from environment variable (Docker)
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
@@ -60,7 +57,7 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
 from fastapi import Depends
 from auth import get_api_key, verify_api_key, validate_token, warmup_oidc
-from engine.model_manager import ModelManager
+from engine.engine_factory import create_engine
 from protocol.websocket_handler import ConnectionManager
 
 from contextlib import asynccontextmanager
@@ -82,14 +79,14 @@ async def lifespan(app: FastAPI):
         # Enforce "Fail Secure" Policy
         get_api_key() # Will raise RuntimeError if no key is set
         
-        log.info(f"Initializing Model Manager ({MODEL_NAME})...")
-        
-        # Initialize ModelManager (which handles loading/unloading)
-        model_manager = ModelManager(MODEL_NAME, device=MODEL_DEVICE, compute_type=MODEL_COMPUTE_TYPE)
-        
+        log.info("Initializing ASR engine...")
+
+        # Engine selection is driven by ASR_ENGINE env var (see engine_factory.py)
+        engine = create_engine()
+
         # Initialize the connection manager
         manager = ConnectionManager(
-            model_manager, 
+            engine,
             app_version=APP_VERSION,
             min_client_version=MIN_CLIENT_VERSION,
             sec_client_version=SEC_CLIENT_VERSION
@@ -108,8 +105,8 @@ async def lifespan(app: FastAPI):
     
     # --- Shutdown Logic ---
     log.info("Shutting down WhisperDoc API server...")
-    if manager and manager.model_manager:
-        manager.model_manager.unload_model()
+    if manager:
+        manager.engine.unload()
     log.success("Cleanup completed.")
 
 app = FastAPI(
@@ -162,7 +159,7 @@ async def global_exception_handler(request, exc):
 @app.get("/health")
 async def health_check():
     """Opaque health check to prevent information disclosure."""
-    if manager is None or manager.model_manager is None:
+    if manager is None:
         return JSONResponse(status_code=503, content={"status": "uninitialized"})
     
     # Minimal check for GPU - don't leak device details
@@ -186,13 +183,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
     """Transcribe uploaded audio file"""
     if manager is None:
         raise HTTPException(status_code=503, detail="System not initialized")
-    
-    # Load model if needed
-    try:
-        model, _ = manager.model_manager.get_model()
-    except Exception as e:
-        log.error(f"Failed to load model for HTTP request: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load model")
     
     # Validate file type
     if not file.content_type or not file.content_type.startswith('audio/'):
@@ -218,53 +208,37 @@ async def transcribe_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.")
     
     # Save uploaded file temporarily
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
-        try:
-            # Copy uploaded file to temp file
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             shutil.copyfileobj(file.file, temp_file)
             temp_path = temp_file.name
-            
-            log.debug(f"Saved to temp file: {temp_path}")
-            
-            # Transcribe in a thread pool to avoid blocking the event loop
-            start_time = time.time()
-            
-            def run_transcription():
-                segments, info = model.transcribe(temp_path, language="en")
-                return list(segments), info
 
-            segments_list, info = await asyncio.to_thread(run_transcription)
-            transcribe_time = time.time() - start_time
-            
-            # Build response
-            full_text = " ".join([segment.text.strip() for segment in segments_list])
-            
-            log.success(f"Transcription completed in {transcribe_time:.2f}s")
-            log.info(f"Result: {full_text[:100]}{'...' if len(full_text) > 100 else ''}")
-            
-            return {
-                "text": full_text,
-                "language": info.language,
-                "language_probability": info.language_probability,
-                "duration": info.duration,
-                "segments": [
-                    {
-                        "start": segment.start,
-                        "end": segment.end,
-                        "text": segment.text.strip()
-                    }
-                    for segment in segments_list
-                ],
-                "processing_time": transcribe_time,
-                "timestamp": time.time()
-            }
-            
-        except Exception as e:
-            log.error(f"Transcription failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
-        
-        finally:
-            # Clean up temp file
+        log.debug(f"Saved to temp file: {temp_path}")
+
+        # Transcribe via engine (load-on-demand handled internally)
+        result = await asyncio.to_thread(manager.engine.transcribe, temp_path)
+
+        log.success(f"Transcription completed in {result.processing_time:.2f}s")
+        log.info(f"Result: {result.text[:100]}{'...' if len(result.text) > 100 else ''}")
+
+        return {
+            "text": result.text,
+            "language": result.language,
+            "segments": [
+                {"start": s.start, "end": s.end, "text": s.text}
+                for s in result.segments
+            ],
+            "processing_time": result.processing_time,
+            "timestamp": time.time()
+        }
+
+    except Exception as e:
+        log.error(f"Transcription failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+    finally:
+        if temp_path:
             try:
                 os.unlink(temp_path)
                 log.debug(f"Cleaned up temp file: {temp_path}")
