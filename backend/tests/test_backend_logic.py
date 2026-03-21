@@ -72,21 +72,20 @@ async def test_model_manager_unload_logic(mock_whisper):
 @pytest.mark.asyncio
 async def test_connection_manager_handshake():
     """Test that ConnectionManager sends the correct Hello packet."""
-    # Setup
-    mock_model_manager = MagicMock()
-    mock_model_manager.model = "MockModel" # Simulate loaded model
-    
-    manager = ConnectionManager(mock_model_manager, app_version="1.0.0")
+    # Setup: mock engine reports model as loaded
+    mock_engine = MagicMock()
+    mock_engine.is_loaded.return_value = True
+
+    manager = ConnectionManager(mock_engine, app_version="1.0.0")
     mock_ws = AsyncMock()
-    
+
     # Action: Client Connects
     await manager.connect(mock_ws)
-    
+
     # Assert: Accept was called
     mock_ws.accept.assert_awaited_once()
-    
-    # Assert: Hello JSON was sent
-    # We inspect the call args to verify content
+
+    # Assert: Hello JSON was sent with expected fields
     call_args = mock_ws.send_json.call_args[0][0]
     assert call_args["event"] == "hello"
     assert call_args["status"] == "ready"
@@ -95,8 +94,8 @@ async def test_connection_manager_handshake():
 @pytest.mark.asyncio
 async def test_connection_manager_structured_error():
     """Test that no-audio scenarios return structured errors."""
-    mock_model_manager = MagicMock()
-    manager = ConnectionManager(mock_model_manager, app_version="1.0.0")
+    mock_engine = MagicMock()
+    manager = ConnectionManager(mock_engine, app_version="1.0.0")
     mock_ws = AsyncMock()
     
     # Mock a connection that has NO buffer data

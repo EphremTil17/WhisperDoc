@@ -6,7 +6,7 @@ import sys
 # Configuration
 # Configuration
 API_URL = "http://localhost:9989"
-API_KEY = os.getenv("WHISPER_DOC_API_KEY", "test_secret_key")
+API_KEY = os.getenv("WHISPER_DOC_API_KEY")
 
 def get_headers():
     return {"Authorization": f"Bearer {API_KEY}"}
@@ -27,24 +27,26 @@ def test_http_health():
     response = requests.get(f"{API_URL}/health", timeout=5)
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "healthy"
+    assert data["status"] == "online"
 
 def test_http_transcribe_dummy():
     """Verify /transcribe fails gracefully with no file or wrong type."""
     if not check_server():
         pytest.skip(f"Server not found at {API_URL}")
-        
+    if not API_KEY:
+        pytest.skip("WHISPER_DOC_API_KEY not set; required to reach validation logic on the live server")
+
     # Test with no data - should return 422 Unprocessable Entity
-    # We must provide auth to reach the validation logic
+    # Auth must pass first, then FastAPI body validation catches the missing file.
     response = requests.post(f"{API_URL}/transcribe", headers=get_headers(), timeout=5)
-    assert response.status_code == 422 
+    assert response.status_code == 422
 
 def test_http_transcription_real():
     """Verify full transcription via HTTP if a test file exists."""
     if not check_server():
         pytest.skip(f"Server not found at {API_URL}")
 
-    audio_file = "assets/jfk.flac"
+    audio_file = "../assets/jfk.flac"
     if not os.path.exists(audio_file):
         pytest.skip(f"Test file {audio_file} not found. Skipping real transcription test.")
         

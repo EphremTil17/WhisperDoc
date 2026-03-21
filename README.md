@@ -1,6 +1,6 @@
-# WhisperDoc - Speech-to-Text System v2.22.4
+# WhisperDoc - Speech-to-Text System v2.23.1
 
-A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It leverages `faster-whisper` GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
+A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
 <img width="3375" height="3363" alt="WhisperDoc Github Preview" src="https://github.com/user-attachments/assets/c2c3037a-171c-42dc-a3e6-e72b8ef94d09" />
 
@@ -103,7 +103,7 @@ docker compose exec whisper-backend pytest tests/test_api.py
 
 ## 🛡️ Architecture & Security Deep-Dive (Hardened v2.14.0)
 
-- **Backend Core**: Dockerized FastAPI server with `faster-whisper` GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
+- **Backend Core**: Dockerized FastAPI server with a **pluggable ASR engine layer** (faster-whisper, NVIDIA Parakeet) and GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
   WhisperDoc v2.13.0 represents a significant leap in enterprise-grade security, moving beyond simple API keys to a comprehensive **Zero-Trust Identity Federation**.
 
 ### 1. Identity Federation & Cryptographic Hardening
@@ -150,12 +150,13 @@ WhisperDoc is entirely configuration-driven via the `.env` file. These variables
 
 ### Core Settings
 
-| Variable       | Description                                   | Default     |
-| -------------- | --------------------------------------------- | ----------- |
-| `API_PORT`     | Port the backend server will listen on.       | `9989`      |
-| `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `medium.en`). | `medium.en` |
-| `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).        | `cuda`      |
-| `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).     | `INFO`      |
+| Variable       | Description                                          | Default           |
+| -------------- | ---------------------------------------------------- | ----------------- |
+| `ASR_ENGINE`   | ASR backend (`whisper` or `parakeet`).               | `whisper`         |
+| `API_PORT`     | Port the backend server will listen on.              | `9989`            |
+| `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`).  | `large-v3-turbo`  |
+| `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).               | `cuda`            |
+| `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).            | `INFO`            |
 
 ### Security & Hardening Config Variables (Refer to `backend/.env.template`)
 
@@ -181,7 +182,7 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows) v2.22.4
+### Flutter Client (Windows) v2.23.1
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
@@ -194,7 +195,7 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.22.4
+### Python Terminal Client v2.23.1
 
 A secure, modular, and production-ready terminal client for high-performance dictation.
 
@@ -241,3 +242,4 @@ This means Docker cannot find the NVIDIA runtime.
 | Phase 10 | Optimization and Weight Shedding (v2.14.0)             | ✅ Complete    |
 | Phase 11 | Error Handling & Update Controls (v2.20.0)             | ✅ Complete    |
 | Phase 12 | UI and Functional Improvements                         | 🚧 In Progress |
+| Phase 13 | Multi-Engine ASR Abstraction (v2.23.0)                 | ✅ Complete    |

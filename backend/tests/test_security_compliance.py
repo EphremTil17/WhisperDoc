@@ -6,6 +6,14 @@ from auth.static_key import validate_static_key
 from auth.oidc import validate_oidc_token
 from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery, get_test_keys
 
+
+@pytest.fixture(autouse=True)
+def setup_api_key():
+    """Ensure WHISPER_DOC_API_KEY is set for tests that start TestClient."""
+    with patch.dict(os.environ, {"WHISPER_DOC_API_KEY": "test_secret_key"}):
+        yield
+
+
 # --- Security Strategy I: Algorithm Defense ---
 
 def test_algorithm_confusion_rejection():
@@ -122,12 +130,15 @@ def test_handshake_caging_blocks_invalid_first_event():
     with TestClient(app) as client:
         with client.websocket_connect("/ws") as websocket:
             websocket.receive_json()
-            
+
             # Attempt to send a 'ping' or 'end-of-stream' before 'hello'
             websocket.send_json({"event": "ping"})
-            
+
+            # Server sends an error message explaining the violation, then closes.
+            error_msg = websocket.receive_json()
+            assert error_msg["event"] == "error"
+            assert "Handshake required" in error_msg["message"]
+
             with pytest.raises(WebSocketDisconnect) as exc:
-                websocket.receive_json()
-            
+                websocket.receive_text()
             assert exc.value.code == 1008
-            assert "Handshake required" in exc.value.reason

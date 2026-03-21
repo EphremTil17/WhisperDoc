@@ -18,11 +18,13 @@ def test_version_from_env_var():
 def test_version_logic_helper():
     """Verify the internal version comparison helper in ConnectionManager."""
     from protocol.websocket_handler import ConnectionManager
-    manager = ConnectionManager(mock.Mock(), "1.0.0", "2.17.0", "2.18.0")
-    
-    # We need to test the logic manually or via mock since is_lower is a local function
-    # but we can simulate the handshake process.
-    pass
+    from unittest.mock import patch
+    with patch("protocol.websocket_handler.asyncio.create_task", side_effect=lambda c: c.close()):
+        manager = ConnectionManager(mock.Mock(), "1.0.0", "2.17.0", "2.18.0")
+
+    assert manager.app_version == "1.0.0"
+    assert manager.min_client_version == "2.17.0"
+    assert manager.sec_client_version == "2.18.0"
 
 @pytest.mark.asyncio
 async def test_rejection_of_outdated_client():

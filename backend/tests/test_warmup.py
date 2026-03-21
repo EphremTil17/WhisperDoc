@@ -43,27 +43,25 @@ async def test_concurrent_warmup_lock():
 async def test_warmup_non_blocking_event_loop():
     """
     Verifies that the event loop remains responsive while a warmup is happening in the background.
+    Uses a mock engine whose warmup() sleeps for 1s to simulate a slow GPU load.
     """
-    with patch("engine.model_manager.WhisperModel") as mock_whisper:
-        def slow_load(*args, **kwargs):
-            time.sleep(1.0)
-            return MagicMock()
-        mock_whisper.side_effect = slow_load
-        
-        model_manager = ModelManager("tiny.en", "cpu", "int8")
-        model_manager.model = None # Force reload
-        
-        conn_manager = ConnectionManager(model_manager, "v1.0.0")
-        
-        # Trigger warmup (this is an async task internally)
-        start_time = time.time()
-        asyncio.create_task(conn_manager._warmup_model())
-        
-        # Immediately do something else on the event loop
-        # If _warmup_model blocked the loop, this sleep would take 1s + 0.1s
-        await asyncio.sleep(0.1)
-        heartbeat_time = time.time() - start_time
-        
-        # Heartbeat should have happened almost immediately, well before the 1s load
-        assert heartbeat_time < 0.5
-        print(f"Heartbeat took {heartbeat_time:.4f}s during 1s model load.")
+    def slow_warmup():
+        time.sleep(1.0)
+
+    mock_engine = MagicMock()
+    mock_engine.warmup.side_effect = slow_warmup
+    mock_engine.is_loaded.return_value = False
+
+    conn_manager = ConnectionManager(mock_engine, "v1.0.0")
+
+    # Trigger warmup (dispatched via asyncio.to_thread internally)
+    start_time = time.time()
+    asyncio.create_task(conn_manager._warmup_model())
+
+    # Immediately yield control; if _warmup_model blocked, this would take 1s+
+    await asyncio.sleep(0.1)
+    heartbeat_time = time.time() - start_time
+
+    # Heartbeat should complete well before the 1s engine load finishes
+    assert heartbeat_time < 0.5
+    print(f"Heartbeat took {heartbeat_time:.4f}s during 1s engine warmup.")

@@ -24,6 +24,10 @@ CACHE_DIR = os.getenv("HF_HOME", os.path.join(os.path.dirname(BASE_DIR), "model-
 def get_gpu_available():
     return torch.cuda.is_available()
 
+@pytest.mark.skipif(
+    not os.path.exists("/.dockerenv"),
+    reason="Hardware model test only runs inside Docker container"
+)
 def test_whisper_cpu_basic():
     """Verify Whisper can run on CPU (baseline test)."""
     print(f"\n--- Testing CPU Fallback (tiny.en) [Cache: {CACHE_DIR}] ---")

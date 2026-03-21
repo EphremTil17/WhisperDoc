@@ -7,6 +7,14 @@ from api_server import app
 from auth.oidc import validate_oidc_token
 from tests.test_jwt_fixtures import generate_test_jwt, generate_mock_jwks, mock_oidc_discovery
 
+
+@pytest.fixture(autouse=True)
+def setup_api_key():
+    """Ensure WHISPER_DOC_API_KEY is set for tests that start TestClient."""
+    with patch.dict(os.environ, {"WHISPER_DOC_API_KEY": "test_secret_key"}):
+        yield
+
+
 @pytest.fixture
 def mock_oidc_env():
     """Setup environment and mocks for OIDC tests."""
@@ -88,14 +96,18 @@ def test_protocol_enforcement_invalid_event_before_auth():
         with TestClient(app) as local_client:
             with local_client.websocket_connect("/ws") as websocket:
                 websocket.receive_json()
-                
+
                 # Send 'ping' instead of 'hello'
                 websocket.send_json({"event": "ping"})
-                
+
+                # Server sends an error message explaining the violation, then closes.
+                error_msg = websocket.receive_json()
+                assert error_msg["event"] == "error"
+                assert "Handshake required" in error_msg["message"]
+
                 with pytest.raises(WebSocketDisconnect) as exc:
-                    websocket.receive_json()
+                    websocket.receive_text()
                 assert exc.value.code == 1008
-                assert "Handshake required" in exc.value.reason
 
 def test_ban_message_format_compliance():
     """Verify that 1008 close reason follows the pattern 'Retry in Xs' for client parsing."""

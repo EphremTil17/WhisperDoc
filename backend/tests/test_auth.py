@@ -75,10 +75,11 @@ def test_websocket_handshake_flow():
                 assert "server" in data
                 
                 # 2. Send Client Hello with Token
+                # Use the server's own version to always satisfy MIN_CLIENT_VERSION.
                 websocket.send_json({
                     "event": "hello",
                     "client": "test_client",
-                    "version": "1.0.0",
+                    "version": os.getenv("WHISPER_DOC_VERSION", "999.0.0"),
                     "token": "test_secret_key"
                 })
                 
@@ -94,9 +95,10 @@ def test_websocket_handshake_invalid_token():
                 # 1. Server Hello
                 websocket.receive_json()
                 
-                # 2. Send Invalid Token
+                # 2. Send Invalid Token (with valid version to reach auth check)
                 websocket.send_json({
                     "event": "hello",
+                    "version": os.getenv("WHISPER_DOC_VERSION", "999.0.0"),
                     "token": "INVALID_KEY"
                 })
                 

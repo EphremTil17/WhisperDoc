@@ -4,13 +4,14 @@ import tempfile
 import pytest
 
 def test_filesystem_root_is_readonly():
-    """Verify that the root filesystem is read-only."""
+    """Verify that the root filesystem is read-only (Docker container only)."""
+    if not os.path.exists("/.dockerenv"):
+        pytest.skip("Read-only filesystem test only runs inside Docker container")
+
     with pytest.raises(OSError) as excinfo:
-        # Try to modify a file in root or create one
         with open("/app/test_persistence.txt", "w") as f:
             f.write("This should fail")
-    
-    # Check if the error is indeed Read-only file system (errno 30)
+
     assert "Read-only file system" in str(excinfo.value) or excinfo.value.errno == 30
 
 def test_tmp_is_writable():
