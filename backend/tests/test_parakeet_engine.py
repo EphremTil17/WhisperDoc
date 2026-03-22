@@ -24,12 +24,17 @@ def _nemo_asr_stub():
 
 
 def _make_hyp(text: str, segments=None):
+    """Build a mock NeMo Hypothesis.
+
+    NeMo stores timestamp data in ``hyp.timestep`` (not ``hyp.timestamp``).
+    When timestamps=True, ``transcribe()`` returns list[list[Hypothesis]].
+    """
     hyp = MagicMock()
     hyp.text = text
     if segments is not None:
-        hyp.timestamp = {"segment": segments}
+        hyp.timestep = {"segment": segments}
     else:
-        hyp.timestamp = None
+        hyp.timestep = None
     return hyp
 
 
@@ -51,7 +56,7 @@ def _build_engine(mock_model) -> ParakeetEngine:
 class TestTranscribeReturnShape:
     def test_returns_transcription_result(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("Hello world")]
+        mock_model.transcribe.return_value = [[_make_hyp("Hello world")]]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -60,7 +65,7 @@ class TestTranscribeReturnShape:
 
     def test_text_from_hypothesis(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("Test transcription")]
+        mock_model.transcribe.return_value = [[_make_hyp("Test transcription")]]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -69,7 +74,7 @@ class TestTranscribeReturnShape:
 
     def test_language_is_always_en(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("Hi")]
+        mock_model.transcribe.return_value = [[_make_hyp("Hi")]]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -78,7 +83,7 @@ class TestTranscribeReturnShape:
 
     def test_processing_time_is_non_negative(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("Hi")]
+        mock_model.transcribe.return_value = [[_make_hyp("Hi")]]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -93,7 +98,7 @@ class TestSegmentNormalisation:
             {"start": 0.8, "end": 1.5, "segment": "world"},
         ]
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("Hello world", segments=segs)]
+        mock_model.transcribe.return_value = [[_make_hyp("Hello world", segments=segs)]]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -104,7 +109,7 @@ class TestSegmentNormalisation:
 
     def test_fallback_single_segment_when_no_timestamps(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("No timestamps here", segments=None)]
+        mock_model.transcribe.return_value = [[_make_hyp("No timestamps here", segments=None)]]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -140,7 +145,7 @@ class TestLifecycle:
 
     def test_transcribe_after_unload_reloads(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [_make_hyp("Reloaded")]
+        mock_model.transcribe.return_value = [[_make_hyp("Reloaded")]]
         engine = _build_engine(mock_model)
 
         engine.unload()

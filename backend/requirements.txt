@@ -1,11 +1,7 @@
-# Heavy Libraries (Least frequent changes)
-# torch & nvidia libs are unpinned — version is locked by the base CUDA image.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
-nvidia-cublas-cu12
-nvidia-cudnn-cu12
-faster-whisper==1.2.1
-ctranslate2>=4.7.1
+# Shared base — installed by ALL engine images.
+# NOTE: torch is NOT here. Whisper needs CPU-only torch (CTranslate2 owns GPU),
+# while Parakeet needs CUDA-enabled torch (NeMo uses torch.cuda directly).
+# Each engine's requirements file pulls the correct torch variant.
 
 # Framework & IO
 fastapi==0.135.1

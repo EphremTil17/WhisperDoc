@@ -1,33 +1,93 @@
 # ============================================================
-# WhisperDoc — Parakeet Backend
-# NVIDIA NeMo parakeet-tdt-0.6b-v3 (English-only TDT ASR)
+# WhisperDoc — Parakeet Backend (Slim)
+# NVIDIA NeMo parakeet-tdt-0.6b-v2 (English-only TDT ASR)
 # ============================================================
-# Base: NeMo container already has CUDA, cuDNN, torch, and NeMo pre-installed.
-# We layer only our application code on top.
-FROM nvcr.io/nvidia/nemo:24.09
+# Same multi-stage pattern as Dockerfile.whisper.
+# Installs nemo_toolkit[asr] via uv on a slim base instead of
+# pulling the 15GB nvcr.io/nvidia/nemo research container.
 
-ARG API_PORT=9990
-ARG VERSION=0.0.0-dev
+# --- STAGE 0: FFmpeg Source ---
+FROM mwader/static-ffmpeg:latest AS ffmpeg-source
 
-ENV API_PORT=${API_PORT} \
-    WHISPER_DOC_VERSION=${VERSION} \
-    ASR_ENGINE=parakeet \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+# --- STAGE 1: Builder ---
+FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
-# Install shared Python dependencies that are not in the NeMo base image
-COPY requirements_parakeet.txt .
-RUN pip install --no-cache-dir -r requirements_parakeet.txt
+# uv: 10-50x faster dependency resolution and installation vs pip
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Application source
+# NeMo ASR needs build tools + libsndfile for soundfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    python3-dev \
+    libsndfile1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements (shared base + parakeet-specific)
+COPY requirements.txt requirements_parakeet.txt ./
+
+# NOTE: Unlike Dockerfile.whisper, we keep __pycache__ and .pyc files intact.
+# NeMo's dependency chain (librosa → numba) uses JIT compilation and requires
+# numba's file locator to resolve source paths via __pycache__ entries.
+# Pruning them causes: "no locator available for file '...librosa/core/notation.py'"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.10/site-packages \
+    -r requirements.txt -r requirements_parakeet.txt && \
+    find /root/.local -name "*.a" -delete
+
+# --- STAGE 2: Runner ---
+FROM python:3.10-slim AS runner
+
+WORKDIR /app
+
+# Environment & Performance
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/app/model-cache
+ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONPATH=/root/.local/lib/python3.10/site-packages:$PYTHONPATH
+ENV TMPDIR=/tmp
+ENV TEMP=/tmp
+ENV TMP=/tmp
+
+# NeMo/PyTorch CUDA libs from site-packages
+ENV LD_LIBRARY_PATH=/root/.local/lib/python3.10/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+
+# Runtime: libgomp for torch, libsndfile for soundfile/NeMo audio I/O
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libsndfile1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Static FFmpeg
+COPY --from=ffmpeg-source /ffmpeg /ffprobe /usr/local/bin/
+
+# Dependencies from builder
+COPY --from=builder /root/.local /root/.local
+
+# Application code
 COPY . .
 
-# Non-root user for security
-RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
-USER appuser
-
+# Network & Execution
+ARG API_PORT=9989
+ENV API_PORT=${API_PORT}
 EXPOSE ${API_PORT}
 
-CMD ["sh", "-c", "uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT} --workers 1"]
+ARG VERSION
+LABEL version=${VERSION}
+
+HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
+
+# python3 -m uvicorn: --target installs don't create bin/ scripts, so we
+# invoke uvicorn as a module which always works via PYTHONPATH.
+CMD python3 -m uvicorn api_server:app \
+    --host 0.0.0.0 \
+    --port ${API_PORT} \
+    --proxy-headers \
+    --forwarded-allow-ips='*' \
+    --ws-max-size 1048576 \
+    --timeout-keep-alive 60

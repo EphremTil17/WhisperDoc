@@ -1,11 +1,38 @@
 
 import sys
 import os
+import logging
 from loguru import logger
+
+# ---------------------------------------------------------------------------
+# Third-party noise filter (general-purpose)
+# ---------------------------------------------------------------------------
+# Suppresses sub-ERROR stdlib log messages from noisy third-party libraries.
+# The primary NeMo silencing is handled by the fd-level redirect in
+# parakeet_engine._suppress_nemo_noise().  This filter acts as a safety net
+# for any stdlib-routed messages that escape the fd redirect (e.g. during
+# import time before the context manager is active).
+#
+# Installed on the ROOT logger so it survives logging.basicConfig(force=True)
+# calls that NeMo's import chain makes (which replaces handlers but not filters).
+SILENCED_PREFIXES = (
+    "nemo", "nv_one_logger", "lhotse",
+    "pytorch_lightning", "matplotlib",
+)
+
+class _ThirdPartyNoiseFilter(logging.Filter):
+    """Drop sub-ERROR messages from known noisy third-party namespaces."""
+    def filter(self, record):
+        if record.name.startswith(SILENCED_PREFIXES):
+            return record.levelno >= logging.ERROR
+        return True
+
+logging.getLogger().addFilter(_ThirdPartyNoiseFilter())
+
 
 def configure_logging():
     """Configures the Loguru logger for the application."""
-    
+
     logger.remove()  # Remove default handler
 
     # Update colors for standard levels
@@ -28,15 +55,14 @@ def configure_logging():
     force_color = os.getenv("COLORIZE_LOGS", "true").lower() == "true"
 
     def formatter(record):
+        # All timestamps are UTC regardless of host timezone
         # Concise format for INFO/SUCCESS/PRIVACY
         if record["level"].name in ["INFO", "SUCCESS", "PRIVACY"]:
-            return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <white>{message}</white>\n"
+            return "<white>{time:YYYY-MM-DD HH:mm:ss!UTC}</white> | <level>{level: <8}</level> | <white>{message}</white>\n"
         # Verbose format for ERROR/WARNING/DEBUG
-        return "<white>{time:YYYY-MM-DD HH:mm:ss}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>\n"
+        return "<white>{time:YYYY-MM-DD HH:mm:ss!UTC}</white> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>\n"
 
     # --- Intercept Standard Logging (Uvicorn/FastAPI) ---
-    import logging
-
     class InterceptHandler(logging.Handler):
         def emit(self, record):
             # Get corresponding Loguru level if it exists
@@ -55,7 +81,7 @@ def configure_logging():
 
     # Set up global intercept for all standard library loggers
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
-    
+
     # Specifically target uvicorn and web framework loggers
     for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "starlette"):
         mod_logger = logging.getLogger(logger_name)
@@ -74,4 +100,3 @@ def configure_logging():
 
 # Create a configured logger instance
 log = configure_logging()
-

@@ -17,13 +17,12 @@ __pycache__/
 **/logs/
 *.tmp
 
-# Audio files (test data should not be committed)
-*.wav
-*.mp3
-*.flac
-*.m4a
-*.ogg
-test_audio.*
+# Large audio files (test recordings, samples)
+# Small UI assets (flutter_client/assets/audio/) are tracked intentionally.
+assets/*.wav
+assets/*.mp3
+assets/*.m4a
+assets/*.ogg
 
 # OS-specific
 .DS_Store

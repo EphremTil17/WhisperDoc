@@ -22,7 +22,6 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSock
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uuid
-import ctranslate2
 import tempfile
 import shutil
 
@@ -162,10 +161,11 @@ async def health_check():
     if manager is None:
         return JSONResponse(status_code=503, content={"status": "uninitialized"})
     
-    # Minimal check for GPU - don't leak device details
+    # Minimal GPU check — engine-agnostic via torch (shared dep)
     try:
-        cuda_available = ctranslate2.get_cuda_device_count() > 0
-    except:
+        import torch
+        cuda_available = torch.cuda.is_available() and torch.cuda.device_count() > 0
+    except Exception:
         cuda_available = False
     
     # Return binary status only
@@ -207,8 +207,12 @@ async def transcribe_audio(file: UploadFile = File(...)):
         log.warning(f"File upload rejected: {file_size} bytes exceeds limit of {MAX_FILE_SIZE}")
         raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.")
     
-    # Save uploaded file temporarily
+    # Save uploaded file and normalize to 16kHz mono WAV via FFmpeg.
+    # This makes the endpoint engine-agnostic: Whisper can ingest any
+    # format, but NeMo (Parakeet) expects WAV.  FFmpeg is present in
+    # both Docker images (static binary copied at build time).
     temp_path = None
+    wav_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             shutil.copyfileobj(file.file, temp_file)
@@ -216,8 +220,22 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
         log.debug(f"Saved to temp file: {temp_path}")
 
+        # Normalize to WAV (16kHz, mono, 16-bit) for engine compatibility
+        wav_path = temp_path + ".wav"
+        import subprocess
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            ["ffmpeg", "-y", "-i", temp_path, "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", wav_path],
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            log.error(f"FFmpeg conversion failed: {proc.stderr.decode(errors='replace')}")
+            raise HTTPException(status_code=400, detail="Unsupported audio format")
+
+        log.debug(f"FFmpeg conversion OK: {temp_path} → {wav_path} ({os.path.getsize(wav_path)} bytes)")
+
         # Transcribe via engine (load-on-demand handled internally)
-        result = await asyncio.to_thread(manager.engine.transcribe, temp_path)
+        result = await asyncio.to_thread(manager.engine.transcribe, wav_path)
 
         log.success(f"Transcription completed in {result.processing_time:.2f}s")
         log.info(f"Result: {result.text[:100]}{'...' if len(result.text) > 100 else ''}")
@@ -233,17 +251,19 @@ async def transcribe_audio(file: UploadFile = File(...)):
             "timestamp": time.time()
         }
 
+    except HTTPException:
+        raise  # Re-raise client errors (400, 413) as-is
     except Exception as e:
         log.error(f"Transcription failed: {e}")
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
     finally:
-        if temp_path:
-            try:
-                os.unlink(temp_path)
-                log.debug(f"Cleaned up temp file: {temp_path}")
-            except Exception as e:
-                log.warning(f"Could not clean up temp file {temp_path}: {e}")
+        for path in (temp_path, wav_path):
+            if path and os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
 
 @app.post("/log", dependencies=[Depends(verify_api_key)])
 async def ingest_logs(batch: LogBatch):

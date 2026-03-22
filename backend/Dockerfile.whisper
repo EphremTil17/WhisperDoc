@@ -7,24 +7,25 @@ FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
+# uv: 10-50x faster dependency resolution and installation vs pip
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Install minimal build tools (gcc/g++ instead of the heavy build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     python3-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --upgrade pip
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PATH=/root/.local/bin:$PATH
+# Copy requirements (shared base + whisper-specific)
+COPY requirements.txt requirements_whisper.txt ./
 
-# Copy only requirements
-COPY requirements.txt .
-
-# Install dependencies to a local folder
+# Install dependencies to a user-local folder using uv
 # We use cache mounts to reuse downloaded wheels across builds
 # We aggressively prune unnecessary files (.a, .pyc, etc) to prevent layer expansion
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --user -r requirements.txt && \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.10/site-packages \
+    -r requirements.txt -r requirements_whisper.txt && \
     find /root/.local -name "*.a" -delete && \
     find /root/.local -name "__pycache__" -type d -exec rm -rf {} + && \
     find /root/.local -name "*.pyc" -delete
@@ -40,6 +41,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/app/model-cache
 ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONPATH=/root/.local/lib/python3.10/site-packages:$PYTHONPATH
 # added the "Belt & Suspenders" environment variables ensures that any underlying C-libraries used by PyTorch or FFmpeg will also default to the RAM-disk at /tmp.
 ENV TMPDIR=/tmp
 ENV TEMP=/tmp
@@ -58,7 +60,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ffmpeg-source /ffmpeg /ffprobe /usr/local/bin/
 
 # 4. Copy the dependencies from the builder stage
-# /root/.local contains all pip-installed packages (via --user)
 COPY --from=builder /root/.local /root/.local
 
 # 5. Copy application code
@@ -73,7 +74,7 @@ EXPOSE ${API_PORT}
 
 # Bake version into the image metadata
 ARG VERSION
-LABEL version=${VERSION} 
+LABEL version=${VERSION}
 
 # Use Python for healthcheck to avoid installing curl
 HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
@@ -82,7 +83,9 @@ HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
 # We use shell form for CMD to allow environment variable expansion
 # Internal Bind: 0.0.0.0 (Necessary for Docker networking)
 # Security is enforced at the Host level (127.0.0.1 mapping) and Middleware.
-CMD uvicorn api_server:app \
+# python3 -m uvicorn: --target installs don't create bin/ scripts, so we
+# invoke uvicorn as a module which always works via PYTHONPATH.
+CMD python3 -m uvicorn api_server:app \
     --host 0.0.0.0 \
     --port ${API_PORT} \
     --proxy-headers \

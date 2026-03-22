@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.23.1
+# WhisperDoc - Speech-to-Text System v2.23.2
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -16,7 +16,7 @@ Before starting, ensure your system meets the following requirements:
 
 - **Linux/Ubuntu** (Tested on Ubuntu 22.04/24.04) for automated setup
 - **Windows/MacOS/Linux** for manual setup
-- **Python 3.10+** and `pip`
+- **Python 3.10+** and [uv](https://docs.astral.sh/uv/) (or `pip`)
 - **Docker** and **Docker Compose**
 
 ### GPU Requirements (Optional, but Recommended)
@@ -57,41 +57,52 @@ For high-performance transcription, an NVIDIA GPU is required:
 1. **Configure Environment**
 
    ```bash
-   *  First make sure to have a python virtual environment activated in powershell
-   # Create .env file from template and make sure to secure it by making it read-only
+   # Create .env file from template and secure it
    cp backend/.env.template .env
-   python3 -m venv venv
-   .\venv\Scripts\Activate.ps1
+   chmod 600 .env   # Linux/Mac only
 
-   # Install local dependencies (Terminal Client & Dev Tools)
-   pip install -r backend/requirements.txt
-   pip install -r client/requirements.txt
+   # (Optional) Set ASR_ENGINE=whisper or ASR_ENGINE=parakeet in .env
    ```
 
-2. **Start the Backend API**
+2. **Build and Start the Backend** (Docker handles all backend dependencies)
+
    ```bash
-   # Build and start the backend service
+   # Build and start — automatically selects the correct Dockerfile
+   # based on the ASR_ENGINE value in your .env (default: whisper)
    docker compose build whisper-backend
    docker compose up -d whisper-backend
    ```
-3. **Test the API**
+
+3. **(Optional) Local Client Setup**
+
+   ```bash
+   # Only needed if running the Python terminal client locally
+   python3 -m venv venv
+   source venv/bin/activate          # Linux/Mac
+   # .\venv\Scripts\Activate.ps1     # Windows PowerShell
+
+   pip install uv
+   uv pip install -r terminal_client/requirements.txt
+   ```
+
+4. **Test the API**
    You can run the test suite locally or directly inside the running Docker container.
+
+**Run Inside Docker (Recommended):**
+
+```bash
+# Run all tests inside the active container
+docker compose exec whisper-backend python3 -m pytest tests/
+
+# To run a specific test file:
+docker compose exec whisper-backend python3 -m pytest tests/test_api.py
+```
 
 **Run Locally:**
 
 ```bash
-# Ensure you are using the backend venv and have all dependencies
+# Requires a local venv with backend/requirements.txt installed
 pytest backend/tests
-```
-
-**Run Inside Docker (Recommended for Environment Consistency):**
-
-```bash
-# Run all tests inside the active container
-docker compose exec whisper-backend pytest tests/
-
-# To run a specific test file:
-docker compose exec whisper-backend pytest tests/test_api.py
 ```
 
 **API Endpoints:**
@@ -150,13 +161,13 @@ WhisperDoc is entirely configuration-driven via the `.env` file. These variables
 
 ### Core Settings
 
-| Variable       | Description                                          | Default           |
-| -------------- | ---------------------------------------------------- | ----------------- |
-| `ASR_ENGINE`   | ASR backend (`whisper` or `parakeet`).               | `whisper`         |
-| `API_PORT`     | Port the backend server will listen on.              | `9989`            |
-| `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`).  | `large-v3-turbo`  |
-| `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).               | `cuda`            |
-| `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).            | `INFO`            |
+| Variable       | Description                                        | Default          |
+| -------------- | -------------------------------------------------- | ---------------- |
+| `ASR_ENGINE`   | ASR backend (`whisper` or `parakeet`).             | `whisper`        |
+| `API_PORT`     | Port the backend server will listen on.            | `9989`           |
+| `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`). | `large-v3-turbo` |
+| `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).             | `cuda`           |
+| `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).          | `INFO`           |
 
 ### Security & Hardening Config Variables (Refer to `backend/.env.template`)
 
@@ -182,7 +193,7 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Clients
 
-### Flutter Client (Windows) v2.23.1
+### Flutter Client (Windows) v2.23.2
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
@@ -195,7 +206,7 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.23.1
+### Python Terminal Client v2.23.2
 
 A secure, modular, and production-ready terminal client for high-performance dictation.
 
@@ -206,7 +217,7 @@ A secure, modular, and production-ready terminal client for high-performance dic
 - **Automated First-Time Setup**
 - **Incognito Mode** (Ghost Mode)
 
-📖 **[Terminal Client Documentation](client/README.md)**
+📖 **[Terminal Client Documentation](terminal_client/README.md)**
 
 ## Common Troubleshooting
 

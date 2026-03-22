@@ -1,0 +1,8 @@
+# Whisper-only deps (on top of requirements.txt)
+# CPU-only torch — CTranslate2 owns GPU acceleration, PyTorch itself doesn't need CUDA.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+faster-whisper==1.2.1
+ctranslate2>=4.7.1

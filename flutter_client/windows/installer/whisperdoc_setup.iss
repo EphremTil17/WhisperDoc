@@ -1,8 +1,8 @@
 ; WhisperDoc Inno Setup Script
-; Version: 2.23.1
+; Version: 2.23.2
 
 #define MyAppName "WhisperDoc"
-#define MyAppVersion "2.23.1"
+#define MyAppVersion "2.23.2"
 #define MyAppPublisher "EphremTil"
 #define MyAppURL "https://github.com/EphremTil17/whisperdoc_release"
 #define MyAppExeName "WhisperDoc.exe"

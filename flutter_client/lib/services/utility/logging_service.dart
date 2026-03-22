@@ -76,11 +76,13 @@ class _CompactPrinter extends LogPrinter {
     }
   }
 
-  String _formatTime(DateTime dt) =>
-      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
-      '${dt.hour.toString().padLeft(2, '0')}:'
-      '${dt.minute.toString().padLeft(2, '0')}:'
-      '${dt.second.toString().padLeft(2, '0')}';
+  String _formatTime(DateTime dt) {
+      final utc = dt.toUtc();
+      return '${utc.year}-${utc.month.toString().padLeft(2, '0')}-${utc.day.toString().padLeft(2, '0')} '
+      '${utc.hour.toString().padLeft(2, '0')}:'
+      '${utc.minute.toString().padLeft(2, '0')}:'
+      '${utc.second.toString().padLeft(2, '0')}';
+  }
 }
 
 class LoggingService {
@@ -110,7 +112,7 @@ class LoggingService {
 
   void _addToBuffer(String level, String message) {
     final entry = LogEntry(
-      timestamp: DateTime.now(),
+      timestamp: DateTime.now().toUtc(),
       level: level,
       message: message,
     );

@@ -1,4 +1,4 @@
-# WhisperDoc Client (v2.23.1) - High-Performance Handshake
+# WhisperDoc Client (v2.23.2) - High-Performance Handshake
 
 A secure, modular, and high-performance Python terminal client for real-time dictation using the optimized WhisperDoc v2.14.0 backend.
 
@@ -34,15 +34,15 @@ A secure, modular, and high-performance Python terminal client for real-time dic
 ### 1. Prerequisites
 
 - **Python 3.8+**
-- **PortAudio**: Usually included with pip wheels.
+- **PortAudio**: Usually included with Python wheels.
   - _Linux_: `sudo apt install libportaudio2`
 
 ### 2. Installation - Linux/Windows/MacOS
 
-After making sure you are in the client dir:
+After making sure you are in the terminal client dir:
 
 ```bash
-cd client
+cd terminal_client
 ```
 
 Create a virtual environment and install dependencies:
@@ -55,7 +55,8 @@ python -m venv venv
 # Linux/Mac
 source venv/bin/activate
 
-pip install -r requirements.txt
+pip install uv
+uv pip install -r requirements.txt
 ```
 
 ### 3. Launch & Configuration
