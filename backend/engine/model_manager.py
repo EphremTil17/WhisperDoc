@@ -48,8 +48,8 @@ class ModelManager:
                         download_root="/app/model-cache",
                         local_files_only=True,
                     )
-                except Exception:
-                    # Cache miss — download and cache the model
+                except (FileNotFoundError, OSError, ValueError):
+                    # Cache miss or corrupt local state — fall back to network download
                     self.model = WhisperModel(
                         self.model_name,
                         device=self.device,

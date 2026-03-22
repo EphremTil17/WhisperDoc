@@ -9,11 +9,8 @@ Usage:
   - python tests/test_whisper.py
 """
 import pytest
-import time
-import numpy as np
 import os
-import torch
-from faster_whisper import WhisperModel
+import time
 
 # Determine the model cache directory relative to this file
 # This allows local tests to share the same cache as Docker
@@ -21,8 +18,16 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # In Docker, we use /app/model-cache via ENV. Locally, we use the root model-cache.
 CACHE_DIR = os.getenv("HF_HOME", os.path.join(os.path.dirname(BASE_DIR), "model-cache"))
 
+# Heavy imports (numpy, torch, faster_whisper) are deferred into test bodies
+# so that collection succeeds on hosts without these packages installed.
+# The Docker-only skipif guards fire before the import would be needed.
+
 def get_gpu_available():
-    return torch.cuda.is_available()
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
 
 @pytest.mark.skipif(
     not os.path.exists("/.dockerenv"),
@@ -30,6 +35,9 @@ def get_gpu_available():
 )
 def test_whisper_cpu_basic():
     """Verify Whisper can run on CPU (baseline test)."""
+    import numpy as np
+    from faster_whisper import WhisperModel
+
     print(f"\n--- Testing CPU Fallback (tiny.en) [Cache: {CACHE_DIR}] ---")
     try:
         model = WhisperModel("tiny.en", device="cpu", compute_type="int8", download_root=CACHE_DIR)
@@ -54,6 +62,9 @@ def test_whisper_cpu_basic():
 )
 def test_whisper_gpu_full():
     """Verify Whisper can run on GPU (smoke test)."""
+    import numpy as np
+    from faster_whisper import WhisperModel
+
     print(f"\n--- Testing GPU Execution (tiny.en) [Cache: {CACHE_DIR}] ---")
 
     try:
@@ -79,6 +90,7 @@ if __name__ == "__main__":
     print("=== Manual Whisper Hardware Discovery ===")
     print(f"CUDA Available: {get_gpu_available()}")
     if get_gpu_available():
+        import torch
         print(f"Device: {torch.cuda.get_device_name(0)}")
     
     test_whisper_cpu_basic()

@@ -1,4 +1,4 @@
-websockets
+websockets==16.0
 sounddevice
 numpy
 pynput

@@ -107,6 +107,14 @@ class TransportService:
             self.handshake.transition_to(HandshakeState.AUTHENTICATING)
             return True
             
+        except websockets.exceptions.InvalidStatus as e:
+            # Capture the full 400 response for diagnostics
+            body = e.response.body.decode(errors="replace") if hasattr(e.response, "body") and e.response.body else "(no body)"
+            logger.error(f"Connection failed: HTTP {e.response.status_code}")
+            logger.error(f"Response headers: {dict(e.response.headers)}")
+            logger.error(f"Response body: {body}")
+            await self.disconnect(reason=str(e))
+            return False
         except Exception as e:
             logger.error(f"Connection failed: {e}")
             await self.disconnect(reason=str(e))

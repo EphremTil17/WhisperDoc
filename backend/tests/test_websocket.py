@@ -89,13 +89,6 @@ async def test_websocket_integration():
         assert result is not None
     except (asyncio.TimeoutError, ConnectionRefusedError):
         pytest.skip("Backend server not running at localhost:9989 - skipping integration test.")
-    except websockets.exceptions.InvalidStatus as e:
-        # websockets 16.0 client + uvicorn can produce null-byte corruption
-        # in the HTTP upgrade request over certain network paths (e.g. WSL →
-        # Docker bridge).  The Flutter/Dart client is unaffected.
-        if e.response.status_code == 400:
-            pytest.skip(f"WebSocket upgrade rejected (likely client/server protocol mismatch): {e}")
-        pytest.fail(f"WebSocket test failed: {e}")
     except Exception as e:
         pytest.fail(f"WebSocket test failed: {e}")
 
