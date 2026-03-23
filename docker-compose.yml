@@ -21,6 +21,7 @@ services:
       - MODEL_COMPUTE_TYPE=${MODEL_COMPUTE_TYPE:-float16}
       - PARAKEET_MODEL_NAME=${PARAKEET_MODEL_NAME:-nvidia/parakeet-tdt-0.6b-v2}
       - PARAKEET_DEVICE=${PARAKEET_DEVICE:-cuda}
+      - PARAKEET_SUPPRESS_STDIO=${PARAKEET_SUPPRESS_STDIO:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - MPLCONFIGDIR=/tmp/matplotlib
       - NUMBA_CACHE_DIR=/tmp/numba_cache

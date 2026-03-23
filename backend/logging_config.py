@@ -20,11 +20,19 @@ SILENCED_PREFIXES = (
     "pytorch_lightning", "matplotlib",
 )
 
+SILENCED_MESSAGES = (
+    "Initializing Lhotse CutSet",
+)
+
 class _ThirdPartyNoiseFilter(logging.Filter):
     """Drop sub-ERROR messages from known noisy third-party namespaces."""
     def filter(self, record):
         if record.name.startswith(SILENCED_PREFIXES):
             return record.levelno >= logging.ERROR
+        if record.levelno < logging.ERROR:
+            msg = record.getMessage()
+            if any(s in msg for s in SILENCED_MESSAGES):
+                return False
         return True
 
 logging.getLogger().addFilter(_ThirdPartyNoiseFilter())

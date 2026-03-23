@@ -7,13 +7,67 @@ Uses faster-whisper with GPU acceleration
 import os
 import time
 import asyncio
-import sys
 
 # Initialize uvloop for performance before anything else
 try:
     import uvloop
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except ImportError:
+    pass
+
+# ---------------------------------------------------------------------------
+# h11 WebSocket Upgrade Fix: workaround for b" " object corruption after
+# NeMo inference.
+#
+# After the first NeMo model.transcribe() call, the b" " bytes object used
+# in uvicorn's handle_websocket_upgrade() is observed to change from 0x20
+# to 0x00 (null byte).  Two independent code paths (h11_impl and our
+# diagnostic patch) share the same id() for b" ", and both see the
+# corruption — consistent with CPython interning the single-byte literal.
+#
+# The corrupted object breaks the h11→WebSocket handoff: the reconstructed
+# request line becomes b"GET\x00/ws HTTP/1.1\r\n", which the websockets
+# legacy HTTP parser rejects (split on b" " yields 2 parts instead of 3).
+#
+# Workaround: replace the b" " literal with bytes([0x20]) — a fresh heap
+# allocation that does not share the corrupted object.
+#
+# Root cause is unconfirmed: the corruption is temporally correlated with
+# NeMo inference and absent with the Whisper engine, but the specific
+# native component (NeMo, PyTorch, gRPC, CUDA, numba) has not been
+# identified via memory debugging tools.
+#
+# See git_exclude/NEMO_CPYTHON_MEMORY_CORRUPTION.md for full investigation.
+# ---------------------------------------------------------------------------
+try:
+    from uvicorn.protocols.http import h11_impl as _h11mod
+
+    # Pre-allocate the space byte outside the function to avoid per-call
+    # allocation.  bytes([0x20]) creates a NEW object on the heap —
+    # it does NOT resolve to the interned b" " singleton.
+    _SAFE_SPACE = bytes([0x20])
+
+    def _fixed_ws_upgrade(self, event):
+        """Patched handle_websocket_upgrade that is immune to b" " corruption."""
+        self.connections.discard(self)
+        output = [event.method, _SAFE_SPACE, event.target, _SAFE_SPACE + b"HTTP/1.1\r\n"]
+        for name, value in self.headers:
+            output += [name, b": ", value, b"\r\n"]
+        output.append(b"\r\n")
+        protocol = self.ws_protocol_class(
+            config=self.config,
+            server_state=self.server_state,
+            app_state=self.app_state,
+        )
+        protocol.connection_made(self.transport)
+        protocol.data_received(b"".join(output))
+        self.transport.set_protocol(protocol)
+
+    _h11mod.H11Protocol.handle_websocket_upgrade = _fixed_ws_upgrade
+
+except Exception:
+    # If the patch fails (uvicorn internals changed), fall through —
+    # the original code path still works when NeMo is not loaded.
     pass
 
 from typing import Optional, List
@@ -64,6 +118,7 @@ from contextlib import asynccontextmanager
 # Global initialized on startup
 manager: Optional[ConnectionManager] = None
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -73,7 +128,7 @@ async def lifespan(app: FastAPI):
     global manager
     log.info(f"Starting WhisperDoc API (v{APP_VERSION})...")
     log.info(f"Version Requirements: MIN={MIN_CLIENT_VERSION}, ADVISORY={SEC_CLIENT_VERSION}")
-    
+
     try:
         # Enforce "Fail Secure" Policy
         get_api_key() # Will raise RuntimeError if no key is set
@@ -158,22 +213,15 @@ async def global_exception_handler(request, exc):
 @app.get("/health")
 async def health_check():
     """Opaque health check to prevent information disclosure."""
-    if manager is None:
+    if manager is None or manager.engine is None:
         return JSONResponse(status_code=503, content={"status": "uninitialized"})
-    
-    # Minimal GPU check — engine-agnostic via torch (shared dep)
-    try:
-        import torch
-        cuda_available = torch.cuda.is_available() and torch.cuda.device_count() > 0
-    except Exception:
-        cuda_available = False
-    
-    # Return binary status only
-    status_code = 200 if cuda_available else 503
+
+    engine_ready = manager.engine.is_loaded()
+    status_code = 200 if engine_ready else 503
     return JSONResponse(
         status_code=status_code,
         content={
-            "status": "online" if cuda_available else "degraded",
+            "status": "online" if engine_ready else "degraded",
             "timestamp": int(time.time())
         }
     )
@@ -289,9 +337,8 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1011)
         return
 
-    # Connection is upgraded unconditionally. 
-    # Authentication is now performed during the 'hello' handshake phase 
-    # within the manager.connect / handle_message logic to keep tokens out of URL logs.
+    # Authentication is performed during the 'hello' handshake phase
+    # within manager.connect / handle_message to keep tokens out of URL logs.
     await manager.connect(websocket)
     try:
         while True:

@@ -45,6 +45,8 @@ def _build_engine(mock_model) -> ParakeetEngine:
     in _load_model does not produce a different MagicMock as self._model.
     """
     mock_model.to.return_value = mock_model
+    mock_model.cuda.return_value = mock_model
+    mock_model.half.return_value = mock_model
     _nemo_asr_stub().models.ASRModel.from_pretrained.return_value = mock_model
     return ParakeetEngine(model_name="nvidia/parakeet-tdt-0.6b-v3", device="cpu")
 

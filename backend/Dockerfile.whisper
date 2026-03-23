@@ -3,7 +3,7 @@
 FROM mwader/static-ffmpeg:latest AS ffmpeg-source
 
 # --- STAGE 1: Builder ---
-FROM python:3.10-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,8 @@ COPY requirements.txt requirements_whisper.txt ./
 # We use cache mounts to reuse downloaded wheels across builds
 # We aggressively prune unnecessary files (.a, .pyc, etc) to prevent layer expansion
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.10/site-packages \
+    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.12/site-packages \
+    --index-strategy unsafe-best-match \
     -r requirements.txt -r requirements_whisper.txt && \
     find /root/.local -name "*.a" -delete && \
     find /root/.local -name "__pycache__" -type d -exec rm -rf {} + && \
@@ -32,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # --- STAGE 2: Runner ---
-FROM python:3.10-slim AS runner
+FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
@@ -41,14 +42,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/app/model-cache
 ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONPATH=/root/.local/lib/python3.10/site-packages:$PYTHONPATH
+ENV PYTHONPATH=/root/.local/lib/python3.12/site-packages:$PYTHONPATH
 # added the "Belt & Suspenders" environment variables ensures that any underlying C-libraries used by PyTorch or FFmpeg will also default to the RAM-disk at /tmp.
 ENV TMPDIR=/tmp
 ENV TEMP=/tmp
 ENV TMP=/tmp
 
 # The "Secret Sauce": Tell the system where the CUDA libs are hidden in Python site-packages
-ENV LD_LIBRARY_PATH=/root/.local/lib/python3.10/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/root/.local/lib/python3.12/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # 2. Install ONLY runtime essentials (libgomp1 is required for Whisper's math)
 RUN apt-get update && apt-get install -y --no-install-recommends \

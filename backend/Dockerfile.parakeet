@@ -10,7 +10,7 @@
 FROM mwader/static-ffmpeg:latest AS ffmpeg-source
 
 # --- STAGE 1: Builder ---
-FROM python:3.10-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -33,27 +33,28 @@ COPY requirements.txt requirements_parakeet.txt ./
 # numba's file locator to resolve source paths via __pycache__ entries.
 # Pruning them causes: "no locator available for file '...librosa/core/notation.py'"
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.10/site-packages \
+    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.12/site-packages \
     -r requirements.txt -r requirements_parakeet.txt && \
     find /root/.local -name "*.a" -delete
 
 # --- STAGE 2: Runner ---
-FROM python:3.10-slim AS runner
+FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
 # Environment & Performance
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV LHOTSE_LOGGING_LEVEL=ERROR
 ENV HF_HOME=/app/model-cache
 ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONPATH=/root/.local/lib/python3.10/site-packages:$PYTHONPATH
+ENV PYTHONPATH=/root/.local/lib/python3.12/site-packages:$PYTHONPATH
 ENV TMPDIR=/tmp
 ENV TEMP=/tmp
 ENV TMP=/tmp
 
 # NeMo/PyTorch CUDA libs from site-packages
-ENV LD_LIBRARY_PATH=/root/.local/lib/python3.10/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/root/.local/lib/python3.12/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # Runtime: libgomp for torch, libsndfile for soundfile/NeMo audio I/O
 RUN apt-get update && apt-get install -y --no-install-recommends \

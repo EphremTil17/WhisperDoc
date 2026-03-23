@@ -44,10 +44,12 @@ def engine(request):
         nemo_asr_stub = sys.modules["nemo.collections.asr"]
         hyp = MagicMock()
         hyp.text = "Hello"
-        hyp.timestamp = {"segment": [{"start": 0.0, "end": 1.0, "segment": "Hello"}]}
+        hyp.timestep = {"segment": [{"start": 0.0, "end": 1.0, "segment": "Hello"}]}
         mock_nemo_model = MagicMock()
-        mock_nemo_model.to.return_value = mock_nemo_model  # keep identity through .to(device) chain
-        mock_nemo_model.transcribe.return_value = [hyp]
+        mock_nemo_model.to.return_value = mock_nemo_model
+        mock_nemo_model.cuda.return_value = mock_nemo_model
+        mock_nemo_model.half.return_value = mock_nemo_model
+        mock_nemo_model.transcribe.return_value = [[hyp]]
         nemo_asr_stub.models.ASRModel.from_pretrained.return_value = mock_nemo_model
         yield ParakeetEngine(model_name="nvidia/parakeet-tdt-0.6b-v3", device="cpu")
 

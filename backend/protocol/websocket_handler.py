@@ -44,7 +44,7 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket):
         ip = websocket.client.host
-        
+
         # 1. Check for Active Bans
         is_banned, remaining = self.governance.is_ip_banned(ip)
         if is_banned:

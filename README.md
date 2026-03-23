@@ -186,9 +186,28 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ## Performance
 
+### ASR Engine Benchmarks
+
+Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) on standardized evaluation datasets:
+
+| Engine | Model | WER (%) ↓ | RTFx ↑ | Language | VRAM (fp16) |
+|--------|-------|-----------|--------|----------|-------------|
+| **Parakeet** | `nvidia/parakeet-tdt-0.6b-v2` | **6.05** | **3,386** | English | ~2.4 GB |
+| **Whisper** | `openai/whisper-large-v3-turbo` | 7.83 | 200 | Multilingual | ~3.5 GB |
+
+- **WER** (Word Error Rate): Lower is better. Parakeet achieves 23% lower WER than Whisper Turbo.
+- **RTFx** (Real-Time Factor): Higher is better. Parakeet is ~17x faster than Whisper Turbo due to its non-autoregressive TDT architecture.
+- Both engines run in **float16** precision with negligible accuracy loss vs float32.
+
+> **Research to watch**:
+> - [LiteASR](https://github.com/efeslab/LiteASR) (EMNLP 2025) — PCA-based encoder compression that reduces Whisper encoder size by ~33-40% with near-zero WER degradation. Currently requires HuggingFace Transformers inference (no CTranslate2 or NeMo support), but if CTranslate2 adds low-rank layer support, this could meaningfully reduce VRAM for the Whisper engine.
+> - [CrisperWhisper](https://github.com/nyrahealth/CrisperWhisper) (INTERSPEECH 2024) — Fine-tuned Whisper Large v3 for verbatim transcription (6.66% avg WER vs 7.7% for standard v3) with filler detection (`[UM]`, `[UH]`) and hallucination mitigation. An official [CTranslate2 conversion](https://huggingface.co/nyrahealth/faster_CrisperWhisper) exists for faster-whisper, though word-level timestamp precision degrades outside their custom pipeline. Licensed CC-BY-NC-4.0 (non-commercial only).
+
+### Infrastructure
+
 - **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
 - **Transcription**: ~1s for a 10-second audio file on an RTX 3060TI.
-- **GPU Acceleration**: CUDA-enabled for faster processing using the `ctranslate2` engine.
+- **GPU Acceleration**: CUDA-enabled for faster processing using the `ctranslate2` engine (Whisper) or native PyTorch (Parakeet).
 - **Weight Efficiency**: Multi-stage build with aggressive layer pruning of static libraries and bytecode to ensure a minimal runtime environment.
 
 ## Clients
