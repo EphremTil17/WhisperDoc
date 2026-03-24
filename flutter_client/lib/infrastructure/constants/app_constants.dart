@@ -73,4 +73,50 @@ class AppConstants {
     'email',
     'offline_access',
   ];
+
+  // === Groq Cloud Configuration ===
+
+  /// Groq transcription API endpoint (OpenAI-compatible).
+  static const String groqTranscriptionEndpoint =
+      'https://api.groq.com/openai/v1/audio/transcriptions';
+
+  /// Default Groq ASR model.
+  static const String groqDefaultModel = 'whisper-large-v3-turbo';
+
+  /// Conservative buffer ceiling: 24 MB raw PCM, leaving ~1 MB headroom for
+  /// the 44-byte WAV header and multipart framing overhead against the 25 MB
+  /// free-tier API limit.
+  static const int groqMaxBufferBytes = 24 * 1024 * 1024;
+
+  /// At 16 kHz / 16-bit / mono (32 000 bytes/s), 24 MB ≈ 12 min 30 s.
+  static const Duration groqMaxRecordingDuration = Duration(
+    minutes: 12,
+    seconds: 30,
+  );
+
+  /// Free-tier rate limits (organisation-level).
+  static const int groqMaxRpm = 20;
+  static const int groqMaxRpd = 2000;
+
+  /// HTTP timeout for the Groq REST call.
+  static const Duration groqHttpTimeout = Duration(seconds: 30);
+
+  /// ISO-639-1 language codes accepted by Groq's Whisper API.
+  /// Source: Groq API error response (2026-03-24).
+  static const Set<String> groqSupportedLanguages = {
+    'af', 'am', 'ar', 'as', 'az', 'ba', 'be', 'bg', 'bn', 'bo', 'br', 'bs',
+    'ca', 'cs', 'cy', 'da', 'de', 'el', 'en', 'es', 'et', 'eu', 'fa', 'fi',
+    'fo', 'fr', 'gl', 'gu', 'ha', 'haw', 'he', 'hi', 'hr', 'ht', 'hu', 'hy',
+    'id', 'is', 'it', 'ja', 'jv', 'ka', 'kk', 'km', 'kn', 'ko', 'la', 'lb',
+    'ln', 'lo', 'lt', 'lv', 'mg', 'mi', 'mk', 'ml', 'mn', 'mr', 'ms', 'mt',
+    'my', 'ne', 'nl', 'nn', 'no', 'oc', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru',
+    'sa', 'sd', 'si', 'sk', 'sl', 'sn', 'so', 'sq', 'sr', 'su', 'sv', 'sw',
+    'ta', 'te', 'tg', 'th', 'tk', 'tl', 'tr', 'tt', 'uk', 'ur', 'uz', 'vi',
+    'yi', 'yo', 'yue', 'zh',
+  };
+
+  /// Validates a language code against the Groq supported set.
+  /// Empty string is valid (means auto-detect).
+  static bool isValidGroqLanguage(String code) =>
+      code.isEmpty || groqSupportedLanguages.contains(code.trim().toLowerCase());
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/transport_security_service.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 
@@ -102,5 +103,51 @@ class ConnectionStateMapper {
       isPulsing: shouldPulse,
       pulseColor: pulseColor,
     );
+  }
+
+  /// Maps Groq Cloud engine state to a UI descriptor.
+  ///
+  /// Called instead of [mapState] when the app is in Groq mode.
+  static ConnectionUIDescriptor mapGroqState({
+    required bool hasGroqKey,
+    required GroqTranscriptionStatus status,
+  }) {
+    switch (status) {
+      case GroqTranscriptionStatus.buffering:
+        return ConnectionUIDescriptor(
+          icon: Icons.cloud_upload,
+          iconColor: Colors.greenAccent.withValues(alpha: 0.8),
+          tooltip: 'Recording (Groq Cloud)',
+        );
+      case GroqTranscriptionStatus.transcribing:
+        return ConnectionUIDescriptor(
+          icon: Icons.cloud_sync,
+          iconColor: Colors.greenAccent.withValues(alpha: 0.8),
+          tooltip: 'Transcribing via Groq...',
+          isPulsing: true,
+          pulseColor: Colors.greenAccent,
+        );
+      case GroqTranscriptionStatus.error:
+        return const ConnectionUIDescriptor(
+          icon: Icons.cloud_off,
+          iconColor: AppTheme.crimsonPrimary,
+          tooltip: 'Groq Cloud Error',
+        );
+      case GroqTranscriptionStatus.idle:
+        if (hasGroqKey) {
+          return ConnectionUIDescriptor(
+            icon: Icons.cloud_done,
+            iconColor: Colors.greenAccent.withValues(alpha: 0.8),
+            tooltip: 'Groq Cloud (Ready)',
+          );
+        }
+        return const ConnectionUIDescriptor(
+          icon: Icons.cloud_off,
+          iconColor: Colors.orangeAccent,
+          tooltip: 'Groq Cloud — API Key Required',
+          isPulsing: true,
+          pulseColor: Colors.orangeAccent,
+        );
+    }
   }
 }

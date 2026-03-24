@@ -224,7 +224,6 @@ class _AuthSectionState extends State<AuthSection> {
         const SizedBox(height: 8),
         _SecureApiKeyField(controller: widget.apiKeyController),
         const SizedBox(height: 12),
-        // Re-use existing connection indicators if needed
       ],
     );
   }

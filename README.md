@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.23.6
+# WhisperDoc - Speech-to-Text System v2.24.0
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -248,20 +248,21 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v2.23.6
+### Flutter Client (Windows) v2.24.0
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
+- **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API. Works as a standalone fallback when the backend is down, under maintenance, or by user preference. Free-tier compliant with local rate-limit tracking and conservative buffer guards.
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
 - **Enterprise Security**: Windows Credential Manager enclave storage, Encrypted local history (AES-256), and automated JWT expiry warnings.
 - **Handshake Cage Protocol**: Native implementation of the buffer-then-flush security strategy to ensure zero-data leakage before identity verification.
 - **Native System Integration**: Single-instance enforcement via Win32 Named Mutex and deep-sleep resilient global hotkeys.
-- **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction.
+- **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction (Local Only in Groq mode).
 - **Verification Suite**: Bundled security tests validating PKCE cryptographic integrity and state-parameter protection.
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.23.6
+### Python Terminal Client v2.24.0
 
 A secure, modular, and production-ready Windows terminal client for high-performance dictation.
 
@@ -315,3 +316,4 @@ This means Docker cannot find the NVIDIA runtime.
 | Phase 11 | Error Handling & Update Controls (v2.20.0)             | ✅ Complete    |
 | Phase 12 | UI and Functional Improvements                         | 🚧 In Progress |
 | Phase 13 | Multi-Engine ASR Abstraction (v2.23.0)                 | ✅ Complete    |
+| Phase 14 | Multi-Connection Path [Groq Cloud] (v2.24.0)           | ✅ Complete    |

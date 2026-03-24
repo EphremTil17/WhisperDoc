@@ -22,6 +22,9 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _uriController;
   late TextEditingController _apiKeyController;
+  late TextEditingController _groqApiKeyController;
+  late TextEditingController _groqLanguageController;
+  late TextEditingController _groqPromptController;
 
   @override
   void initState() {
@@ -29,12 +32,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = context.read<SettingsService>();
     _uriController = TextEditingController(text: settings.serverUri);
     _apiKeyController = TextEditingController(text: settings.cachedApiKey);
+    _groqApiKeyController = TextEditingController(
+      text: settings.cachedGroqApiKey,
+    );
+    _groqLanguageController = TextEditingController(
+      text: settings.groqLanguage,
+    );
+    _groqPromptController = TextEditingController(text: settings.groqPrompt);
   }
 
   @override
   void dispose() {
     _uriController.dispose();
     _apiKeyController.dispose();
+    _groqApiKeyController.dispose();
+    _groqLanguageController.dispose();
+    _groqPromptController.dispose();
     super.dispose();
   }
 
@@ -42,6 +55,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = context.read<SettingsService>();
     await settings.setServerUri(_uriController.text);
     await settings.setApiKey(_apiKeyController.text);
+    await settings.setGroqApiKey(_groqApiKeyController.text);
+    await settings.setGroqLanguage(_groqLanguageController.text);
+    await settings.setGroqPrompt(_groqPromptController.text);
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -74,25 +90,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ConnectionSection(uriController: _uriController),
-            const SizedBox(height: 16),
-            const AudioSection(),
-            const SizedBox(height: 16),
-            AuthSection(
-              uriController: _uriController,
-              apiKeyController: _apiKeyController,
+      body: Consumer<SettingsService>(
+        builder: (context, settings, child) {
+          final isGroqMode = settings.isGroqMode;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Mode-aware connection (URI vs Groq API key)
+                ConnectionSection(
+                  uriController: _uriController,
+                  groqApiKeyController: _groqApiKeyController,
+                  groqLanguageController: _groqLanguageController,
+                  groqPromptController: _groqPromptController,
+                ),
+                const SizedBox(height: 16),
+                // Common: Audio input
+                const AudioSection(),
+                // WhisperDoc-only: Identity & developer API key
+                if (!isGroqMode) ...[
+                  const SizedBox(height: 16),
+                  AuthSection(
+                    uriController: _uriController,
+                    apiKeyController: _apiKeyController,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                // Common: Hotkey & Automation
+                const HotkeySection(),
+                const SizedBox(height: 16),
+                const AutomationSection(),
+              ],
             ),
-            const SizedBox(height: 16),
-            const HotkeySection(),
-            const SizedBox(height: 16),
-            const AutomationSection(),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

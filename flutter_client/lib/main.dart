@@ -10,6 +10,7 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
@@ -52,6 +53,7 @@ void main() async {
         ChangeNotifierProvider.value(value: getIt<WebSocketService>()),
         ChangeNotifierProvider.value(value: getIt<AudioService>()),
         ChangeNotifierProvider.value(value: getIt<AuthService>()),
+        ChangeNotifierProvider.value(value: getIt<GroqTranscriptionService>()),
         ChangeNotifierProvider.value(value: getIt<RecordingController>()),
         Provider.value(value: getIt<HotkeyService>()),
         Provider.value(value: getIt<AutomationService>()),

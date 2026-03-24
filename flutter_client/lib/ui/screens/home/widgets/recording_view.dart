@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/audio_visualizer.dart';
 import 'package:flutter_client/ui/shared/widgets/floating_capsule.dart';
@@ -15,30 +16,58 @@ class RecordingView extends StatelessWidget {
     final controller = context.watch<RecordingController>();
     final settings = context.watch<SettingsService>();
     final wsService = context.watch<WebSocketService>();
+    final groqService = context.watch<GroqTranscriptionService>();
 
     final isRecording = controller.isRecording;
-    final isAuthorized = wsService.isAuthenticatedSession;
-    final isFailed = wsService.handshakeState.state == HandshakeState.failed;
+    final isGroqMode = settings.isGroqMode;
+
+    // Mode-aware authorization check
+    final isAuthorized = isGroqMode
+        ? groqService.hasValidCredentials
+        : wsService.isAuthenticatedSession;
+
+    // Capsule disabled during Groq transcription upload
+    final bool capsuleEnabled =
+        isAuthorized && !controller.isTranscribing;
+
+    final isFailed =
+        !isGroqMode && wsService.handshakeState.state == HandshakeState.failed;
 
     return Column(
       children: [
         const SizedBox(height: 16),
         FloatingCapsule(
           isRecording: isRecording,
-          enabled: isAuthorized,
+          enabled: capsuleEnabled,
           onTap: () => controller.toggleRecording(),
         ),
         const SizedBox(height: 12),
-        if (!isAuthorized)
+        if (controller.isTranscribing)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Transcribing via Groq Cloud...',
+              style: TextStyle(
+                color: Colors.blueAccent,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          )
+        else if (!isAuthorized)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              isFailed
-                  ? (wsService.lastHandshakeError?.contains('Update') == true
-                        ? 'Update Required. Please check Profile Hub.'
-                        : (wsService.lastHandshakeError ??
+              isGroqMode
+                  ? 'Please add a Groq API key in Settings.'
+                  : (isFailed
+                      ? (wsService.lastHandshakeError?.contains('Update') ==
+                              true
+                          ? 'Update Required. Please check Profile Hub.'
+                          : (wsService.lastHandshakeError ??
                               'Authentication Failed.'))
-                  : 'Please authenticate in Settings to begin.',
+                      : 'Please authenticate in Settings to begin.'),
               style: TextStyle(
                 color: isFailed ? Colors.redAccent : Colors.white38,
                 fontSize: 12,

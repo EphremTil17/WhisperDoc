@@ -1,7 +1,7 @@
 name: flutter_client
 description: "WhisperDoc Native Windows Client"
 publish_to: "none"
-version: 2.23.6+1
+version: 2.24.0+1
 
 environment:
   sdk: ^3.10.4
@@ -35,12 +35,14 @@ dependencies:
   flutter_web_auth_2: ^5.0.0
   jwt_decoder: ^2.0.1
   http: ^1.6.0
+  http_parser: ^4.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   mocktail: ^1.0.4
+  stream_channel: ^2.1.4
   isar_generator: ^3.1.0+1
   build_runner: ^2.4.13
 

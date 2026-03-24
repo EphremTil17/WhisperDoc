@@ -8,6 +8,7 @@ import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 
@@ -52,11 +53,17 @@ Future<void> setupServices() async {
     UpdateService(getIt<WebSocketService>()),
   );
 
+  // 3b. Groq Cloud Engine
+  getIt.registerSingleton<GroqTranscriptionService>(
+    GroqTranscriptionService(getIt<SettingsService>()),
+  );
+
   // 4. Controllers
   getIt.registerSingleton<RecordingController>(
     RecordingController(
       audioService: getIt<AudioService>(),
       wsService: getIt<WebSocketService>(),
+      groqService: getIt<GroqTranscriptionService>(),
       automationService: getIt<AutomationService>(),
       historyService: getIt<HistoryService>(),
       settingsService: getIt<SettingsService>(),

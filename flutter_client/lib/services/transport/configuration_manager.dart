@@ -12,6 +12,7 @@ class ConfigurationManager extends ChangeNotifier {
   String _lastKnownUri;
   String? _lastKnownApiKey;
   bool _lastKnownIncognito;
+  String _lastKnownMode;
 
   // OIDC identity fingerprint — tracks whether the authenticated user or
   // auth state has actually changed.  Prevents unnecessary reconnects on
@@ -26,6 +27,7 @@ class ConfigurationManager extends ChangeNotifier {
     : _lastKnownUri = _settingsService.serverUri,
       _lastKnownApiKey = _settingsService.cachedApiKey,
       _lastKnownIncognito = _settingsService.incognitoMode,
+      _lastKnownMode = _settingsService.transcriptionMode,
       _lastKnownUserId = _authService.currentUser?['id'] as String?,
       _lastKnownIsAuthenticated = _authService.isAuthenticated;
 
@@ -46,11 +48,15 @@ class ConfigurationManager extends ChangeNotifier {
     _settingsService.addListener(_handleSettingsChange);
 
     // CRITICAL: Initial state check for launch.
-    // If we are already authenticated or have an API key, trigger auto-connect attempt.
+    // In Groq mode the backend is fully dormant — skip auto-connect.
     _logger.info(
       'ConfigurationManager: Starting observation, checking initial state...',
     );
-    if (_authService.isAuthenticated ||
+    if (_settingsService.isGroqMode) {
+      _logger.info(
+        'ConfigurationManager: Groq mode active, backend dormant — skipping auto-connect',
+      );
+    } else if (_authService.isAuthenticated ||
         (_lastKnownApiKey?.isNotEmpty ?? false)) {
       _logger.info(
         'ConfigurationManager: Valid credentials found on launch, requesting auto-connect',
@@ -87,8 +93,9 @@ class ConfigurationManager extends ChangeNotifier {
       );
     }
 
-    // Auto-connect if we are authenticated and currently idle
-    if (isAuthenticated) {
+    // Auto-connect if we are authenticated and currently idle.
+    // Suppressed in Groq mode — backend is dormant.
+    if (isAuthenticated && !_settingsService.isGroqMode) {
       _onAutoConnectDesired?.call();
     }
   }
@@ -97,6 +104,34 @@ class ConfigurationManager extends ChangeNotifier {
     final currentUri = _settingsService.serverUri;
     final currentIncognito = _settingsService.incognitoMode;
     final currentApiKey = await _settingsService.getApiKey();
+    final currentMode = _settingsService.transcriptionMode;
+
+    // Detect transcription mode change first — it overrides other signals.
+    if (currentMode != _lastKnownMode) {
+      _logger.info(
+        'ConfigurationManager: Transcription mode changed '
+        '$_lastKnownMode → $currentMode',
+      );
+      _lastKnownMode = currentMode;
+
+      if (_settingsService.isGroqMode) {
+        // Switching TO Groq: tear down the backend connection immediately.
+        _onReconnectNeeded?.call();
+        _logger.info(
+          'ConfigurationManager: Backend dormant — WebSocket disconnected',
+        );
+      } else {
+        // Switching TO backend: resume normal auto-connect if creds exist.
+        if ((currentApiKey?.isNotEmpty ?? false) ||
+            _authService.isAuthenticated) {
+          _onAutoConnectDesired?.call();
+        }
+      }
+      return;
+    }
+
+    // In Groq mode, suppress all backend reconnect/auto-connect signals.
+    if (_settingsService.isGroqMode) return;
 
     bool needsReconnect = false;
 

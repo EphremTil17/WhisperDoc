@@ -6,6 +6,7 @@ import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 
 // Mock classes
@@ -21,6 +22,9 @@ class MockSettingsService extends Mock implements SettingsService {}
 
 class MockAudioCueService extends Mock implements AudioCueService {}
 
+class MockGroqTranscriptionService extends Mock
+    implements GroqTranscriptionService {}
+
 void main() {
   late RecordingController controller;
   late MockAudioService mockAudioService;
@@ -29,10 +33,12 @@ void main() {
   late MockHistoryService mockHistoryService;
   late MockSettingsService mockSettingsService;
   late MockAudioCueService mockAudioCueService;
+  late MockGroqTranscriptionService mockGroqService;
 
   setUp(() {
     mockAudioService = MockAudioService();
     mockWsService = MockWebSocketService();
+    mockGroqService = MockGroqTranscriptionService();
     mockAutomationService = MockAutomationService();
     mockHistoryService = MockHistoryService();
     mockSettingsService = MockSettingsService();
@@ -57,11 +63,19 @@ void main() {
     when(() => mockAudioCueService.playStopCue()).thenReturn(null);
     when(
       () => mockAudioService.amplitudeStream,
-    ).thenAnswer((_) => Stream<double>.empty());
+    ).thenAnswer((_) => const Stream<double>.empty());
+    // Groq mode defaults to off (backend mode)
+    when(() => mockSettingsService.isGroqMode).thenReturn(false);
+    when(() => mockGroqService.hasValidCredentials).thenReturn(false);
+    when(() => mockGroqService.status)
+        .thenReturn(GroqTranscriptionStatus.idle);
+    when(() => mockGroqService.addListener(any())).thenReturn(null);
+    when(() => mockGroqService.removeListener(any())).thenReturn(null);
 
     controller = RecordingController(
       audioService: mockAudioService,
       wsService: mockWsService,
+      groqService: mockGroqService,
       automationService: mockAutomationService,
       historyService: mockHistoryService,
       settingsService: mockSettingsService,

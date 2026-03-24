@@ -13,8 +13,13 @@ class AutomationService {
   Future<void> runAutomation(String text) async {
     if (text.trim().isEmpty) return;
 
+    // Redact transcript content from local logs during incognito to prevent
+    // local trace leakage through the in-app log buffer.
+    final logPreview = _settingsService.incognitoMode
+        ? '[REDACTED]'
+        : '"${text.substring(0, text.length.clamp(0, 20))}..."';
     LoggingService().info(
-      'AutomationService: Processing text "${text.substring(0, text.length.clamp(0, 20))}..."',
+      'AutomationService: Processing text $logPreview',
       sendToServer: false,
     );
 

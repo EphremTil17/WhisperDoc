@@ -1,10 +1,12 @@
-# WhisperDoc Flutter Client v2.23.6
+# WhisperDoc Flutter Client v2.24.0
 
-A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend.
+A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
 
 ## Purpose
 
 WhisperDoc Client provides a lightweight, always-ready interface for voice dictation. It captures audio from your microphone, streams it to a local Whisper backend server, and receives transcriptions in real-time. The transcribed text can be automatically copied to your clipboard and pasted into any application.
+
+When the backend is unavailable, under maintenance, or by user preference, the client can transcribe directly via **Groq Cloud** using the same `whisper-large-v3-turbo` model — no backend required. Switch between modes with a single toggle in Settings.
 
 This client is designed for users who need fast, accurate dictation without leaving their current workflow. Press a global hotkey, speak, and your words appear wherever your cursor is.
 
@@ -30,6 +32,7 @@ lib/
 ├── services/         # Functional domain specialized services
 │   ├── auth/         # OIDC & Session management
 │   ├── hardware/     # Audio capture & Hotkey listeners
+│   ├── transcription/# Groq Cloud direct transcription engine
 │   ├── transport/    # WebSocket orchestration & Handshake
 │   └── utility/      # Logging, Secure Vault, Settings
 ├── ui/               # Presentation layer
@@ -56,9 +59,11 @@ lib/
 | Database         | Isar (AES-256 Encrypted)         |
 | Secure Storage   | flutter_secure_storage (WinCred) |
 | Networking       | WebSocket (web_socket_channel)   |
+| Cloud STT        | Groq REST API (http)             |
 | Native APIs      | Win32 via ffi/win32 packages     |
 | Encryption       | encrypt (AES/CBC)                |
 
+- **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API with local WAV encoding, client-side rate-limit tracking, language validation, and a conservative 24 MB (~12.5 min) buffer guard. Switch between WhisperDoc backend and Groq Cloud from the Connection toggle in Settings.
 - **Instantaneous Connection**: Implements a "Zero-Latency" recording flow. Audio capture and UI feedback initiate instantly while the WebSocket handshake completes in parallel.
 - **Background Auto-Wake**: The transport layer automatically resumes connectivity when a recording is initiated, removing the need for manual connection management.
 - **Advanced Security Indicators**: Visual feedback (Lock/Warning/Block) for connection security status.
@@ -68,7 +73,7 @@ lib/
 - **Auto Copy/Paste**: Automatically insert transcriptions at your cursor.
 - **WebSocket Resilience**: Exponential backoff reconnection with ban-awareness.
 - **Intelligent Idle Timeout**: Connection auto-closes after inactivity to save resources.
-- **Incognito Mode**: Protocol-level privacy flag with memory hygiene.
+- **Incognito Mode**: Protocol-level privacy flag with memory hygiene. In Groq mode, Incognito is Local Only — local history is disabled but audio is processed by Groq Cloud.
 - **Verification Suite**: Modular security tests (`auth_service_test.dart`) validating PKCE integrity and state-parameter protection.
 - **Glassmorphic UI**: Modern, translucent design with integrated OIDC identity hardening.
 
@@ -76,7 +81,7 @@ lib/
 
 - Windows 10/11
 - Flutter SDK 3.x
-- A running WhisperDoc backend server
+- A running WhisperDoc backend server **or** a [Groq API key](https://console.groq.com) (free tier)
 
 ## Quick Start
 
@@ -100,8 +105,10 @@ lib/
 
 Access settings via the gear icon or hamburger menu:
 
-- **Server URI**: WebSocket endpoint (e.g., `ws://localhost:9989/ws`).
-- **Secure Key**: Enter your API Key or JWT (stored in Windows Credential Manager).
+- **Connection Mode**: Toggle between **WhisperDoc** (self-hosted backend) and **Groq Cloud** (direct API).
+  - _WhisperDoc_: Enter the WebSocket endpoint (e.g., `ws://localhost:9989/ws`).
+  - _Groq Cloud_: Enter your Groq API key (stored in Windows Credential Manager). Optionally set a language hint (ISO-639-1) and a prompt hint for domain-specific vocabulary.
+- **Secure Key** (WhisperDoc mode): Enter your backend API Key or JWT via Developer Settings.
 - **Global Hotkey**: Customize your trigger key combination.
 - **Auto Copy/Paste**: Control automation behavior.
 
@@ -119,7 +126,20 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v2.23.5)
+## Recent Improvements (v2.24.0)
+
+### Groq Cloud Direct Transcription
+
+- **Backend-Independent STT**: New `services/transcription/` module provides a complete Groq Cloud speech-to-text path using `whisper-large-v3-turbo`. Audio is captured locally as 16 kHz PCM, WAV-encoded on-device, and POSTed directly to Groq's REST API — no backend required.
+- **Connection Mode Toggle**: A WhisperDoc/Groq Cloud toggle in the CONNECTION settings header switches the entire client between backend WebSocket mode and direct Groq Cloud mode. The backend connection lifecycle is fully dormant in Groq mode (no auto-connect, no reconnect, no WebSocket overhead).
+- **Free-Tier Compliance**: Client-side rate-limit tracking (sliding-window RPM + daily counter), `retry-after` header parsing on 429 responses, and a conservative 24 MB buffer ceiling (~12.5 min at 16 kHz mono) that auto-stops recording with a clear user message.
+- **Language Validation**: Inline validation of the language hint field against Groq's 99 supported ISO-639-1 codes, with a pre-record gate that prevents invalid codes from reaching the API.
+- **Credential Isolation**: Groq API key and backend API key stored in separate SecureVault entries. Empty keys are deleted from the vault instead of storing empty strings. The mode toggle swaps displayed credentials without overwriting the inactive key.
+- **Mode-Aware Settings**: Settings screen conditionally hides backend-only sections (Identity & Access, Developer Settings) in Groq mode, keeping the UI clean and contextual.
+- **Transcription Lockout**: A single `isTranscribing` flag in `RecordingController` prevents hotkey, capsule, and settings toggle races during Groq upload.
+- **Incognito Clarity**: Incognito tooltip appends "(Local Only)" in Groq mode to communicate that local history is disabled but audio is processed by a third-party cloud service.
+
+## Older Improvements (v2.23.5)
 
 ### Transport Fingerprinting & Structured Errors
 

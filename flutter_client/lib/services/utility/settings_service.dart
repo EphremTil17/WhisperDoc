@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 class SettingsService extends ChangeNotifier {
   // Secure Vault Keys (sensitive data)
   static const String _vaultApiKeyKey = 'api_key';
+  static const String _vaultGroqApiKey = 'groq_api_key';
 
   // SharedPreferences Keys (non-sensitive data)
   static const String _keyServerUri = 'server_uri';
@@ -20,6 +21,9 @@ class SettingsService extends ChangeNotifier {
   static const String _keyAutoPaste = 'auto_paste';
   static const String _keyShowVisualizer = 'show_visualizer';
   static const String _keyIncognitoMode = 'incognito_mode';
+  static const String _keyTranscriptionMode = 'transcription_mode';
+  static const String _keyGroqLanguage = 'groq_language';
+  static const String _keyGroqPrompt = 'groq_prompt';
 
   // Default Values (from AppConstants)
   static const String _defaultServerUri = AppConstants.defaultServerUri;
@@ -28,9 +32,12 @@ class SettingsService extends ChangeNotifier {
       AppConstants.defaultHotkeyModifiers;
   static const int _defaultHotkeyVKey = AppConstants.defaultHotkeyVKey;
   static const bool _defaultAutoCopy = true;
-  static const bool _defaultAutoPaste = false;
+  static const bool _defaultAutoPaste = true;
   static const bool _defaultShowVisualizer = true;
   static const bool _defaultIncognitoMode = false;
+  static const String _defaultTranscriptionMode = 'backend';
+  static const String _defaultGroqLanguage = '';
+  static const String _defaultGroqPrompt = '';
 
   late SharedPreferences _prefs;
   late SecureVaultService _vault;
@@ -47,6 +54,10 @@ class SettingsService extends ChangeNotifier {
   bool _showVisualizer = _defaultShowVisualizer;
   bool _incognitoMode = _defaultIncognitoMode;
   String? _apiKey;
+  String _transcriptionMode = _defaultTranscriptionMode;
+  String? _groqApiKey;
+  String _groqLanguage = _defaultGroqLanguage;
+  String _groqPrompt = _defaultGroqPrompt;
   String _appVersion = '...'; // Dynamic loading fallback
 
   String get appVersion => _appVersion;
@@ -63,6 +74,11 @@ class SettingsService extends ChangeNotifier {
   bool get incognitoMode => _incognitoMode;
   String? get cachedApiKey => _apiKey;
   SecureVaultService get vault => _vault;
+  String get transcriptionMode => _transcriptionMode;
+  bool get isGroqMode => _transcriptionMode == 'groq';
+  String? get cachedGroqApiKey => _groqApiKey;
+  String get groqLanguage => _groqLanguage;
+  String get groqPrompt => _groqPrompt;
 
   /// Loads settings from SharedPreferences and SecureVault.
   Future<String?> getApiKey() async {
@@ -106,6 +122,14 @@ class SettingsService extends ChangeNotifier {
 
       // Load API key from secure vault (cached in memory)
       _apiKey = await _vault.retrieveCredential(_vaultApiKeyKey);
+
+      // Load Groq Cloud settings
+      _transcriptionMode =
+          _prefs.getString(_keyTranscriptionMode) ?? _defaultTranscriptionMode;
+      _groqApiKey = await _vault.retrieveCredential(_vaultGroqApiKey);
+      _groqLanguage =
+          _prefs.getString(_keyGroqLanguage) ?? _defaultGroqLanguage;
+      _groqPrompt = _prefs.getString(_keyGroqPrompt) ?? _defaultGroqPrompt;
 
       // Load version info once
       final info = await PackageInfo.fromPlatform();
@@ -217,11 +241,19 @@ class SettingsService extends ChangeNotifier {
     _ensureInitialized();
     if (_apiKey == key) return;
 
-    _apiKey = key;
-    await _vault.storeCredential(_vaultApiKeyKey, key);
+    if (key.isEmpty) {
+      _apiKey = null;
+      await _vault.deleteCredential(_vaultApiKeyKey);
+    } else {
+      _apiKey = key;
+      await _vault.storeCredential(_vaultApiKeyKey, key);
+    }
     notifyListeners();
-    final label = getTokenLabel(key);
-    LoggingService().info('$label updated securely');
+    LoggingService().info(
+      key.isEmpty
+          ? 'Backend API key removed'
+          : '${getTokenLabel(key)} updated securely',
+    );
   }
 
   Future<void> setIncognitoMode(bool value) async {
@@ -232,6 +264,59 @@ class SettingsService extends ChangeNotifier {
     await _prefs.setBool(_keyIncognitoMode, value);
     notifyListeners();
     LoggingService().info('Incognito mode updated to: $value');
+  }
+
+  // === Groq Cloud Setters ===
+
+  Future<String?> getGroqApiKey() async {
+    _ensureInitialized();
+    _groqApiKey ??= await _vault.retrieveCredential(_vaultGroqApiKey);
+    return _groqApiKey;
+  }
+
+  Future<void> setTranscriptionMode(String mode) async {
+    _ensureInitialized();
+    if (_transcriptionMode == mode) return;
+
+    _transcriptionMode = mode;
+    await _prefs.setString(_keyTranscriptionMode, mode);
+    notifyListeners();
+    LoggingService().info('Transcription mode updated to: $mode');
+  }
+
+  Future<void> setGroqApiKey(String key) async {
+    _ensureInitialized();
+    if (_groqApiKey == key) return;
+
+    if (key.isEmpty) {
+      _groqApiKey = null;
+      await _vault.deleteCredential(_vaultGroqApiKey);
+    } else {
+      _groqApiKey = key;
+      await _vault.storeCredential(_vaultGroqApiKey, key);
+    }
+    notifyListeners();
+    LoggingService().info('Groq API key updated securely');
+  }
+
+  Future<void> setGroqLanguage(String language) async {
+    _ensureInitialized();
+    if (_groqLanguage == language) return;
+
+    _groqLanguage = language;
+    await _prefs.setString(_keyGroqLanguage, language);
+    notifyListeners();
+    LoggingService().info('Groq language updated to: $language');
+  }
+
+  Future<void> setGroqPrompt(String prompt) async {
+    _ensureInitialized();
+    if (_groqPrompt == prompt) return;
+
+    _groqPrompt = prompt;
+    await _prefs.setString(_keyGroqPrompt, prompt);
+    notifyListeners();
+    LoggingService().info('Groq prompt updated');
   }
 
   void _ensureInitialized() {

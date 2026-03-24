@@ -11,6 +11,7 @@ import 'package:flutter_client/ui/screens/home/dialogs/history_dialog.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_hub_dialog.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/logic/mappers/connection_ui_map.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 
@@ -34,18 +35,31 @@ class ActionBar extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // 1. Incognito button
-        Tooltip(
-          message: isIncognitoMode ? 'Disable Incognito' : 'Enable Incognito',
-          preferBelow: false,
-          verticalOffset: 20,
-          child: RefinedIconButton(
-            icon: isIncognitoMode
-                ? Icons.visibility_off
-                : Icons.visibility_off_outlined,
-            iconColor: isIncognitoMode ? Colors.orangeAccent : Colors.white38,
-            iconSize: 16,
-            onTap: onIncognitoTap,
-          ),
+        Consumer<SettingsService>(
+          builder: (context, settings, child) {
+            final String incognitoTooltip;
+            if (isIncognitoMode && settings.isGroqMode) {
+              incognitoTooltip = 'Incognito (Local Only)';
+            } else if (isIncognitoMode) {
+              incognitoTooltip = 'Disable Incognito';
+            } else {
+              incognitoTooltip = 'Enable Incognito';
+            }
+            return Tooltip(
+              message: incognitoTooltip,
+              preferBelow: false,
+              verticalOffset: 20,
+              child: RefinedIconButton(
+                icon: isIncognitoMode
+                    ? Icons.visibility_off
+                    : Icons.visibility_off_outlined,
+                iconColor:
+                    isIncognitoMode ? Colors.orangeAccent : Colors.white38,
+                iconSize: 16,
+                onTap: onIncognitoTap,
+              ),
+            );
+          },
         ),
         const SizedBox(width: 8),
 
@@ -63,7 +77,7 @@ class ActionBar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
 
-        // 3. Connection Status Lock Icon (CENTER)
+        // 3. Connection Status Lock / Cloud Icon (CENTER)
         Consumer4<
           WebSocketService,
           AuthService,
@@ -71,7 +85,34 @@ class ActionBar extends StatelessWidget {
           UpdateService
         >(
           builder: (context, wsService, authService, settings, updateService, child) {
-            // Map service states to UI descriptors using the pure logic mapper.
+            // Groq mode: show cloud icon, bypass backend state entirely.
+            if (settings.isGroqMode) {
+              final groqService = context.watch<GroqTranscriptionService>();
+              final descriptor = ConnectionStateMapper.mapGroqState(
+                hasGroqKey: groqService.hasValidCredentials,
+                status: groqService.status,
+              );
+
+              return Tooltip(
+                message: descriptor.tooltip,
+                preferBelow: false,
+                verticalOffset: 20,
+                child: RefinedIconButton(
+                  icon: descriptor.icon,
+                  iconColor: descriptor.iconColor,
+                  iconSize: 18,
+                  isPulsing: descriptor.isPulsing,
+                  pulseColor: descriptor.pulseColor,
+                  onTap: () {
+                    if (!groqService.hasValidCredentials) {
+                      _showSettingsDialog(context);
+                    }
+                  },
+                ),
+              );
+            }
+
+            // Backend mode: existing logic unchanged.
             final descriptor = ConnectionStateMapper.mapState(
               status: wsService.status,
               handshake: wsService.handshakeState.state,
@@ -104,10 +145,8 @@ class ActionBar extends StatelessWidget {
                   }
 
                   if (!wsService.hasValidCredentials) {
-                    // One-Click Redirection: Direct to Settings if no auth
                     _showSettingsDialog(context);
                   } else {
-                    // Ready to Connect
                     unawaited(wsService.connect());
                   }
                 },

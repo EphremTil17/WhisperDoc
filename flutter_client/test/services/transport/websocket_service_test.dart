@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -45,7 +44,7 @@ class _StubAuthService extends ChangeNotifier implements AuthService {
 
 class _StubSettingsService extends ChangeNotifier implements SettingsService {
   String _serverUri;
-  String? _apiKey;
+  final String? _apiKey;
 
   _StubSettingsService({String serverUri = 'ws://localhost', String? apiKey})
     : _serverUri = serverUri,
@@ -59,6 +58,12 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
 
   @override
   bool get incognitoMode => false;
+
+  @override
+  String get transcriptionMode => 'backend';
+
+  @override
+  bool get isGroqMode => false;
 
   @override
   Future<String?> getApiKey() async => _apiKey;

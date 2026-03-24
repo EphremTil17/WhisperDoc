@@ -8,6 +8,9 @@ import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
+import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/services/transcription/groq_error.dart';
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/logic/processors/transcription_processor.dart';
 import 'package:flutter_client/logic/processors/audio_signal_processor.dart';
 
@@ -17,6 +20,7 @@ import 'package:flutter_client/logic/processors/audio_signal_processor.dart';
 class RecordingController extends ChangeNotifier {
   final AudioService _audioService;
   final WebSocketService _wsService;
+  final GroqTranscriptionService _groqService;
   final AutomationService _automationService;
   final HistoryService _historyService;
   final SettingsService _settingsService;
@@ -41,18 +45,24 @@ class RecordingController extends ChangeNotifier {
   bool _showSilenceWarning = false;
   bool get showSilenceWarning => _showSilenceWarning;
 
+  // Groq transcription lockout — single source of truth for all UI/hotkey paths
+  bool _isTranscribing = false;
+  bool get isTranscribing => _isTranscribing;
+
   // Incognito mode - when ON, transcriptions are not saved to history
   bool get incognitoMode => _settingsService.incognitoMode;
 
   RecordingController({
     required AudioService audioService,
     required WebSocketService wsService,
+    required GroqTranscriptionService groqService,
     required AutomationService automationService,
     required HistoryService historyService,
     required SettingsService settingsService,
     required AudioCueService audioCueService,
   }) : _audioService = audioService,
        _wsService = wsService,
+       _groqService = groqService,
        _automationService = automationService,
        _historyService = historyService,
        _settingsService = settingsService,
@@ -168,22 +178,33 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> startRecording() async {
+    // Groq transcription lockout — prevent hotkey/capsule race during upload.
+    if (_isTranscribing) return;
+
     _currentBuffer = '';
     _awaitingFinalTranscription = false;
     _showSilenceWarning = false;
     notifyListeners();
 
+    final isGroqMode = _settingsService.isGroqMode;
+
     try {
-      // 1. Security Pre-Check: Do we have credentials to attempt this?
-      // Modular Check: Delegated to the service layer.
-      if (!_wsService.hasValidCredentials) {
-        _errorController.add('Please authenticate in Settings first.');
-        return;
+      // 1. Mode-aware credential check.
+      if (isGroqMode) {
+        if (!_groqService.hasValidCredentials) {
+          _errorController.add(
+            'Please configure your Groq API key in Settings.',
+          );
+          return;
+        }
+      } else {
+        if (!_wsService.hasValidCredentials) {
+          _errorController.add('Please authenticate in Settings first.');
+          return;
+        }
       }
 
       // 2. ZERO-LATENCY START: Initiate capture and cues instantly.
-      // We use the library's native default path (null) unless a specific device is selected.
-      // This is the most stable approach on Windows; silence detection will catch role issues.
       final String? deviceId = _settingsService.microphoneId;
       final String? deviceLabel = _settingsService.microphoneLabel;
 
@@ -195,12 +216,38 @@ class RecordingController extends ChangeNotifier {
 
       notifyListeners();
 
-      // 3. Audio Piping: Direct stream to websocket
-      _audioSubscription = _audioService.audioStream.listen((data) {
-        _wsService.sendAudioChunk(data);
-      });
+      // 3. Mode-aware audio piping.
+      if (isGroqMode) {
+        _groqService.clearBuffer();
+        _audioSubscription = _audioService.audioStream.listen((data) {
+          final accepted = _groqService.bufferAudioChunk(data);
+          if (!accepted && _isRecording) {
+            // Buffer ceiling reached — stop recording and transcribe the
+            // buffered prefix so the user gets a result, not silent truncation.
+            _errorController.add(
+              'Max clip length reached (~${AppConstants.groqMaxRecordingDuration.inMinutes} min). '
+              'Transcribing captured audio.',
+            );
+            unawaited(stopRecording());
+          }
+        });
+      } else {
+        _audioSubscription = _audioService.audioStream.listen((data) {
+          _wsService.sendAudioChunk(data);
+        });
 
-      // 4. Liveness Probe (Reactive Silence Detection)
+        // 5. TRANSPORT AUTONOMY: Ensure server is awake in parallel.
+        unawaited(
+          _wsService.ensureConnected().then((connected) {
+            if (!connected && _isRecording) {
+              unawaited(stopRecording());
+              _errorController.add('Failed to wake up server connection.');
+            }
+          }),
+        );
+      }
+
+      // 4. Liveness Probe (Reactive Silence Detection) — both modes.
       unawaited(
         _signalProcessor.detectSilence(_audioService.amplitudeStream).then((
           isSilent,
@@ -211,16 +258,6 @@ class RecordingController extends ChangeNotifier {
             LoggingService().warning(
               'No audio detected after 3 seconds. Virtual driver conflict suspected.',
             );
-          }
-        }),
-      );
-
-      // 5. TRANSPORT AUTONOMY: Ensure server is awake in parallel.
-      unawaited(
-        _wsService.ensureConnected().then((connected) {
-          if (!connected && _isRecording) {
-            unawaited(stopRecording());
-            _errorController.add('Failed to wake up server connection.');
           }
         }),
       );
@@ -237,8 +274,32 @@ class RecordingController extends ChangeNotifier {
     await _audioSubscription?.cancel();
     _audioSubscription = null;
 
-    _wsService.sendEndSignal();
-    _awaitingFinalTranscription = true;
+    if (_settingsService.isGroqMode) {
+      unawaited(_transcribeWithGroq());
+    } else {
+      _wsService.sendEndSignal();
+      _awaitingFinalTranscription = true;
+    }
+  }
+
+  Future<void> _transcribeWithGroq() async {
+    _isTranscribing = true;
+    notifyListeners();
+    try {
+      final text = await _groqService.finalizeAndTranscribe();
+      _currentBuffer = text;
+      notifyListeners();
+      unawaited(_finishRecordingSession());
+    } on GroqError catch (e) {
+      _errorController.add(e.userMessage);
+      LoggingService().error(
+        'Groq transcription failed: ${e.message}',
+        sendToServer: false,
+      );
+    } finally {
+      _isTranscribing = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _finishRecordingSession() async {
