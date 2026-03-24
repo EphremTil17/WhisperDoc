@@ -13,9 +13,10 @@ FROM mwader/static-ffmpeg:latest AS ffmpeg-source
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
+ENV UV_LINK_MODE=copy
 
-# uv: 10-50x faster dependency resolution and installation vs pip
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Native UV project install with a pinned toolchain
+COPY --from=ghcr.io/astral-sh/uv:0.10.12 /uv /usr/local/bin/uv
 
 # NeMo ASR needs build tools + libsndfile for soundfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,17 +26,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements (shared base + parakeet-specific)
-COPY requirements.txt requirements_parakeet.txt ./
+# Copy project metadata first so dependency layers stay cached across source changes
+COPY pyproject.toml uv.lock ./
 
 # NOTE: Unlike Dockerfile.whisper, we keep __pycache__ and .pyc files intact.
 # NeMo's dependency chain (librosa → numba) uses JIT compilation and requires
 # numba's file locator to resolve source paths via __pycache__ entries.
 # Pruning them causes: "no locator available for file '...librosa/core/notation.py'"
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.12/site-packages \
-    -r requirements.txt -r requirements_parakeet.txt && \
-    find /root/.local -name "*.a" -delete
+    uv sync --python /usr/local/bin/python3 --locked --no-dev --no-editable --extra parakeet --no-install-project
+
+# Copy backend source and install the project itself into the same venv.
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --python /usr/local/bin/python3 --locked --no-dev --no-editable --extra parakeet && \
+    find /app/.venv -name "*.a" -delete
 
 # --- STAGE 2: Runner ---
 FROM python:3.12-slim AS runner
@@ -47,14 +53,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV LHOTSE_LOGGING_LEVEL=ERROR
 ENV HF_HOME=/app/model-cache
-ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONPATH=/root/.local/lib/python3.12/site-packages:$PYTHONPATH
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH=/app/.venv/bin:$PATH
 ENV TMPDIR=/tmp
 ENV TEMP=/tmp
 ENV TMP=/tmp
 
 # NeMo/PyTorch CUDA libs from site-packages
-ENV LD_LIBRARY_PATH=/root/.local/lib/python3.12/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # Runtime: libgomp for torch, libsndfile for soundfile/NeMo audio I/O
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -67,10 +73,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ffmpeg-source /ffmpeg /ffprobe /usr/local/bin/
 
 # Dependencies from builder
-COPY --from=builder /root/.local /root/.local
-
-# Application code
-COPY . .
+COPY --from=builder /app/.venv /app/.venv
 
 # Network & Execution
 ARG API_PORT=9989
@@ -81,11 +84,10 @@ ARG VERSION
 LABEL version=${VERSION}
 
 HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
 
-# python3 -m uvicorn: --target installs don't create bin/ scripts, so we
-# invoke uvicorn as a module which always works via PYTHONPATH.
-CMD python3 -m uvicorn api_server:app \
+# python -m uvicorn runs from the UV-managed project environment.
+CMD python -m uvicorn api_server:app \
     --host 0.0.0.0 \
     --port ${API_PORT} \
     --ws websockets-sansio \

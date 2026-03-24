@@ -13,7 +13,7 @@ def acquire_single_instance_lock():
     Returns the mutex handle if acquired, or None if another instance is running.
     """
     if os.name != "nt":
-        return True  # Non-Windows fallback simplifies for now
+        return True  # Runtime entrypoint rejects unsupported non-Windows launches
 
     import ctypes
 

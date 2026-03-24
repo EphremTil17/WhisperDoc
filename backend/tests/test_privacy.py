@@ -1,8 +1,8 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+from engine.base_engine import SegmentResult, TranscriptionResult
 from protocol.websocket_handler import ConnectionManager
-from engine.base_engine import TranscriptionResult, SegmentResult
 
 
 @pytest.mark.asyncio

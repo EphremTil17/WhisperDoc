@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from urllib.parse import urlparse
 
@@ -17,6 +18,16 @@ from .services.utility_service import (
 def _resolve_hostname() -> str:
     """Derives the server hostname from the configured WebSocket URI."""
     return urlparse(cfg.WS_URI).hostname or "localhost"
+
+
+def _ensure_supported_platform() -> None:
+    """Fail fast on unsupported platforms with a clear operator-facing message."""
+    if os.name != "nt":
+        logger.error(
+            "The WhisperDoc terminal client is supported on Windows only. "
+            "Use the Flutter client or the backend HTTP/WebSocket tools on Linux/WSL."
+        )
+        sys.exit(1)
 
 
 class DictationClient:
@@ -137,6 +148,7 @@ class DictationClient:
 def main() -> None:
     """Console-script entrypoint for the terminal client."""
     try:
+        _ensure_supported_platform()
         DictationClient().start()
     except KeyboardInterrupt:
         pass

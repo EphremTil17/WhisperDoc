@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # This file tells pytest to treat the backend directory as a package root.
 # It allows tests in the tests/ folder to find modules in the parent folder automatically.

@@ -4,19 +4,23 @@ Tests for EngineFactory.
 Verifies ASR_ENGINE env var routing without touching real model weights.
 Both concrete engine constructors are patched at the class level.
 """
-import pytest
-import os
+
 from unittest.mock import MagicMock, patch
 
-from engine.engine_factory import create_engine
+import pytest
 from engine.base_engine import BaseEngine
+from engine.engine_factory import create_engine
 
 
 @pytest.fixture(autouse=True)
 def _patch_whisper_model():
     """Prevent WhisperModel from loading and suppress asyncio.create_task."""
-    with patch("engine.model_manager.WhisperModel") as mock, \
-         patch("engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()):
+    with (
+        patch("engine.model_manager.WhisperModel") as mock,
+        patch(
+            "engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()
+        ),
+    ):
         mock.return_value = MagicMock()
         yield mock
 
@@ -25,18 +29,21 @@ class TestWhisperSelection:
     def test_default_creates_whisper_engine(self, monkeypatch):
         monkeypatch.delenv("ASR_ENGINE", raising=False)
         from engine.whisper_engine import WhisperEngine
+
         engine = create_engine()
         assert isinstance(engine, WhisperEngine)
 
     def test_explicit_whisper_creates_whisper_engine(self, monkeypatch):
         monkeypatch.setenv("ASR_ENGINE", "whisper")
         from engine.whisper_engine import WhisperEngine
+
         engine = create_engine()
         assert isinstance(engine, WhisperEngine)
 
     def test_whisper_uppercase_creates_whisper_engine(self, monkeypatch):
         monkeypatch.setenv("ASR_ENGINE", "WHISPER")
         from engine.whisper_engine import WhisperEngine
+
         engine = create_engine()
         assert isinstance(engine, WhisperEngine)
 
@@ -49,6 +56,7 @@ class TestWhisperSelection:
         monkeypatch.setenv("ASR_ENGINE", "whisper")
         monkeypatch.setenv("MODEL_NAME", "large-v3-turbo")
         from engine.whisper_engine import WhisperEngine
+
         engine = create_engine()
         assert isinstance(engine, WhisperEngine)
         assert engine._model_manager.model_name == "large-v3-turbo"

@@ -9,7 +9,6 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from whisper_shell.logic.handshake import HandshakeState, HandshakeStateMachine
 from whisper_shell.logic.payload import PayloadBuilder
 

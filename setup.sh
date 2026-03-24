@@ -14,6 +14,10 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}WhisperDoc Setup Script${NC}"
 echo "=========================="
 
+# Resolve repo root so the script works even when invoked from another directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # --- Environment File Setup ---
 echo -e "${YELLOW}[STEP 1]${NC} Setting up environment file..."
 if [ -f ".env" ]; then
@@ -36,39 +40,68 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Ensure uv is available (10-50x faster than pip)
+# Ensure uv is available
 if ! command -v uv &> /dev/null; then
     echo -e "${YELLOW}[INFO]${NC} Installing uv package manager..."
-    pip install uv
+    python3 -m pip install --user uv
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
+if ! command -v uv &> /dev/null; then
+    echo -e "${RED}[ERROR]${NC} uv could not be installed automatically."
+    echo "  Install it manually: https://docs.astral.sh/uv/getting-started/installation/"
+    exit 1
+fi
+
+ASR_ENGINE=$(grep -oP '(?<=^ASR_ENGINE=)\S+' .env 2>/dev/null || echo "whisper")
+if [[ "$ASR_ENGINE" != "whisper" && "$ASR_ENGINE" != "parakeet" ]]; then
+    echo -e "${YELLOW}[WARN]${NC} Unsupported ASR_ENGINE='$ASR_ENGINE' in .env. Falling back to 'whisper' for local setup."
+    ASR_ENGINE="whisper"
+fi
+
+install_backend_env() {
+    local engine="$1"
+    echo -e "${CYAN}[UV]${NC} Syncing backend dev environment with extra: ${engine}"
+    (
+        cd backend
+        uv sync --group dev --extra "$engine"
+    )
+}
+
+set_env_key() {
+    local key="$1"
+    local value="$2"
+
+    if grep -q "^${key}=" .env; then
+        sed -i "s|^${key}=.*|${key}=${value}|" .env
+    else
+        printf '\n%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
 echo ""
-echo "Which components would you like to set up?"
-echo -e "  ${CYAN}1)${NC} Full Developer Environment (Dev tools + Backend tests + Client)"
-echo -e "  ${CYAN}2)${NC} Backend Test Runner (Shared deps for running pytest locally)"
-echo -e "  ${CYAN}3)${NC} Client Only (Terminal transcription client)"
-read -p "Selection (1-3): " -n 1 -r
+echo "Which backend engine would you like to prepare?"
+echo -e "  ${CYAN}1)${NC} Whisper backend"
+echo -e "  ${CYAN}2)${NC} Parakeet backend"
+echo -e "  ${YELLOW}[INFO]${NC} Current .env ASR_ENGINE=${ASR_ENGINE}"
+read -p "Selection (1-2, Enter to keep current): " -n 1 -r
 echo
 case $REPLY in
     1)
-        uv pip install -r requirements.txt
-        uv pip install -r backend/requirements.txt
-        uv pip install -r terminal_client/requirements.txt
-        echo -e "${GREEN}[OK]${NC} Full environment installed."
+        ASR_ENGINE="whisper"
         ;;
     2)
-        uv pip install -r backend/requirements.txt
-        echo -e "${GREEN}[OK]${NC} Backend test dependencies installed."
-        echo -e "${YELLOW}[NOTE]${NC} Engine-specific deps (torch, faster-whisper, NeMo) live inside Docker."
-        ;;
-    3)
-        uv pip install -r terminal_client/requirements.txt
-        echo -e "${GREEN}[OK]${NC} Client dependencies installed."
+        ASR_ENGINE="parakeet"
         ;;
     *)
-        echo -e "${YELLOW}[INFO]${NC} Skipping dependency installation."
+        echo -e "${YELLOW}[INFO]${NC} Keeping backend engine from .env: ${ASR_ENGINE}"
         ;;
 esac
+
+set_env_key "ASR_ENGINE" "$ASR_ENGINE"
+install_backend_env "$ASR_ENGINE"
+echo -e "${GREEN}[OK]${NC} Backend local environment set up with ${CYAN}${ASR_ENGINE}${NC}."
+echo -e "${YELLOW}[NOTE]${NC} Backend setup uses native UV project sync from backend/pyproject.toml."
 
 # --- GPU / NVIDIA Setup ---
 echo -e "\n${YELLOW}[STEP 3]${NC} Checking for GPU support (NVIDIA Container Toolkit)..."
@@ -105,7 +138,6 @@ done
 
 # --- Build & Launch ---
 echo ""
-ASR_ENGINE=$(grep -oP '(?<=^ASR_ENGINE=)\S+' .env 2>/dev/null || echo "whisper")
 echo -e "${YELLOW}[STEP 5]${NC} Build and start backend? (Engine: ${CYAN}${ASR_ENGINE}${NC})"
 echo -e "  This will run: docker compose build whisper-backend && docker compose up -d whisper-backend"
 read -p "Proceed? (y/N): " -n 1 -r
@@ -128,8 +160,8 @@ else
     echo "--------------------"
     echo -e "${YELLOW}Next Steps:${NC}"
     echo "  1. (Optional) Edit your .env file: nano .env"
-    echo "     - Set ASR_ENGINE=whisper or ASR_ENGINE=parakeet"
     echo "     - Set WHISPER_DOC_API_KEY to a secure value"
+    echo "     - Review ASR_ENGINE=${ASR_ENGINE} if you want to switch engines later"
     echo "  2. Build and start the backend:"
     echo "     docker compose build whisper-backend && docker compose up -d whisper-backend"
     echo "  3. Check the server logs:"

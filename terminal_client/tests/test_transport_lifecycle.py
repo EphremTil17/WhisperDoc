@@ -9,7 +9,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from whisper_shell.logic.handshake import HandshakeState
 from whisper_shell.services.transport_service import TransportService
 

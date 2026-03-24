@@ -7,7 +7,6 @@ Pure state-machine logic — no I/O, no mocking required.
 import asyncio
 
 import pytest
-
 from whisper_shell.logic.handshake import HandshakeState, HandshakeStateMachine
 
 # ---------------------------------------------------------------------------

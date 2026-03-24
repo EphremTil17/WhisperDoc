@@ -5,7 +5,6 @@ Tests for AudioBufferManager.
 from unittest.mock import AsyncMock
 
 import pytest
-
 from whisper_shell.logic.audio_buffer import AudioBufferManager
 
 

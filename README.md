@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.23.5
+# WhisperDoc - Speech-to-Text System v2.23.6
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -12,16 +12,17 @@ https://github.com/user-attachments/assets/906170ee-6d2a-4bf5-a881-926f03e0862a
 
 Before starting, ensure your system meets the following requirements:
 
-### Standard Requirements
+### Standard Server Requirements
 
 - **Linux/Ubuntu** (Tested on Ubuntu 22.04/24.04) for automated setup
 - **Windows/MacOS/Linux** for manual setup
 - **Python 3.10+** and [uv](https://docs.astral.sh/uv/)
+  - Use **Python 3.12** for local backend development (`backend/pyproject.toml`)
 - **Docker** and **Docker Compose**
 
 ### GPU Requirements (Optional, but Recommended)
 
-For high-performance transcription, an NVIDIA GPU is required:
+For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
 
 - **NVIDIA Drivers** (Run `nvidia-smi` to verify)
 - **NVIDIA Container Toolkit**: Required for Docker to access the GPU.
@@ -38,7 +39,8 @@ For high-performance transcription, an NVIDIA GPU is required:
    ```bash
    uv venv
    source .venv/bin/activate
-   # Run the setup script to check dependencies and create config files
+   # Run the setup script to choose a backend engine, sync the backend UV
+   # environment, and create the root .env file from backend/.env.template
    ./setup.sh
    ```
 3. **Build and Start**:
@@ -64,42 +66,78 @@ For high-performance transcription, an NVIDIA GPU is required:
    # (Optional) Set ASR_ENGINE=whisper or ASR_ENGINE=parakeet in .env
    ```
 
-2. **Build and Start the Backend** (Docker handles all backend dependencies)
+2. **Build and Start the Backend** (Docker handles all backend dependencies via native UV)
 
    ```bash
    # Build and start — automatically selects the correct Dockerfile
-   # based on the ASR_ENGINE value in your .env (default: whisper)
+   # based on the ASR_ENGINE value in your .env (default: whisper).
+   # The images install from backend/pyproject.toml + backend/uv.lock.
    docker compose build whisper-backend
    docker compose up -d whisper-backend
    ```
 
-3. **(Optional) Local Terminal Client Setup**
+3. **(Optional) Local Backend Setup** - Linux/WSL recommended
 
    ```bash
-   # Lightweight fallback/debug client if the Flutter app is unavailable
+   cd backend
+
+   # Choose exactly one engine extra for the local environment
+   uv sync --group dev --extra whisper
+   # or
+   uv sync --group dev --extra parakeet
+   ```
+
+4. **(Optional) Local Terminal Client Setup**
+
+   ```bash
+   # Lightweight Windows fallback/debug client if the Flutter app is unavailable
+   # (separate from the backend setup.sh flow)
    cd terminal_client
    uv sync --group dev
    ```
 
-4. **Test the API**
+5. **Test the API**
    You can run the test suite locally or directly inside the running Docker container.
 
 **Run Inside Docker (Recommended):**
 
 ```bash
 # Run all tests inside the active container
-docker compose exec whisper-backend python3 -m pytest tests/
+docker compose exec whisper-backend python -m pytest tests/
 
 # To run a specific test file:
-docker compose exec whisper-backend python3 -m pytest tests/test_api.py
+docker compose exec whisper-backend python -m pytest tests/test_api.py
 ```
 
 **Run Locally:**
 
 ```bash
-# Requires backend/requirements.txt in your active Python environment
-pytest backend/tests
+cd backend
+
+# Choose one engine extra first, then run the backend quality gates
+uv sync --group dev --extra whisper
+# or
+uv sync --group dev --extra parakeet
+
+uv run pyright .
+uv run pytest tests
 ```
+
+**Developer Recommendation: Install repo-wide pre-commit hooks**
+
+```bash
+# Install the shared hooks once from the repository root
+uvx pre-commit install
+
+# Run all configured hooks across the repo on demand
+uvx pre-commit run --all-files
+```
+
+The shared pre-commit config runs Ruff separately for `backend/` and
+`terminal_client/`, using each project's own `pyproject.toml`. The
+`ruff` hook runs with `--fix`, then `ruff format` runs after it. If
+files still need manual attention after auto-fixes, the commit fails.
+If you're actively developing in this repository, install these hooks.
 
 **API Endpoints:**
 
@@ -210,7 +248,7 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v2.23.5
+### Flutter Client (Windows) v2.23.6
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
@@ -223,9 +261,9 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.23.5
+### Python Terminal Client v2.23.6
 
-A secure, modular, and production-ready terminal client for high-performance dictation.
+A secure, modular, and production-ready Windows terminal client for high-performance dictation.
 
 - **Secure API Key Storage** (OS Enclave)
 - **Structured Error Handling** (Routes all 12 `error_code` types with user-specific guidance)
@@ -237,6 +275,8 @@ A secure, modular, and production-ready terminal client for high-performance dic
 - **Automated First-Time Setup**
 - **Incognito Mode** (Ghost Mode)
 - **Pytest + Pyright + Ruff Quality Gates** for the fallback/debug client
+
+This client is intended for Windows desktop use. Linux/WSL users should treat it as an unsupported runtime and use the Flutter client or direct backend tooling instead.
 
 📖 **[Terminal Client Documentation](terminal_client/README.md)**
 

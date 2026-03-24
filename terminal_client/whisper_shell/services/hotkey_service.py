@@ -11,7 +11,7 @@ from ..services.config_service import cfg
 class HotkeyService:
     """
     Service managing global OS-level hotkeys.
-    Uses native Win32 API for Windows (reliability) and pynput for others.
+    Uses native Win32 API for Windows. Other platforms are unsupported at runtime.
     """
 
     def __init__(self, callback):

@@ -8,37 +8,41 @@ Usage:
   - pytest tests/test_logging.py
   - python tests/test_logging.py
 """
-import pytest
+
 import os
 import sys
+from unittest.mock import MagicMock
+
+import pytest
 
 # Add parent directory to path for imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 try:
     from logging_config import log
 except ImportError:
     # Handle environment where logging_config might not be in path
-    import magicmock
     log = MagicMock()
+
 
 def run_log_tests():
     """Execution logic for both manual and pytest runs."""
     log.info("--- Starting Log Test ---")
-    
+
     log.debug("DEBUG: Should appear in log file.")
     log.info("INFO: Should appear in console + file.")
     log.success("SUCCESS: Should be green in console.")
     log.warning("WARNING: Should be yellow in console.")
     log.error("ERROR: Should be red in console.")
     log.critical("CRITICAL: Should be bold red in console.")
-    
+
     try:
-        1 / 0
+        raise ZeroDivisionError
     except ZeroDivisionError:
         log.exception("EXCEPTION: Verified traceback inclusion.")
 
     log.info("--- Log Test Complete ---")
+
 
 def test_logging_configuration():
     """Pytest entry point for logging verification."""
@@ -48,6 +52,9 @@ def test_logging_configuration():
     except Exception as e:
         pytest.fail(f"Logging system crashed: {e}")
 
+
 if __name__ == "__main__":
     run_log_tests()
-    print("\n[SUCCESS] Console verification complete. Check logs/backend.log for file verification.")
+    print(
+        "\n[SUCCESS] Console verification complete. Check logs/backend.log for file verification."
+    )

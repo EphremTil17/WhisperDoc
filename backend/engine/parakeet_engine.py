@@ -9,6 +9,7 @@ this module is never imported in the Whisper container.
 Lifecycle mirrors WhisperEngine: __init__ triggers an initial load so the
 first transcribe() call is not penalised by model download/init latency.
 """
+
 import contextlib
 import gc
 import logging
@@ -16,9 +17,10 @@ import os
 import sys
 import threading
 import time
+from typing import Any, cast
 
-from engine.base_engine import BaseEngine, TranscriptionResult, SegmentResult
-from logging_config import log, SILENCED_PREFIXES
+from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
+from logging_config import log
 
 PARAKEET_SUPPRESS_STDIO = os.getenv("PARAKEET_SUPPRESS_STDIO", "true").lower() == "true"
 
@@ -89,30 +91,46 @@ class ParakeetEngine(BaseEngine):
     is represented as one SegmentResult with start=0, end=0.
     """
 
-    def __init__(self, model_name: str = "nvidia/parakeet-tdt-0.6b-v2", device: str = "cuda"):
+    def __init__(
+        self, model_name: str = "nvidia/parakeet-tdt-0.6b-v2", device: str = "cuda"
+    ):
         self._model_name = model_name
         self._device = device
         self._model = None
         self._lock = threading.Lock()
         log.info(f"ParakeetEngine: initialising model={model_name}, device={device}")
-        log.info(f"ParakeetEngine: fd stdio suppression {'enabled' if PARAKEET_SUPPRESS_STDIO else 'disabled'}")
+        log.info(
+            f"ParakeetEngine: fd stdio suppression {'enabled' if PARAKEET_SUPPRESS_STDIO else 'disabled'}"
+        )
         self._load_model()
 
     def _load_model(self) -> None:
         with self._lock:
             if self._model is not None:
                 return
-            log.info(f"ParakeetEngine: loading {self._model_name} into GPU memory, please wait...")
+            log.info(
+                f"ParakeetEngine: loading {self._model_name} into GPU memory, please wait..."
+            )
             try:
                 with _suppress_nemo_noise():
                     import nemo.collections.asr as nemo_asr  # type: ignore[import-untyped]
+
                     start = time.time()
-                    model = nemo_asr.models.ASRModel.from_pretrained(self._model_name)
-                    model = model.to(self._device) if self._device != "cuda" else model.cuda()
-                    model = model.half() #Fp16 for faster inference; Parakeet supports it and it reduces VRAM usage by ~50%
+                    model = cast(
+                        Any, nemo_asr.models.ASRModel.from_pretrained(self._model_name)
+                    )
+                    model = cast(
+                        Any,
+                        model.to(self._device)
+                        if self._device != "cuda"
+                        else model.cuda(),
+                    )
+                    model = model.half()  # Fp16 for faster inference; Parakeet supports it and it reduces VRAM usage by ~50%
                     model.eval()
                 self._model = model
-                log.success(f"ParakeetEngine: model loaded in {time.time() - start:.2f}s")
+                log.success(
+                    f"ParakeetEngine: model loaded in {time.time() - start:.2f}s"
+                )
 
                 # Mute NeMo's stdout StreamHandlers at the Python level.
                 # NeMo re-attaches these on every transcribe(), but clearing
@@ -160,13 +178,18 @@ class ParakeetEngine(BaseEngine):
         # _ThirdPartyNoiseFilter in logging_config.py catches the Python-routed
         # portion, and any remaining C-level stdout lines are harmless.
         with self._lock:
+            model = self._model
+            if model is None:
+                raise RuntimeError("Parakeet model is not loaded.")
             try:
-                hypotheses = self._model.transcribe(
-                    [audio_path], timestamps=True, verbose=False,
+                hypotheses = model.transcribe(
+                    [audio_path],
+                    timestamps=True,
+                    verbose=False,
                 )
             except Exception:
                 # Some NeMo builds return strings when timestamps are unsupported
-                hypotheses = self._model.transcribe([audio_path], verbose=False)
+                hypotheses = model.transcribe([audio_path], verbose=False)
 
         # NeMo returns list[list[Hypothesis]] when timestamps=True,
         # or list[str] when timestamps=False.  Unwrap both layers.
@@ -183,11 +206,13 @@ class ParakeetEngine(BaseEngine):
         timestep = getattr(hyp, "timestep", None)
         if timestep and isinstance(timestep, dict) and "segment" in timestep:
             for seg in timestep["segment"]:
-                segments.append(SegmentResult(
-                    start=float(seg.get("start", 0.0)),
-                    end=float(seg.get("end", 0.0)),
-                    text=str(seg.get("segment", "")),
-                ))
+                segments.append(
+                    SegmentResult(
+                        start=float(seg.get("start", 0.0)),
+                        end=float(seg.get("end", 0.0)),
+                        text=str(seg.get("segment", "")),
+                    )
+                )
         else:
             # Fallback: single segment covering the full utterance
             segments = [SegmentResult(start=0.0, end=0.0, text=full_text)]
@@ -219,6 +244,7 @@ class ParakeetEngine(BaseEngine):
             gc.collect()
             try:
                 import torch  # type: ignore[import-untyped]  # Parakeet image only
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except ImportError:

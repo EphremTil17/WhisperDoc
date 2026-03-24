@@ -5,16 +5,18 @@ The engine contract decouples the orchestration layer (ConnectionManager,
 api_server) from any specific model backend. Engines own their full lifecycle:
 loading, transcription, idle-timeout unloading, and graceful shutdown.
 """
+
 from __future__ import annotations
 
 import abc
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 
 
 @dataclass
 class SegmentResult:
     """A single time-aligned transcript segment."""
+
     start: float
     end: float
     text: str
@@ -23,6 +25,7 @@ class SegmentResult:
 @dataclass
 class TranscriptionResult:
     """Canonical output of any ASR engine. All engines must produce this shape."""
+
     text: str
     segments: List[SegmentResult]
     language: str

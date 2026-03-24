@@ -1,11 +1,11 @@
-
-import os
-import pytest
-from unittest import mock
-import api_server
-
 # Reload api_server to reset global variables between tests
 import importlib
+import os
+from unittest import mock
+
+import api_server
+import pytest
+
 
 def test_version_from_env_var():
     """Verify that WHISPER_DOC_VERSION env var takes precedence."""
@@ -17,33 +17,46 @@ def test_version_from_env_var():
 
 def test_version_logic_helper():
     """Verify the internal version comparison helper in ConnectionManager."""
-    from protocol.websocket_handler import ConnectionManager
     from unittest.mock import patch
-    with patch("protocol.websocket_handler.asyncio.create_task", side_effect=lambda c: c.close()):
+
+    from protocol.websocket_handler import ConnectionManager
+
+    with patch(
+        "protocol.websocket_handler.asyncio.create_task",
+        side_effect=lambda c: c.close(),
+    ):
         manager = ConnectionManager(mock.Mock(), "1.0.0", "2.17.0", "2.18.0")
 
     assert manager.app_version == "1.0.0"
     assert manager.min_client_version == "2.17.0"
     assert manager.sec_client_version == "2.18.0"
 
+
 @pytest.mark.asyncio
 async def test_rejection_of_outdated_client():
     """Verify that clients with version below MIN are rejected during handshake."""
     from protocol.websocket_handler import ConnectionManager
+
     mock_model = mock.Mock()
-    manager = ConnectionManager(mock_model, app_version="2.19.0", min_client_version="2.17.0")
-    
+    manager = ConnectionManager(
+        mock_model, app_version="2.19.0", min_client_version="2.17.0"
+    )
+
     mock_ws = mock.AsyncMock()
     mock_ws.client.host = "127.0.0.1"
-    
+
     # Simulate receiving 'hello' from an old client
     msg = '{"event": "hello", "version": "2.14.0", "token": "key", "auth_type": "api_key"}'
-    
+
     # We need to add the websocket to active_connections first to simulate a real connection
-    manager.active_connections[mock_ws] = {"handshake_completed": False, "id": "1234", "buffer": bytearray()}
-    
+    manager.active_connections[mock_ws] = {
+        "handshake_completed": False,
+        "id": "1234",
+        "buffer": bytearray(),
+    }
+
     await manager.handle_message(mock_ws, msg)
-    
+
     # Verify error sent and connection closed with 1008
     mock_ws.send_json.assert_called()
     args, _ = mock_ws.send_json.call_args

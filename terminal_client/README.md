@@ -1,12 +1,12 @@
-# WhisperDoc Terminal Client (v2.23.5)
+# WhisperDoc Terminal Client (v2.23.6)
 
-A secure, modular Python terminal client for real-time dictation using the WhisperDoc backend. It is the supported fallback and diagnostic client when the Flutter desktop app is unavailable or when you want lower-level visibility into transport behavior.
+A secure, modular Python terminal client for real-time dictation using the WhisperDoc backend. It is the supported Windows fallback and diagnostic client when the Flutter desktop app is unavailable or when you want lower-level visibility into transport behavior.
 
 ## Features
 
 ### Enterprise-Grade Security
 
-- **Secure API Key Storage (OS Enclave)**: Uses the native OS credential manager via `keyring` (Windows Credential Manager, macOS Keychain, Linux Secret Service). Keys are **never** persisted in plain text files.
+- **Secure API Key Storage (OS Enclave)**: Uses the native OS credential manager via `keyring` and stores secrets in Windows Credential Manager. Keys are **never** persisted in plain text files.
 - **Zero-Trust Fail-Secure Architecture**: Validates credentials against the server _before_ initializing hardware. If authentication fails, the client terminates immediately without exposing microphone access.
 - **Transport Security & Identity Integrity**: Enforces strict certificate validation against the system **Root CA Store**. Validates hostnames for remote origins to prevent local "Man-in-the-Middle" (MITM) attacks.
 - **Input Sanitization & Injection Shield**: Employs a whitelist-based sanitizer to strip malicious ANSI escape sequences and control characters from transcriptions before they touch the clipboard or terminal display.
@@ -34,14 +34,15 @@ A secure, modular Python terminal client for real-time dictation using the Whisp
 
 ## Getting Started
 
-### 1. Prerequisites
+### 1. Supported Platform
 
+- **Windows** with a desktop session
 - **Python 3.10+**
 - **uv**
-- **PortAudio**: Usually included with Python wheels.
-  - _Linux_: `sudo apt install libportaudio2`
 
-### 2. Installation - Linux/Windows/MacOS
+This client is not a supported Linux/WSL runtime. It depends on Windows-native global hotkey and clipboard behavior.
+
+### 2. Installation - Windows
 
 After making sure you are in the terminal client dir:
 
@@ -124,4 +125,4 @@ uv run pyright
 
 - **Manual Edits**: If you prefer manual configuration, you can edit the `.env` file created after the first run.
 - **Auth Reset**: If the server rejects your key, use `--clear-key` to reset it.
-- **Linux/Wayland**: Global hotkeys may require X11 or specific compositor permissions.
+- **Unsupported Environment**: Linux/WSL launches are intentionally unsupported and now exit early with a clear message instead of falling through to GUI/X hotkey errors.

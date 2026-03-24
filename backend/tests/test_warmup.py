@@ -1,9 +1,11 @@
-import pytest
 import asyncio
 import time
 from unittest.mock import MagicMock, patch
+
+import pytest
 from engine.model_manager import ModelManager
 from protocol.websocket_handler import ConnectionManager
+
 
 @pytest.mark.asyncio
 async def test_concurrent_warmup_lock():
@@ -17,14 +19,14 @@ async def test_concurrent_warmup_lock():
         def slow_load(*args, **kwargs):
             time.sleep(0.5)
             return MagicMock()
-        
+
         mock_whisper.side_effect = slow_load
-        
+
         manager = ModelManager("tiny.en", "cpu", "int8")
         # Reset mock after initial load in __init__
         mock_whisper.reset_mock()
-        manager.model = None # Force a reload
-        
+        manager.model = None  # Force a reload
+
         # Trigger two concurrent loads via threads (since load_model is sync)
         # In the real app, these are triggered by asyncio.to_thread
         async def trigger_load():
@@ -33,11 +35,12 @@ async def test_concurrent_warmup_lock():
         start_time = time.time()
         await asyncio.gather(trigger_load(), trigger_load())
         duration = time.time() - start_time
-        
-        # Duration should be at least 1s (0.5s + 0.5s) if locked, 
+
+        # Duration should be at least 1s (0.5s + 0.5s) if locked,
         # but mock_whisper.call_count should be exactly 1 because of the 'if self.model: return' inside the lock.
         assert mock_whisper.call_count == 1
         assert duration >= 0.5
+
 
 @pytest.mark.asyncio
 async def test_warmup_non_blocking_event_loop():
@@ -45,6 +48,7 @@ async def test_warmup_non_blocking_event_loop():
     Verifies that the event loop remains responsive while a warmup is happening in the background.
     Uses a mock engine whose warmup() sleeps for 1s to simulate a slow GPU load.
     """
+
     def slow_warmup():
         time.sleep(1.0)
 

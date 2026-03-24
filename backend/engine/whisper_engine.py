@@ -6,9 +6,11 @@ parameters are read from environment variables at construction time
 and baked in — every transcribe() call uses a consistent config
 without per-call overhead or handler-level parameter scatter.
 """
+
 import os
 import time
-from engine.base_engine import BaseEngine, TranscriptionResult, SegmentResult
+
+from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
 from engine.model_manager import ModelManager
 from logging_config import log
 
@@ -17,7 +19,9 @@ from logging_config import log
 _DEFAULT_BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
 _DEFAULT_NO_SPEECH = float(os.getenv("WHISPER_NO_SPEECH_THRESHOLD", "0.6"))
 _DEFAULT_LOG_PROB = float(os.getenv("WHISPER_LOG_PROB_THRESHOLD", "-1.0"))
-_DEFAULT_CONDITION = os.getenv("WHISPER_CONDITION_ON_PREVIOUS", "True").lower() == "true"
+_DEFAULT_CONDITION = (
+    os.getenv("WHISPER_CONDITION_ON_PREVIOUS", "True").lower() == "true"
+)
 
 
 class WhisperEngine(BaseEngine):
@@ -67,6 +71,8 @@ class WhisperEngine(BaseEngine):
         """
         start = time.time()
         model, _ = self._model_manager.get_model()
+        if model is None:
+            raise RuntimeError("Whisper model is not loaded.")
 
         segments_iter, info = model.transcribe(
             audio_path,

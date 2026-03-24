@@ -9,19 +9,23 @@ dependencies. Verifies:
   - warmup() triggers get_model()
   - unload() triggers unload_model()
 """
-import time
-import pytest
+
 from unittest.mock import MagicMock, patch
 
+import pytest
+from engine.base_engine import SegmentResult, TranscriptionResult
 from engine.whisper_engine import WhisperEngine
-from engine.base_engine import TranscriptionResult, SegmentResult
 
 
 @pytest.fixture
 def mock_whisper_model():
     """Patch WhisperModel and asyncio.create_task so no GPU or event loop is needed."""
-    with patch("engine.model_manager.WhisperModel") as MockClass, \
-         patch("engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()):
+    with (
+        patch("engine.model_manager.WhisperModel") as MockClass,
+        patch(
+            "engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()
+        ),
+    ):
         instance = MagicMock()
         MockClass.return_value = instance
         yield MockClass, instance
@@ -53,7 +57,10 @@ def _build_engine(mock_whisper_model):
 class TestTranscribeReturnShape:
     def test_returns_transcription_result(self, mock_whisper_model):
         _, instance = mock_whisper_model
-        segments = [_make_segment(0.0, 1.0, " Hello"), _make_segment(1.0, 2.0, " world")]
+        segments = [
+            _make_segment(0.0, 1.0, " Hello"),
+            _make_segment(1.0, 2.0, " world"),
+        ]
         instance.transcribe.return_value = (iter(segments), _make_info())
 
         engine = _build_engine(mock_whisper_model)
@@ -63,7 +70,10 @@ class TestTranscribeReturnShape:
 
     def test_text_joins_stripped_segments(self, mock_whisper_model):
         _, instance = mock_whisper_model
-        segments = [_make_segment(0.0, 1.0, " Hello"), _make_segment(1.0, 2.0, " world")]
+        segments = [
+            _make_segment(0.0, 1.0, " Hello"),
+            _make_segment(1.0, 2.0, " world"),
+        ]
         instance.transcribe.return_value = (iter(segments), _make_info())
 
         engine = _build_engine(mock_whisper_model)

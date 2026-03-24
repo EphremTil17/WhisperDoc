@@ -9,9 +9,11 @@ that the full test suite can be collected and run without a GPU or Docker.
 These stubs are harmless inside Docker too: sys.modules.setdefault() is a
 no-op when the real module is already present.
 """
+
 import os
 import sys
 from unittest.mock import MagicMock
+
 
 # --- Load .env files for live integration tests (no-op if not present) ---
 # Reads backend/.env and project-root .env so that WHISPER_DOC_API_KEY and
@@ -29,9 +31,10 @@ def _load_dotenv(path: str) -> None:
     except FileNotFoundError:
         pass
 
+
 _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
-_load_dotenv(os.path.join(_base, ".env"))           # backend/.env
-_load_dotenv(os.path.join(_base, "..", ".env"))     # project root .env
+_load_dotenv(os.path.join(_base, ".env"))  # backend/.env
+_load_dotenv(os.path.join(_base, "..", ".env"))  # project root .env
 
 # --- Test environment defaults (set before any app module is imported) ---
 # TrustedHostMiddleware reads ALLOWED_HOSTS at app import time; TestClient

@@ -1,7 +1,7 @@
-
-import sys
-import os
 import logging
+import os
+import sys
+
 from loguru import logger
 
 # ---------------------------------------------------------------------------
@@ -16,16 +16,19 @@ from loguru import logger
 # Installed on the ROOT logger so it survives logging.basicConfig(force=True)
 # calls that NeMo's import chain makes (which replaces handlers but not filters).
 SILENCED_PREFIXES = (
-    "nemo", "nv_one_logger", "lhotse",
-    "pytorch_lightning", "matplotlib",
+    "nemo",
+    "nv_one_logger",
+    "lhotse",
+    "pytorch_lightning",
+    "matplotlib",
 )
 
-SILENCED_MESSAGES = (
-    "Initializing Lhotse CutSet",
-)
+SILENCED_MESSAGES = ("Initializing Lhotse CutSet",)
+
 
 class _ThirdPartyNoiseFilter(logging.Filter):
     """Drop sub-ERROR messages from known noisy third-party namespaces."""
+
     def filter(self, record):
         if record.name.startswith(SILENCED_PREFIXES):
             return record.levelno >= logging.ERROR
@@ -34,6 +37,7 @@ class _ThirdPartyNoiseFilter(logging.Filter):
             if any(s in msg for s in SILENCED_MESSAGES):
                 return False
         return True
+
 
 logging.getLogger().addFilter(_ThirdPartyNoiseFilter())
 
@@ -81,30 +85,34 @@ def configure_logging():
 
             # Find caller from where originated the logged message
             frame, depth = logging.currentframe(), 2
-            while frame.f_code.co_filename == logging.__file__:
+            while frame is not None and frame.f_code.co_filename == logging.__file__:
                 frame = frame.f_back
                 depth += 1
 
-            logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+            logger.opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
 
     # Set up global intercept for all standard library loggers
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
     # Specifically target uvicorn and web framework loggers
-    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "starlette"):
+    for logger_name in (
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "fastapi",
+        "starlette",
+    ):
         mod_logger = logging.getLogger(logger_name)
         mod_logger.handlers = [InterceptHandler()]
         mod_logger.propagate = False
 
     # Console logger
-    logger.add(
-        sys.stderr,
-        level=log_level,
-        format=formatter,
-        colorize=force_color
-    )
+    logger.add(sys.stderr, level=log_level, format=formatter, colorize=force_color)
 
     return logger
+
 
 # Create a configured logger instance
 log = configure_logging()

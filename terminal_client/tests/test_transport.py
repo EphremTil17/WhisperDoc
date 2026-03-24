@@ -9,7 +9,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from whisper_shell.logic.handshake import HandshakeState
 from whisper_shell.services.transport_service import (
     MAX_RECONNECT_ATTEMPTS,

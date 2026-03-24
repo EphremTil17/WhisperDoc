@@ -9,25 +9,31 @@ automatically.
 Heavy deps (torch, faster_whisper, nemo) are stubbed by conftest.py before
 this module is imported — no setdefault() calls are needed here.
 """
+
 import sys
-import pytest
 from unittest.mock import MagicMock, patch
 
-from engine.base_engine import BaseEngine, TranscriptionResult, SegmentResult
-from engine.whisper_engine import WhisperEngine
+import pytest
+from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
 from engine.parakeet_engine import ParakeetEngine
-
+from engine.whisper_engine import WhisperEngine
 
 # ---------------------------------------------------------------------------
 # Shared engine fixture parametrisation
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(params=["whisper", "parakeet"])
 def engine(request):
     """Return a fully initialised engine for each backend."""
     if request.param == "whisper":
-        with patch("engine.model_manager.WhisperModel") as MockWhisper, \
-             patch("engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()):
+        with (
+            patch("engine.model_manager.WhisperModel") as MockWhisper,
+            patch(
+                "engine.model_manager.asyncio.create_task",
+                side_effect=lambda c: c.close(),
+            ),
+        ):
             mock_instance = MagicMock()
             seg = MagicMock()
             seg.start, seg.end, seg.text = 0.0, 1.0, " Hello"
@@ -57,6 +63,7 @@ def engine(request):
 # ---------------------------------------------------------------------------
 # Contract assertions (run against every engine)
 # ---------------------------------------------------------------------------
+
 
 class TestEngineContract:
     def test_is_base_engine_subclass(self, engine):

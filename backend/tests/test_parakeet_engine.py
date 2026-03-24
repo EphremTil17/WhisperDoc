@@ -6,17 +6,17 @@ conftest.py registers a MagicMock stub for nemo.collections.asr before any
 module is imported. We retrieve that stub via sys.modules here instead of
 registering a second one (setdefault is a no-op after conftest runs).
 """
+
 import sys
-import pytest
 from unittest.mock import MagicMock
 
+from engine.base_engine import SegmentResult, TranscriptionResult
 from engine.parakeet_engine import ParakeetEngine
-from engine.base_engine import TranscriptionResult, SegmentResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _nemo_asr_stub():
     """Return the MagicMock that conftest registered for nemo.collections.asr."""
@@ -54,6 +54,7 @@ def _build_engine(mock_model) -> ParakeetEngine:
 # ---------------------------------------------------------------------------
 # Transcription shape
 # ---------------------------------------------------------------------------
+
 
 class TestTranscribeReturnShape:
     def test_returns_transcription_result(self):
@@ -111,7 +112,9 @@ class TestSegmentNormalisation:
 
     def test_fallback_single_segment_when_no_timestamps(self):
         mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("No timestamps here", segments=None)]]
+        mock_model.transcribe.return_value = [
+            [_make_hyp("No timestamps here", segments=None)]
+        ]
         engine = _build_engine(mock_model)
 
         result = engine.transcribe("/fake/audio.wav")
@@ -125,6 +128,7 @@ class TestSegmentNormalisation:
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestLifecycle:
     def test_is_loaded_true_after_init(self):
@@ -143,7 +147,10 @@ class TestLifecycle:
         engine = _build_engine(mock_model)
         call_count_before = _nemo_asr_stub().models.ASRModel.from_pretrained.call_count
         engine.warmup()  # Already loaded — should NOT call from_pretrained again
-        assert _nemo_asr_stub().models.ASRModel.from_pretrained.call_count == call_count_before
+        assert (
+            _nemo_asr_stub().models.ASRModel.from_pretrained.call_count
+            == call_count_before
+        )
 
     def test_transcribe_after_unload_reloads(self):
         mock_model = MagicMock()

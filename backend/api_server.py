@@ -4,15 +4,16 @@ Minimal FastAPI server for speech-to-text transcription
 Uses faster-whisper with GPU acceleration
 """
 
+import asyncio
+import importlib
 import logging
 import os
-import time
-import asyncio
 import subprocess
+import time
 
 # Initialize uvloop for performance before anything else
 try:
-    import uvloop
+    uvloop = importlib.import_module("uvloop")
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except ImportError:
     pass
@@ -52,7 +53,12 @@ try:
     def _fixed_ws_upgrade(self, event):
         """Patched handle_websocket_upgrade that is immune to b" " corruption."""
         self.connections.discard(self)
-        output = [event.method, _SAFE_SPACE, event.target, _SAFE_SPACE + b"HTTP/1.1\r\n"]
+        output = [
+            event.method,
+            _SAFE_SPACE,
+            event.target,
+            _SAFE_SPACE + b"HTTP/1.1\r\n",
+        ]
         for name, value in self.headers:
             output += [name, b": ", value, b"\r\n"]
         output.append(b"\r\n")
@@ -76,17 +82,26 @@ except Exception as exc:
         exc,
     )
 
-from typing import Optional, List
-from datetime import datetime
-from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-import uuid
-import tempfile
 import shutil
+import tempfile
+import uuid
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import JSONResponse
 
 # Import the configured logger
 from logging_config import log
+from pydantic import BaseModel
+
 
 # --- Pydantic Models for Log Ingestion ---
 class RemoteLogRecord(BaseModel):
@@ -95,12 +110,13 @@ class RemoteLogRecord(BaseModel):
     message: str
     timestamp: str
 
+
 class LogBatch(BaseModel):
     logs: List[RemoteLogRecord]
 
 
 # Load configuration from environment variables
-API_PORT = int(os.getenv('API_PORT', '9989'))
+API_PORT = int(os.getenv("API_PORT", "9989"))
 
 # Read version from environment variable (Docker)
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
@@ -114,12 +130,12 @@ SEC_CLIENT_VERSION = os.getenv("SEC_CLIENT_VERSION", "0.0.0")
 # --- Security & Validation Configuration ---
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
 
-from fastapi import Depends
-from auth import get_api_key, verify_api_key, validate_token, warmup_oidc
-from engine.engine_factory import create_engine
-from protocol.websocket_handler import ConnectionManager
-
 from contextlib import asynccontextmanager
+
+from auth import get_api_key, verify_api_key, warmup_oidc
+from engine.engine_factory import create_engine
+from fastapi import Depends
+from protocol.websocket_handler import ConnectionManager
 
 # Global initialized on startup
 manager: Optional[ConnectionManager] = None
@@ -133,12 +149,14 @@ async def lifespan(app: FastAPI):
     """
     global manager
     log.info(f"Starting WhisperDoc API (v{APP_VERSION})...")
-    log.info(f"Version Requirements: MIN={MIN_CLIENT_VERSION}, ADVISORY={SEC_CLIENT_VERSION}")
+    log.info(
+        f"Version Requirements: MIN={MIN_CLIENT_VERSION}, ADVISORY={SEC_CLIENT_VERSION}"
+    )
 
     try:
         # Enforce "Fail Secure" Policy
-        get_api_key() # Will raise RuntimeError if no key is set
-        
+        get_api_key()  # Will raise RuntimeError if no key is set
+
         log.info("Initializing ASR engine...")
 
         # Engine selection is driven by ASR_ENGINE env var (see engine_factory.py)
@@ -149,37 +167,38 @@ async def lifespan(app: FastAPI):
             engine,
             app_version=APP_VERSION,
             min_client_version=MIN_CLIENT_VERSION,
-            sec_client_version=SEC_CLIENT_VERSION
+            sec_client_version=SEC_CLIENT_VERSION,
         )
-        
+
         # Warmup OIDC (graceful degradation: logs warnings if provider unreachable)
         warmup_oidc()
-        
-        log.success(f"System initialized successfully.")
-        
+
+        log.success("System initialized successfully.")
+
     except Exception as e:
         log.error(f"Failed to initialize backend: {e}")
         manager = None
-        
+
     yield  # Server runs here
-    
+
     # --- Shutdown Logic ---
     log.info("Shutting down WhisperDoc API server...")
     if manager:
         manager.engine.unload()
     log.success("Cleanup completed.")
 
+
 app = FastAPI(
     title="WhisperDoc API",
     description="Speech-to-text transcription service using faster-whisper",
     version=APP_VERSION,
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # --- Infrastructure Hardening (Middleware & Security) ---
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 # Compress responses to save bandwidth on large transcription results
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -203,23 +222,25 @@ app.add_middleware(
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
+
 # --- Global Exception Handler (Error Masking) ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Catch-all exception handler to mask system errors in production."""
     error_id = str(uuid.uuid4())[:8]
     log.error(f"Unhandled Error [Ref: {error_id}]: {exc}")
-    
-    # In development (no API key set), we might want to see the error, 
+
+    # In development (no API key set), we might want to see the error,
     # but for this "hardened" block we strictly mask it.
     return JSONResponse(
         status_code=500,
         content={
             "error": "Internal Server Error",
             "message": "An unexpected error occurred. Please contact support.",
-            "ref": error_id
-        }
+            "ref": error_id,
+        },
     )
+
 
 @app.get("/health")
 async def health_check():
@@ -233,9 +254,10 @@ async def health_check():
         status_code=status_code,
         content={
             "status": "online" if engine_ready else "degraded",
-            "timestamp": int(time.time())
-        }
+            "timestamp": int(time.time()),
+        },
     )
+
 
 @app.post("/transcribe", dependencies=[Depends(verify_api_key)])
 async def transcribe_audio(file: UploadFile = File(...)):
@@ -244,30 +266,35 @@ async def transcribe_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=503, detail="System not initialized")
 
     filename = file.filename or "upload"
-    
+
     # Validate file type
-    if not file.content_type or not file.content_type.startswith('audio/'):
+    if not file.content_type or not file.content_type.startswith("audio/"):
         # Also accept common audio file extensions
-        allowed_extensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
+        allowed_extensions = [".wav", ".mp3", ".m4a", ".flac", ".ogg"]
         if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
             log.warning(f"Invalid file type received: {file.content_type}")
             raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid file type. Expected audio file, got: {file.content_type}"
+                status_code=400,
+                detail=f"Invalid file type. Expected audio file, got: {file.content_type}",
             )
-    
+
     log.info(f"Processing file: {filename} ({file.content_type})")
-    
+
     # Optional: Check file size if content-length is provided
     # Note: For UploadFile, we may need to read it to be 100% sure
     file.file.seek(0, os.SEEK_END)
     file_size = file.file.tell()
     file.file.seek(0)
-    
+
     if file_size > MAX_FILE_SIZE:
-        log.warning(f"File upload rejected: {file_size} bytes exceeds limit of {MAX_FILE_SIZE}")
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.")
-    
+        log.warning(
+            f"File upload rejected: {file_size} bytes exceeds limit of {MAX_FILE_SIZE}"
+        )
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.",
+        )
+
     # Save uploaded file and normalize to 16kHz mono WAV via FFmpeg.
     # This makes the endpoint engine-agnostic: Whisper can ingest any
     # format, but NeMo (Parakeet) expects WAV.  FFmpeg is present in
@@ -286,20 +313,38 @@ async def transcribe_audio(file: UploadFile = File(...)):
         wav_path = temp_path + ".wav"
         proc = await asyncio.to_thread(
             subprocess.run,
-            ["ffmpeg", "-y", "-i", temp_path, "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", wav_path],
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                temp_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-sample_fmt",
+                "s16",
+                wav_path,
+            ],
             capture_output=True,
         )
         if proc.returncode != 0:
-            log.error(f"FFmpeg conversion failed: {proc.stderr.decode(errors='replace')}")
+            log.error(
+                f"FFmpeg conversion failed: {proc.stderr.decode(errors='replace')}"
+            )
             raise HTTPException(status_code=400, detail="Unsupported audio format")
 
-        log.debug(f"FFmpeg conversion OK: {temp_path} → {wav_path} ({os.path.getsize(wav_path)} bytes)")
+        log.debug(
+            f"FFmpeg conversion OK: {temp_path} → {wav_path} ({os.path.getsize(wav_path)} bytes)"
+        )
 
         # Transcribe via engine (load-on-demand handled internally)
         result = await asyncio.to_thread(manager.engine.transcribe, wav_path)
 
         log.success(f"Transcription completed in {result.processing_time:.2f}s")
-        log.info(f"Result: {result.text[:100]}{'...' if len(result.text) > 100 else ''}")
+        log.info(
+            f"Result: {result.text[:100]}{'...' if len(result.text) > 100 else ''}"
+        )
 
         return {
             "text": result.text,
@@ -309,7 +354,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 for s in result.segments
             ],
             "processing_time": result.processing_time,
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
 
     except HTTPException:
@@ -326,6 +371,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 except Exception:
                     pass
 
+
 @app.post("/log", dependencies=[Depends(verify_api_key)])
 async def ingest_logs(batch: LogBatch):
     """Receive and process a batch of log records from a remote client."""
@@ -339,8 +385,7 @@ async def ingest_logs(batch: LogBatch):
 
         # Patch the emitted record so the stored timestamp reflects the client event time.
         log.patch(_inject_time).bind(source=record.source).log(
-            record.level, 
-            record.message
+            record.level, record.message
         )
     return {"status": "ok"}
 
@@ -360,10 +405,10 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Receive both text and bytes
             message = await websocket.receive()
-            if 'text' in message:
-                await manager.handle_message(websocket, message['text'])
-            elif 'bytes' in message:
-                await manager.handle_message(websocket, message['bytes'])
+            if "text" in message:
+                await manager.handle_message(websocket, message["text"])
+            elif "bytes" in message:
+                await manager.handle_message(websocket, message["bytes"])
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -373,4 +418,3 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         log.error(f"Unexpected WebSocket error: {e}")
         manager.disconnect(websocket)
-

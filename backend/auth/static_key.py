@@ -2,9 +2,12 @@
 Static API Key Authentication
 Handles validation of the master API key for local debugging and admin access
 """
+
 import os
 import secrets
+
 from logging_config import log
+
 
 def get_api_key() -> str:
     """
@@ -13,17 +16,20 @@ def get_api_key() -> str:
     """
     key = os.getenv("WHISPER_DOC_API_KEY")
     if not key or not key.strip():
-        raise RuntimeError("FATAL: WHISPER_DOC_API_KEY is not set. Server cannot start securely.")
+        raise RuntimeError(
+            "FATAL: WHISPER_DOC_API_KEY is not set. Server cannot start securely."
+        )
     return key.strip()
+
 
 def validate_static_key(token: str) -> bool:
     """
     Validates a token against the configured static API key.
     Uses constant-time comparison to prevent timing attacks.
-    
+
     Args:
         token: The token to validate
-        
+
     Returns:
         bool: True if token matches the static API key, False otherwise
     """

@@ -1,17 +1,24 @@
-import os
-import time
-import json
 import asyncio
+import json
+import os
 import tempfile
+import time
 import wave
-from typing import Dict, Any
-from fastapi import WebSocket
-from logging_config import log
+from collections import defaultdict
+from typing import Any, Dict
+
 from auth import validate_token
 from engine.base_engine import BaseEngine
-from security.governance import SecurityGovernance, MAX_CONNECTIONS, IDLE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS, NO_AUDIO_GRACE_SECONDS
+from fastapi import WebSocket
+from logging_config import log
+from security.governance import (
+    HANDSHAKE_TIMEOUT_SECONDS,
+    IDLE_TIMEOUT_SECONDS,
+    MAX_CONNECTIONS,
+    NO_AUDIO_GRACE_SECONDS,
+    SecurityGovernance,
+)
 from security.sanitizer import Sanitizer
-from collections import defaultdict
 
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
@@ -22,16 +29,23 @@ def get_client_host(websocket: WebSocket) -> str:
     return client.host if client else "unknown"
 
 
+def describe_client(websocket: WebSocket) -> str:
+    client = websocket.client
+    return str(client) if client else "unknown"
+
+
 def is_lower(v1: str, v2: str) -> bool:
     """Return True if semver v1 < v2.  Fail-secure: unparseable → True."""
     try:
-        v1_parts = [int(p) for p in v1.split('+')[0].split('-')[0].split('.')]
-        v2_parts = [int(p) for p in v2.split('+')[0].split('-')[0].split('.')]
+        v1_parts = [int(p) for p in v1.split("+")[0].split("-")[0].split(".")]
+        v2_parts = [int(p) for p in v2.split("+")[0].split("-")[0].split(".")]
         for i in range(3):
             p1 = v1_parts[i] if i < len(v1_parts) else 0
             p2 = v2_parts[i] if i < len(v2_parts) else 0
-            if p1 < p2: return True
-            if p1 > p2: return False
+            if p1 < p2:
+                return True
+            if p1 > p2:
+                return False
         return False
     except Exception:
         return True
@@ -55,7 +69,14 @@ class ErrorCode:
 
 class ConnectionManager:
     """Manages WebSocket connection lifecycle, protocol state, and audio processing."""
-    def __init__(self, engine: BaseEngine, app_version: str, min_client_version: str = "0.0.0", sec_client_version: str = "0.0.0"):
+
+    def __init__(
+        self,
+        engine: BaseEngine,
+        app_version: str,
+        min_client_version: str = "0.0.0",
+        sec_client_version: str = "0.0.0",
+    ):
         self.active_connections: Dict[WebSocket, Dict[str, Any]] = {}
         self.engine = engine
         self.app_version = app_version
@@ -63,13 +84,13 @@ class ConnectionManager:
         self.sec_client_version = sec_client_version
         self.governance = SecurityGovernance()
         self.last_tracker_cleanup = time.time()
-        
+
         # Identity-Pinned Concurrency (IPC) Guard: 1 transcription per user at a time
         self.user_semaphores = defaultdict(lambda: asyncio.Semaphore(1))
-        
+
         # Performance & Throughput Monitoring
         self.bytes_received: Dict[WebSocket, int] = defaultdict(int)
-        
+
         # Start background cleanup — guard against sync contexts (tests, scripts)
         _coro = self._cleanup_inactive_connections()
         try:
@@ -77,7 +98,9 @@ class ConnectionManager:
         except RuntimeError:
             _coro.close()
             self.cleanup_task = None
-        log.info(f"ConnectionManager initialized. Proxy-Ready. Max Connections: {MAX_CONNECTIONS}")
+        log.info(
+            f"ConnectionManager initialized. Proxy-Ready. Max Connections: {MAX_CONNECTIONS}"
+        )
 
     async def connect(self, websocket: WebSocket):
         ip = get_client_host(websocket)
@@ -85,18 +108,40 @@ class ConnectionManager:
         # 1. Check for Active Bans
         is_banned, remaining = self.governance.is_ip_banned(ip)
         if is_banned:
-            log.warning(f"BANNED CLIENT: {ip} rejected. Active ban in effect. Retry in {remaining}s.")
+            log.warning(
+                f"BANNED CLIENT: {ip} rejected. Active ban in effect. Retry in {remaining}s."
+            )
             await websocket.accept()
-            await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.IP_BANNED, "message": f"IP Banned. Cooldown: {remaining}s"})
-            await websocket.close(code=1008, reason=f"IP Banned. Cooldown: {remaining}s")
+            await websocket.send_json(
+                {
+                    "event": "error",
+                    "code": 1008,
+                    "error_code": ErrorCode.IP_BANNED,
+                    "message": f"IP Banned. Cooldown: {remaining}s",
+                }
+            )
+            await websocket.close(
+                code=1008, reason=f"IP Banned. Cooldown: {remaining}s"
+            )
             return
 
         # 2. Max Connections Check
         if len(self.active_connections) >= MAX_CONNECTIONS:
-            log.warning(f"Connection rejected for {websocket.client}: Max connections reached.")
+            log.warning(
+                f"Connection rejected for {describe_client(websocket)}: Max connections reached."
+            )
             await websocket.accept()
-            await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.MAX_CONNECTIONS, "message": "Max concurrent connections reached"})
-            await websocket.close(code=1008, reason="Max concurrent connections reached")
+            await websocket.send_json(
+                {
+                    "event": "error",
+                    "code": 1008,
+                    "error_code": ErrorCode.MAX_CONNECTIONS,
+                    "message": "Max concurrent connections reached",
+                }
+            )
+            await websocket.close(
+                code=1008, reason="Max concurrent connections reached"
+            )
             return
 
         # 3. Track Attempt
@@ -112,19 +157,21 @@ class ConnectionManager:
             "last_audio_received": None,
             "handshake_completed": False,
             "id": conn_id,
-            "incognito": False
+            "incognito": False,
         }
         log.info(f"[{conn_id}] WebSocket client connected from {ip}")
-        
-        await websocket.send_json({
-            "event": "hello",
-            "server": "WhisperDoc Backend",
-            "version": self.app_version,
-            "min_version": self.min_client_version,
-            "sec_version": self.sec_client_version,
-            "status": "ready" if self.engine.is_loaded() else "idle",
-            "cid": conn_id
-        })
+
+        await websocket.send_json(
+            {
+                "event": "hello",
+                "server": "WhisperDoc Backend",
+                "version": self.app_version,
+                "min_version": self.min_client_version,
+                "sec_version": self.sec_client_version,
+                "status": "ready" if self.engine.is_loaded() else "idle",
+                "cid": conn_id,
+            }
+        )
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
@@ -132,7 +179,9 @@ class ConnectionManager:
             del self.active_connections[websocket]
             if websocket in self.bytes_received:
                 del self.bytes_received[websocket]
-            log.info(f"[{conn_id}] WebSocket client disconnected: {websocket.client}")
+            log.info(
+                f"[{conn_id}] WebSocket client disconnected: {describe_client(websocket)}"
+            )
 
     async def _cleanup_inactive_connections(self):
         while True:
@@ -143,15 +192,24 @@ class ConnectionManager:
 
                 for websocket, data in self.active_connections.items():
                     idle_time = now - data["last_activity"]
-                    
-                    if not data["handshake_completed"] and idle_time > HANDSHAKE_TIMEOUT_SECONDS:
-                        log.warning(f"Closing un-handshaked connection from {websocket.client} (Timeout)")
+
+                    if (
+                        not data["handshake_completed"]
+                        and idle_time > HANDSHAKE_TIMEOUT_SECONDS
+                    ):
+                        log.warning(
+                            f"Closing un-handshaked connection from {describe_client(websocket)} (Timeout)"
+                        )
                         to_disconnect.append((websocket, 1008, "Handshake timeout"))
-                        self.governance.record_protocol_violation(get_client_host(websocket))
+                        self.governance.record_protocol_violation(
+                            get_client_host(websocket)
+                        )
                         continue
 
                     if idle_time > IDLE_TIMEOUT_SECONDS:
-                        log.warning(f"Closing inactive connection for client {websocket.client}")
+                        log.warning(
+                            f"Closing inactive connection for client {describe_client(websocket)}"
+                        )
                         to_disconnect.append((websocket, 4000, "Inactivity timeout"))
                         continue
 
@@ -162,10 +220,18 @@ class ConnectionManager:
                     if data["handshake_completed"]:
                         connection_age = now - data["connected_at"]
                         last_audio = data.get("last_audio_received")
-                        no_audio_ever = last_audio is None and connection_age > NO_AUDIO_GRACE_SECONDS
-                        audio_stale = last_audio is not None and (now - last_audio) > IDLE_TIMEOUT_SECONDS
+                        no_audio_ever = (
+                            last_audio is None
+                            and connection_age > NO_AUDIO_GRACE_SECONDS
+                        )
+                        audio_stale = (
+                            last_audio is not None
+                            and (now - last_audio) > IDLE_TIMEOUT_SECONDS
+                        )
                         if no_audio_ever or audio_stale:
-                            log.warning(f"Closing slot-hogging connection from {websocket.client} (no audio activity)")
+                            log.warning(
+                                f"Closing slot-hogging connection from {describe_client(websocket)} (no audio activity)"
+                            )
                             to_disconnect.append((websocket, 4001, "No audio activity"))
 
                 for websocket, code, reason in to_disconnect:
@@ -174,17 +240,27 @@ class ConnectionManager:
                     except Exception as e:
                         log.debug(f"Error closing WebSocket ({reason}): {e}")
                     self.disconnect(websocket)
-                    
+
                 # Robust Tracker Cleanup: Every 1 hour
                 if now - self.last_tracker_cleanup > 3600:
                     self.governance.clear_old_trackers()
                     # Prune IPC semaphores for users with no active connections to prevent unbounded growth
-                    active_user_ids = {d.get("user_id") for d in self.active_connections.values() if d.get("user_id")}
-                    stale_ids = [uid for uid in self.user_semaphores if uid not in active_user_ids]
+                    active_user_ids = {
+                        d.get("user_id")
+                        for d in self.active_connections.values()
+                        if d.get("user_id")
+                    }
+                    stale_ids = [
+                        uid
+                        for uid in self.user_semaphores
+                        if uid not in active_user_ids
+                    ]
                     for uid in stale_ids:
                         del self.user_semaphores[uid]
                     if stale_ids:
-                        log.debug(f"Maintenance: Pruned {len(stale_ids)} stale IPC semaphore(s).")
+                        log.debug(
+                            f"Maintenance: Pruned {len(stale_ids)} stale IPC semaphore(s)."
+                        )
                     self.last_tracker_cleanup = now
                     log.debug("Maintenance: Security trackers cleared.")
 
@@ -193,7 +269,8 @@ class ConnectionManager:
 
     async def handle_message(self, websocket: WebSocket, message):
         connection_data = self.active_connections.get(websocket)
-        if not connection_data: return
+        if not connection_data:
+            return
 
         connection_data["last_activity"] = time.time()
         conn_id = connection_data.get("id", "????")
@@ -202,11 +279,19 @@ class ConnectionManager:
 
         if isinstance(message, str):
             try:
-                try: data = json.loads(message)
+                try:
+                    data = json.loads(message)
                 except json.JSONDecodeError:
                     log.warning(f"[{conn_id}] Protocol Violation: Malformed JSON.")
                     self.governance.record_protocol_violation(ip)
-                    await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.MALFORMED_JSON, "message": "Malformed JSON"})
+                    await websocket.send_json(
+                        {
+                            "event": "error",
+                            "code": 1008,
+                            "error_code": ErrorCode.MALFORMED_JSON,
+                            "message": "Malformed JSON",
+                        }
+                    )
                     await websocket.close(code=1008, reason="Malformed JSON")
                     return
 
@@ -214,9 +299,18 @@ class ConnectionManager:
 
                 if not handshake_done:
                     if event != "hello":
-                        log.warning(f"[{conn_id}] Protocol Violation: Expected 'hello', got '{event}'.")
+                        log.warning(
+                            f"[{conn_id}] Protocol Violation: Expected 'hello', got '{event}'."
+                        )
                         self.governance.record_protocol_violation(ip)
-                        await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.HANDSHAKE_REQUIRED, "message": "Handshake required"})
+                        await websocket.send_json(
+                            {
+                                "event": "error",
+                                "code": 1008,
+                                "error_code": ErrorCode.HANDSHAKE_REQUIRED,
+                                "message": "Handshake required",
+                            }
+                        )
                         await websocket.close(code=1008, reason="Handshake required")
                         return
 
@@ -227,43 +321,68 @@ class ConnectionManager:
 
                     # 1. Version Validation (Hardened Gate)
                     if is_lower(client_version, self.min_client_version):
-                        log.warning(f"[{conn_id}] BLOCKED: Outdated client ({client_version}) < MIN ({self.min_client_version})")
-                        await websocket.send_json({
-                            "event": "error",
-                            "code": 1008,
-                            "error_code": ErrorCode.VERSION_OUTDATED,
-                            "message": f"Update required: v{self.min_client_version} (Client: {client_version})"
-                        })
+                        log.warning(
+                            f"[{conn_id}] BLOCKED: Outdated client ({client_version}) < MIN ({self.min_client_version})"
+                        )
+                        await websocket.send_json(
+                            {
+                                "event": "error",
+                                "code": 1008,
+                                "error_code": ErrorCode.VERSION_OUTDATED,
+                                "message": f"Update required: v{self.min_client_version} (Client: {client_version})",
+                            }
+                        )
                         await websocket.close(code=1008)
                         self.governance.record_protocol_violation(ip)
                         return
-                    
+
                     if is_lower(client_version, self.sec_client_version):
-                        log.info(f"[{conn_id}] ADVISORY: Outdated client ({client_version}) < SEC ({self.sec_client_version})")
+                        log.info(
+                            f"[{conn_id}] ADVISORY: Outdated client ({client_version}) < SEC ({self.sec_client_version})"
+                        )
                     else:
-                        log.debug(f"[{conn_id}] HANDSHAKE: Client version {client_version} verified.")
+                        log.debug(
+                            f"[{conn_id}] HANDSHAKE: Client version {client_version} verified."
+                        )
 
                     if auth_type == "oidc":
                         # Validate JWT and extract identity
                         from auth.oidc import validate_oidc_token
+
                         payload = validate_oidc_token(token)
                         if not payload:
                             log.warning(f"[{conn_id}] OIDC Authentication Failed.")
                             self.governance.record_protocol_violation(ip)
-                            await websocket.send_json({"event": "error", "code": 403, "error_code": ErrorCode.AUTH_FAILED, "message": "OIDC Authentication failed"})
+                            await websocket.send_json(
+                                {
+                                    "event": "error",
+                                    "code": 403,
+                                    "error_code": ErrorCode.AUTH_FAILED,
+                                    "message": "OIDC Authentication failed",
+                                }
+                            )
                             await websocket.close(code=1008)
                             return
-                        
+
                         # Identify user by OIDC 'sub' claim
                         connection_data["user_id"] = payload.get("sub")
                         connection_data["user_email"] = payload.get("email")
-                        log.info(f"[{conn_id}] OIDC Verified for: {connection_data['user_email']}")
+                        log.info(
+                            f"[{conn_id}] OIDC Verified for: {connection_data['user_email']}"
+                        )
                     else:
                         # Fallback to static API key validation
                         if not validate_token(token):
                             log.warning(f"[{conn_id}] API Key Authentication Failed.")
                             self.governance.record_protocol_violation(ip)
-                            await websocket.send_json({"event": "error", "code": 403, "error_code": ErrorCode.AUTH_FAILED, "message": "API Key Authentication failed"})
+                            await websocket.send_json(
+                                {
+                                    "event": "error",
+                                    "code": 403,
+                                    "error_code": ErrorCode.AUTH_FAILED,
+                                    "message": "API Key Authentication failed",
+                                }
+                            )
                             await websocket.close(code=1008)
                             return
                         connection_data["user_id"] = "static_apiKey"
@@ -271,9 +390,13 @@ class ConnectionManager:
                     connection_data["handshake_completed"] = True
                     connection_data["auth_type"] = auth_type
                     connection_data["incognito"] = data.get("incognito", False)
-                    log.info(f"[{conn_id}] Handshake Verified ({auth_type}) | {client_type} (v{client_version}) | Incognito: {connection_data['incognito']}")
+                    log.info(
+                        f"[{conn_id}] Handshake Verified ({auth_type}) | {client_type} (v{client_version}) | Incognito: {connection_data['incognito']}"
+                    )
 
-                    await websocket.send_json({"event": "authenticated", "status": "success", "cid": conn_id})
+                    await websocket.send_json(
+                        {"event": "authenticated", "status": "success", "cid": conn_id}
+                    )
 
                     # TRIGGER WARMUP: Load model in background if not already loaded.
                     # Guard skips the task entirely for reconnecting clients whose model is still hot,
@@ -283,34 +406,66 @@ class ConnectionManager:
                     return
 
                 if event == "hello":
-                    await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.DUPLICATE_HANDSHAKE, "message": "Handshake already completed"})
-                    await websocket.close(code=1008, reason="Handshake already completed")
+                    await websocket.send_json(
+                        {
+                            "event": "error",
+                            "code": 1008,
+                            "error_code": ErrorCode.DUPLICATE_HANDSHAKE,
+                            "message": "Handshake already completed",
+                        }
+                    )
+                    await websocket.close(
+                        code=1008, reason="Handshake already completed"
+                    )
                     return
-                
+
                 if event == "end-of-stream":
                     log.info(f"[{conn_id}] Received EOS.")
                     await self.transcribe_and_send(websocket)
                 elif event == "ping":
                     await websocket.send_json({"event": "pong"})
                 else:
-                    await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.INVALID_EVENT, "message": f"Invalid event: {event}"})
+                    await websocket.send_json(
+                        {
+                            "event": "error",
+                            "code": 1008,
+                            "error_code": ErrorCode.INVALID_EVENT,
+                            "message": f"Invalid event: {event}",
+                        }
+                    )
                     await websocket.close(code=1008, reason=f"Invalid event: {event}")
-            
+
             except Exception as e:
                 log.error(f"[{conn_id}] Error in text handler: {e}")
                 try:
-                    await websocket.send_json({"event": "error", "code": 1011, "error_code": ErrorCode.SERVER_ERROR, "message": "Internal server error"})
+                    await websocket.send_json(
+                        {
+                            "event": "error",
+                            "code": 1011,
+                            "error_code": ErrorCode.SERVER_ERROR,
+                            "message": "Internal server error",
+                        }
+                    )
                     await websocket.close(code=1011)
                 except Exception as ce:
-                    log.debug(f"[{conn_id}] Error closing WebSocket after handler error: {ce}")
+                    log.debug(
+                        f"[{conn_id}] Error closing WebSocket after handler error: {ce}"
+                    )
 
         elif isinstance(message, bytes):
             if not handshake_done:
                 self.governance.record_protocol_violation(ip)
-                await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.HANDSHAKE_REQUIRED, "message": "Handshake required"})
+                await websocket.send_json(
+                    {
+                        "event": "error",
+                        "code": 1008,
+                        "error_code": ErrorCode.HANDSHAKE_REQUIRED,
+                        "message": "Handshake required",
+                    }
+                )
                 await websocket.close(code=1008, reason="Handshake required")
                 return
-            
+
             connection_data["last_audio_received"] = time.time()
             buffer = connection_data["buffer"]
             if len(buffer) < MAX_BUFFER_SIZE:
@@ -318,7 +473,14 @@ class ConnectionManager:
                 self.bytes_received[websocket] += len(message)
             else:
                 log.warning(f"[{conn_id}] Resource Exhaustion: Buffer limit reached.")
-                await websocket.send_json({"event": "error", "code": 1009, "error_code": ErrorCode.BUFFER_EXCEEDED, "message": "Buffer limit exceeded"})
+                await websocket.send_json(
+                    {
+                        "event": "error",
+                        "code": 1009,
+                        "error_code": ErrorCode.BUFFER_EXCEEDED,
+                        "message": "Buffer limit exceeded",
+                    }
+                )
                 await websocket.close(code=1009, reason="Buffer limit exceeded")
                 self.disconnect(websocket)
 
@@ -334,15 +496,23 @@ class ConnectionManager:
 
     async def transcribe_and_send(self, websocket: WebSocket):
         data = self.active_connections.get(websocket)
-        if not data: return
-        
+        if not data:
+            return
+
         buffer = data["buffer"]
         conn_id = data.get("id", "????")
         is_incognito = data.get("incognito", False)
-        
+
         if not buffer:
             log.warning(f"[{conn_id}] Transcription requested but buffer is empty.")
-            await websocket.send_json({"event": "error", "code": 422, "error_code": ErrorCode.NO_AUDIO, "message": "No audio data received"})
+            await websocket.send_json(
+                {
+                    "event": "error",
+                    "code": 422,
+                    "error_code": ErrorCode.NO_AUDIO,
+                    "message": "No audio data received",
+                }
+            )
             return
 
         tmp_path = None
@@ -356,9 +526,9 @@ class ConnectionManager:
 
                 # Wrap the raw PCM buffer in a proper WAV header
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-                    with wave.open(tmp, 'wb') as wf:
+                    with wave.open(tmp, "wb") as wf:
                         wf.setnchannels(1)
-                        wf.setsampwidth(2) # 16-bit
+                        wf.setsampwidth(2)  # 16-bit
                         wf.setframerate(16000)
                         wf.writeframes(buffer)
                     tmp_path = tmp.name
@@ -377,7 +547,7 @@ class ConnectionManager:
                 }
                 for s in result.segments
             ]
-            
+
             # 2. Security: Wipe buffer immediately
             data["buffer"] = bytearray()
 
@@ -386,16 +556,25 @@ class ConnectionManager:
             else:
                 log.log("PRIVACY", f"[{conn_id}] Transcription complete [REDACTED]")
 
-            await websocket.send_json({
-                "event": "transcription",
-                "text": full_text,
-                "segments": safe_segments,
-                "processing_time": result.processing_time
-            })
-            
+            await websocket.send_json(
+                {
+                    "event": "transcription",
+                    "text": full_text,
+                    "segments": safe_segments,
+                    "processing_time": result.processing_time,
+                }
+            )
+
         except Exception as e:
             log.error(f"[{conn_id}] Transcription failed: {e}")
-            await websocket.send_json({"event": "error", "code": 1011, "error_code": ErrorCode.TRANSCRIPTION_FAILED, "message": "Transcription failed"})
+            await websocket.send_json(
+                {
+                    "event": "error",
+                    "code": 1011,
+                    "error_code": ErrorCode.TRANSCRIPTION_FAILED,
+                    "message": "Transcription failed",
+                }
+            )
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 try:

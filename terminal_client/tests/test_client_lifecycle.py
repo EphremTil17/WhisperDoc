@@ -6,7 +6,6 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from whisper_shell.services.config_service import sec_cfg
 
 

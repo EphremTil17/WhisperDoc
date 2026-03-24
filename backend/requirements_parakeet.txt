@@ -1,5 +1,0 @@
-# Parakeet-only deps (on top of requirements.txt)
-# Default CUDA-enabled torch — NeMo uses torch.cuda directly for inference.
-torch
-nemo_toolkit[asr]==2.7.1
-soundfile==0.13.1

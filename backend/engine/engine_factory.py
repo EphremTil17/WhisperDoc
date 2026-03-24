@@ -8,7 +8,9 @@ Both concrete engine imports are deferred inside their respective branches so
 that importing this module never pulls in NeMo — the Whisper service image
 does not need NeMo installed.
 """
+
 import os
+
 from engine.base_engine import BaseEngine
 from logging_config import log
 
@@ -29,6 +31,7 @@ def create_engine() -> BaseEngine:
 
     if engine_name == "whisper":
         from engine.whisper_engine import WhisperEngine
+
         return WhisperEngine(
             model_name=os.getenv("MODEL_NAME", "large-v3-turbo"),
             device=os.getenv("MODEL_DEVICE", "cuda"),
@@ -37,6 +40,7 @@ def create_engine() -> BaseEngine:
 
     if engine_name == "parakeet":
         from engine.parakeet_engine import ParakeetEngine
+
         return ParakeetEngine(
             model_name=os.getenv("PARAKEET_MODEL_NAME", "nvidia/parakeet-tdt-0.6b-v2"),
             device=os.getenv("PARAKEET_DEVICE", "cuda"),

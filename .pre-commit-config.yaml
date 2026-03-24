@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.7
+    hooks:
+      - id: ruff
+        name: backend ruff check
+        files: ^backend/
+        args: [--fix, --config, backend/pyproject.toml]
+
+      - id: ruff-format
+        name: backend ruff format
+        files: ^backend/
+        args: [--config, backend/pyproject.toml]
+
+      - id: ruff
+        name: terminal client ruff check
+        files: ^terminal_client/
+        args: [--fix, --config, terminal_client/pyproject.toml]
+
+      - id: ruff-format
+        name: terminal client ruff format
+        files: ^terminal_client/
+        args: [--config, terminal_client/pyproject.toml]

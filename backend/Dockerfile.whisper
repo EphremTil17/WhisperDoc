@@ -6,9 +6,10 @@ FROM mwader/static-ffmpeg:latest AS ffmpeg-source
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
+ENV UV_LINK_MODE=copy
 
-# uv: 10-50x faster dependency resolution and installation vs pip
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Native UV project install with a pinned toolchain
+COPY --from=ghcr.io/astral-sh/uv:0.10.12 /uv /usr/local/bin/uv
 
 # Install minimal build tools (gcc/g++ instead of the heavy build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,19 +18,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements (shared base + whisper-specific)
-COPY requirements.txt requirements_whisper.txt ./
+# Copy project metadata first so dependency layers stay cached across source changes
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies to a user-local folder using uv
-# We use cache mounts to reuse downloaded wheels across builds
+# Install only locked production dependencies before copying source
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --python /usr/local/bin/python3 --locked --no-dev --no-editable --extra whisper --no-install-project
+
+# Copy backend source and install the project itself into the same venv
+COPY . .
+
 # We aggressively prune unnecessary files (.a, .pyc, etc) to prevent layer expansion
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /usr/local/bin/python3 --target /root/.local/lib/python3.12/site-packages \
-    --index-strategy unsafe-best-match \
-    -r requirements.txt -r requirements_whisper.txt && \
-    find /root/.local -name "*.a" -delete && \
-    find /root/.local -name "__pycache__" -type d -exec rm -rf {} + && \
-    find /root/.local -name "*.pyc" -delete
+    uv sync --python /usr/local/bin/python3 --locked --no-dev --no-editable --extra whisper && \
+    find /app/.venv -name "*.a" -delete && \
+    find /app/.venv -name "__pycache__" -type d -exec rm -rf {} + && \
+    find /app/.venv -name "*.pyc" -delete
 
 
 # --- STAGE 2: Runner ---
@@ -41,15 +45,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/app/model-cache
-ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONPATH=/root/.local/lib/python3.12/site-packages:$PYTHONPATH
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH=/app/.venv/bin:$PATH
 # added the "Belt & Suspenders" environment variables ensures that any underlying C-libraries used by PyTorch or FFmpeg will also default to the RAM-disk at /tmp.
 ENV TMPDIR=/tmp
 ENV TEMP=/tmp
 ENV TMP=/tmp
 
 # The "Secret Sauce": Tell the system where the CUDA libs are hidden in Python site-packages
-ENV LD_LIBRARY_PATH=/root/.local/lib/python3.12/site-packages/nvidia/cublas/lib:/root/.local/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # 2. Install ONLY runtime essentials (libgomp1 is required for Whisper's math)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -60,13 +64,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 3. Copy static FFmpeg binaries from Stage 0
 COPY --from=ffmpeg-source /ffmpeg /ffprobe /usr/local/bin/
 
-# 4. Copy the dependencies from the builder stage
-COPY --from=builder /root/.local /root/.local
-
-# 5. Copy application code
-# We use a single COPY . . which respects .dockerignore
-# This is cleaner and ensures __init__.py and other files are not missed
-COPY . .
+# 4. Copy the UV-managed virtual environment from the builder stage
+COPY --from=builder /app/.venv /app/.venv
 
 # 6. Network & Execution
 ARG API_PORT=9989
@@ -79,14 +78,12 @@ LABEL version=${VERSION}
 
 # Use Python for healthcheck to avoid installing curl
 HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
 
-# We use shell form for CMD to allow environment variable expansion
-# Internal Bind: 0.0.0.0 (Necessary for Docker networking)
-# Security is enforced at the Host level (127.0.0.1 mapping) and Middleware.
-# python3 -m uvicorn: --target installs don't create bin/ scripts, so we
-# invoke uvicorn as a module which always works via PYTHONPATH.
-CMD python3 -m uvicorn api_server:app \
+# We use shell form for CMD to allow environment variable expansion.
+# The backend now runs from the UV-managed virtual environment rather than
+# relying on a copied source tree plus PYTHONPATH hacks.
+CMD python -m uvicorn api_server:app \
     --host 0.0.0.0 \
     --port ${API_PORT} \
     --ws websockets-sansio \
