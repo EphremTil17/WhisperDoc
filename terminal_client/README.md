@@ -1,6 +1,6 @@
-# WhisperDoc Client (v2.23.2) - High-Performance Handshake
+# WhisperDoc Terminal Client (v2.23.5)
 
-A secure, modular, and high-performance Python terminal client for real-time dictation using the optimized WhisperDoc v2.14.0 backend.
+A secure, modular Python terminal client for real-time dictation using the WhisperDoc backend. It is the supported fallback and diagnostic client when the Flutter desktop app is unavailable or when you want lower-level visibility into transport behavior.
 
 ## Features
 
@@ -16,7 +16,10 @@ A secure, modular, and high-performance Python terminal client for real-time dic
 ### Performance & UX
 
 - **Global Hotkeys & Single Instance**: Control recording (Default: `Ctrl+Alt+W`) system-wide. Uses a Windows Mutex to ensure only one instance runs at a time (preventing mic conflicts).
-- **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The client respects server-mandated "Cooldown" periods and provides clear user feedback on ban status.
+- **Structured Error Handling**: Parses all 12 backend `error_code` types (`AUTH_FAILED`, `IP_BANNED`, `VERSION_OUTDATED`, `MAX_CONNECTIONS`, etc.) and surfaces user-specific guidance for each — including key reset prompts, update notices, and capacity warnings.
+- **Granular Handshake State Machine**: Five-state machine (`LOCKED`, `AUTHENTICATING`, `AUTHENTICATED`, `FAILED`, `BANNED`, `VERSION_OUTDATED`) with error context propagation to the UI layer.
+- **Keepalive Ping**: Sends periodic pings every 45 seconds to prevent Cloudflare Tunnel idle connection drops (~100s threshold).
+- **Exponential Backoff Reconnection**: Automatic reconnection with jittered exponential backoff (base 1s, max 60s, 10 attempts). Terminal states (banned, version outdated) and intentional disconnects suppress reconnection.
 - **Hardened Handshake Protocol**: Implements strict authentication sequencing. Audio data is only transmitted after the identity-verified handshake is successfully acknowledged by the backend.
 - **Low-Latency PCM Streaming**: Streams raw PCM audio chunks in real-time with zero-latency handover.
 - **Instant-Ready Lifecycle**: Proactively authenticates and warms up the backend connection on client launch, ensuring the model is loaded before you even press the hotkey.
@@ -33,7 +36,8 @@ A secure, modular, and high-performance Python terminal client for real-time dic
 
 ### 1. Prerequisites
 
-- **Python 3.8+**
+- **Python 3.10+**
+- **uv**
 - **PortAudio**: Usually included with Python wheels.
   - _Linux_: `sudo apt install libportaudio2`
 
@@ -45,18 +49,10 @@ After making sure you are in the terminal client dir:
 cd terminal_client
 ```
 
-Create a virtual environment and install dependencies:
+Sync the project and install the dev tools:
 
 ```bash
-python -m venv venv
-
-# Windows
-.\venv\Scripts\Activate.ps1
-# Linux/Mac
-source venv/bin/activate
-
-pip install uv
-uv pip install -r requirements.txt
+uv sync --group dev
 ```
 
 ### 3. Launch & Configuration
@@ -64,14 +60,22 @@ uv pip install -r requirements.txt
 Simply start the client. If it’s your first time, the interactive wizard will guide you through server setup and microphone selection:
 
 ```bash
-python whisper_client.py
+uv run whisperdoc-terminal
 # or
-python whisper_client.py --setup
+uv run whisperdoc-terminal --setup
+```
+
+You can also run the package module directly:
+
+```bash
+uv run python -m whisper_shell
 ```
 
 - **API Key**: You will be prompted for your API Key, which is then stored securely in your OS Enclave.
 - **Hardware Validation**: Select your microphone device and host API (e.g., **WASAPI**). The setup wizard strictly enforces valid hardware configurations to prevent "ghost" audio inputs.
 - **Ready**: Once you see "Client Ready", press (Default: **Ctrl+Alt+W**) to start dictating.
+
+`whisper_client.py` remains as a compatibility shim, but the UV commands above are the supported workflow.
 
 ## CLI Options
 
@@ -87,7 +91,33 @@ python whisper_client.py --setup
 
 ```bash
 # Force re-configure audio device
-python whisper_client.py --setup
+uv run whisperdoc-terminal --setup
+```
+
+## Testing
+
+The terminal client ships with a comprehensive pytest suite covering the handshake state machine, transport error routing, reconnection backoff, recording controller orchestration, payload builder, audio buffer, sanitizer, and CLI initialization.
+
+```bash
+cd terminal_client
+
+# Lint and import ordering
+uv run ruff check .
+
+# Auto-fix safe lint issues
+uv run ruff check . --fix
+
+# Format the codebase
+uv run ruff format .
+
+# Run all tests with coverage
+uv run pytest tests/ --cov=whisper_shell --cov-report=term-missing
+
+# Run a specific test file
+uv run pytest tests/test_handshake.py -v
+
+# Run Pyright against the runtime package
+uv run pyright
 ```
 
 ## Troubleshooting

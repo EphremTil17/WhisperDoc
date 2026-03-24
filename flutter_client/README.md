@@ -1,6 +1,6 @@
-# WhisperDoc Flutter Client v2.23.2
+# WhisperDoc Flutter Client v2.23.5
 
-A native Windows desktop application for real-time speech-to-text dictation powered by OpenAI's Whisper model.
+A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend.
 
 ## Purpose
 
@@ -16,7 +16,7 @@ The Flutter client has been hardened to match server-side security standards thr
 - **Credential Isolation**: API keys and OIDC JWTs are stored exclusively in the **Windows Credential Manager** (Secure Vault). Sensitive tokens are never written to plain-text configuration files.
 - **Transport Security & RFC 1918**: Mandatory `wss://` (TLS 1.2+) is enforced for all public connections. Plain-text `ws://` is permitted **only** after validating the target as a verified local private network IP (RFC 1918).
 - **Hardened Handshake (Handshake Cage)**: Implements a strict state machine that buffers audio locally and only flushes to the socket _after_ the identity-verified handshake is acknowledged by the backend.
-- **Active Defense Awareness**: Intelligently handles `1008` (Policy Violation) closures. The UI provides real-time "Ban Cooldown" countdowns and respects server-mandated wait periods.
+- **Structured Error Awareness**: Handles all backend `error_code` types alongside numeric `1008` closures. The UI provides real-time "Ban Cooldown" countdowns, version mismatch warnings, and respects server-mandated wait periods.
 - **Data-at-Rest Encryption**: Transcription history is stored in an **AES-256 encrypted Isar database**. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
 
@@ -119,7 +119,17 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v2.20.0)
+## Recent Improvements (v2.23.5)
+
+### Transport Fingerprinting & Structured Errors
+
+- **OIDC Identity Fingerprint**: `ConfigurationManager` now tracks OIDC identity state (`userId`, `isAuthenticated`) separately from settings. Silent token refreshes no longer trigger unnecessary WebSocket reconnects, while real identity changes (sign-in, sign-out, user switch) still force a reconnect.
+- **Structured Error Compatibility**: The backend now emits `error_code` strings (`AUTH_FAILED`, `IP_BANNED`, `VERSION_OUTDATED`, etc.) alongside numeric codes, enabling precise client-side error routing without breaking backwards compatibility.
+- **CORS Spec Compliance**: Backend CORS middleware now conditionally sets `allow_credentials` based on whether specific origins are configured, fixing a spec violation that caused browsers to reject credentialed cross-origin requests.
+
+If the Flutter client is temporarily unavailable, the Python terminal client remains the supported fallback for backend diagnostics and low-level transport debugging.
+
+## Older Improvements (v2.20.0)
 
 ### 🧩 Modular Profile Hub & Controllers
 
@@ -129,7 +139,7 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 ### 🚦 Intelligent Error Handling & Update Controls
 
-- **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol, ensuring descriptive error messages for bans or version mismatches.
+- **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol with structured `error_code` fields, ensuring descriptive error messages for bans or version mismatches.
 - **Throttled Update Service**:
   - Implemented a **6-hour GitHub cooldown** to prevent API rate limiting.
   - Handshake-gated re-evaluations: Only checks for updates when connecting/authenticating, reducing idle CPU load.

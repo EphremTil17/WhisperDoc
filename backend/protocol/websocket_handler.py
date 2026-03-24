@@ -16,6 +16,43 @@ from collections import defaultdict
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
 
+
+def get_client_host(websocket: WebSocket) -> str:
+    client = websocket.client
+    return client.host if client else "unknown"
+
+
+def is_lower(v1: str, v2: str) -> bool:
+    """Return True if semver v1 < v2.  Fail-secure: unparseable → True."""
+    try:
+        v1_parts = [int(p) for p in v1.split('+')[0].split('-')[0].split('.')]
+        v2_parts = [int(p) for p in v2.split('+')[0].split('-')[0].split('.')]
+        for i in range(3):
+            p1 = v1_parts[i] if i < len(v1_parts) else 0
+            p2 = v2_parts[i] if i < len(v2_parts) else 0
+            if p1 < p2: return True
+            if p1 > p2: return False
+        return False
+    except Exception:
+        return True
+
+
+# --- Structured Error Codes (string enums for JSON "error_code" field) ---
+class ErrorCode:
+    AUTH_FAILED = "AUTH_FAILED"
+    HANDSHAKE_REQUIRED = "HANDSHAKE_REQUIRED"
+    VERSION_OUTDATED = "VERSION_OUTDATED"
+    IP_BANNED = "IP_BANNED"
+    MAX_CONNECTIONS = "MAX_CONNECTIONS"
+    MALFORMED_JSON = "MALFORMED_JSON"
+    INVALID_EVENT = "INVALID_EVENT"
+    DUPLICATE_HANDSHAKE = "DUPLICATE_HANDSHAKE"
+    NO_AUDIO = "NO_AUDIO"
+    BUFFER_EXCEEDED = "BUFFER_EXCEEDED"
+    TRANSCRIPTION_FAILED = "TRANSCRIPTION_FAILED"
+    SERVER_ERROR = "SERVER_ERROR"
+
+
 class ConnectionManager:
     """Manages WebSocket connection lifecycle, protocol state, and audio processing."""
     def __init__(self, engine: BaseEngine, app_version: str, min_client_version: str = "0.0.0", sec_client_version: str = "0.0.0"):
@@ -43,14 +80,14 @@ class ConnectionManager:
         log.info(f"ConnectionManager initialized. Proxy-Ready. Max Connections: {MAX_CONNECTIONS}")
 
     async def connect(self, websocket: WebSocket):
-        ip = websocket.client.host
+        ip = get_client_host(websocket)
 
         # 1. Check for Active Bans
         is_banned, remaining = self.governance.is_ip_banned(ip)
         if is_banned:
             log.warning(f"BANNED CLIENT: {ip} rejected. Active ban in effect. Retry in {remaining}s.")
             await websocket.accept()
-            await websocket.send_json({"event": "error", "code": 1008, "message": f"IP Banned. Cooldown: {remaining}s"})
+            await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.IP_BANNED, "message": f"IP Banned. Cooldown: {remaining}s"})
             await websocket.close(code=1008, reason=f"IP Banned. Cooldown: {remaining}s")
             return
 
@@ -58,7 +95,7 @@ class ConnectionManager:
         if len(self.active_connections) >= MAX_CONNECTIONS:
             log.warning(f"Connection rejected for {websocket.client}: Max connections reached.")
             await websocket.accept()
-            await websocket.send_json({"event": "error", "code": 1008, "message": "Max concurrent connections reached"})
+            await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.MAX_CONNECTIONS, "message": "Max concurrent connections reached"})
             await websocket.close(code=1008, reason="Max concurrent connections reached")
             return
 
@@ -110,7 +147,7 @@ class ConnectionManager:
                     if not data["handshake_completed"] and idle_time > HANDSHAKE_TIMEOUT_SECONDS:
                         log.warning(f"Closing un-handshaked connection from {websocket.client} (Timeout)")
                         to_disconnect.append((websocket, 1008, "Handshake timeout"))
-                        self.governance.record_protocol_violation(websocket.client.host)
+                        self.governance.record_protocol_violation(get_client_host(websocket))
                         continue
 
                     if idle_time > IDLE_TIMEOUT_SECONDS:
@@ -161,7 +198,7 @@ class ConnectionManager:
         connection_data["last_activity"] = time.time()
         conn_id = connection_data.get("id", "????")
         handshake_done = connection_data.get("handshake_completed", False)
-        ip = websocket.client.host
+        ip = get_client_host(websocket)
 
         if isinstance(message, str):
             try:
@@ -169,7 +206,7 @@ class ConnectionManager:
                 except json.JSONDecodeError:
                     log.warning(f"[{conn_id}] Protocol Violation: Malformed JSON.")
                     self.governance.record_protocol_violation(ip)
-                    await websocket.send_json({"event": "error", "code": 1008, "message": "Malformed JSON"})
+                    await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.MALFORMED_JSON, "message": "Malformed JSON"})
                     await websocket.close(code=1008, reason="Malformed JSON")
                     return
 
@@ -179,7 +216,7 @@ class ConnectionManager:
                     if event != "hello":
                         log.warning(f"[{conn_id}] Protocol Violation: Expected 'hello', got '{event}'.")
                         self.governance.record_protocol_violation(ip)
-                        await websocket.send_json({"event": "error", "code": 1008, "message": "Handshake required"})
+                        await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.HANDSHAKE_REQUIRED, "message": "Handshake required"})
                         await websocket.close(code=1008, reason="Handshake required")
                         return
 
@@ -189,25 +226,12 @@ class ConnectionManager:
                     client_type = data.get("client", "unknown")
 
                     # 1. Version Validation (Hardened Gate)
-                    def is_lower(v1, v2):
-                        try:
-                            v1_parts = [int(p) for p in v1.split('+')[0].split('-')[0].split('.')]
-                            v2_parts = [int(p) for p in v2.split('+')[0].split('-')[0].split('.')]
-                            for i in range(3):
-                                p1 = v1_parts[i] if i < len(v1_parts) else 0
-                                p2 = v2_parts[i] if i < len(v2_parts) else 0
-                                if p1 < p2: return True
-                                if p1 > p2: return False
-                            return False
-                        except: 
-                            # Fail-Secure: Invalid version format is treated as "Outdated/Rejected"
-                            return True
-
                     if is_lower(client_version, self.min_client_version):
                         log.warning(f"[{conn_id}] BLOCKED: Outdated client ({client_version}) < MIN ({self.min_client_version})")
                         await websocket.send_json({
-                            "event": "error", 
-                            "code": 1008, 
+                            "event": "error",
+                            "code": 1008,
+                            "error_code": ErrorCode.VERSION_OUTDATED,
                             "message": f"Update required: v{self.min_client_version} (Client: {client_version})"
                         })
                         await websocket.close(code=1008)
@@ -226,7 +250,7 @@ class ConnectionManager:
                         if not payload:
                             log.warning(f"[{conn_id}] OIDC Authentication Failed.")
                             self.governance.record_protocol_violation(ip)
-                            await websocket.send_json({"event": "error", "code": 403, "message": "OIDC Authentication failed"})
+                            await websocket.send_json({"event": "error", "code": 403, "error_code": ErrorCode.AUTH_FAILED, "message": "OIDC Authentication failed"})
                             await websocket.close(code=1008)
                             return
                         
@@ -239,7 +263,7 @@ class ConnectionManager:
                         if not validate_token(token):
                             log.warning(f"[{conn_id}] API Key Authentication Failed.")
                             self.governance.record_protocol_violation(ip)
-                            await websocket.send_json({"event": "error", "code": 403, "message": "API Key Authentication failed"})
+                            await websocket.send_json({"event": "error", "code": 403, "error_code": ErrorCode.AUTH_FAILED, "message": "API Key Authentication failed"})
                             await websocket.close(code=1008)
                             return
                         connection_data["user_id"] = "static_apiKey"
@@ -259,6 +283,7 @@ class ConnectionManager:
                     return
 
                 if event == "hello":
+                    await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.DUPLICATE_HANDSHAKE, "message": "Handshake already completed"})
                     await websocket.close(code=1008, reason="Handshake already completed")
                     return
                 
@@ -268,11 +293,13 @@ class ConnectionManager:
                 elif event == "ping":
                     await websocket.send_json({"event": "pong"})
                 else:
+                    await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.INVALID_EVENT, "message": f"Invalid event: {event}"})
                     await websocket.close(code=1008, reason=f"Invalid event: {event}")
             
             except Exception as e:
                 log.error(f"[{conn_id}] Error in text handler: {e}")
                 try:
+                    await websocket.send_json({"event": "error", "code": 1011, "error_code": ErrorCode.SERVER_ERROR, "message": "Internal server error"})
                     await websocket.close(code=1011)
                 except Exception as ce:
                     log.debug(f"[{conn_id}] Error closing WebSocket after handler error: {ce}")
@@ -280,6 +307,7 @@ class ConnectionManager:
         elif isinstance(message, bytes):
             if not handshake_done:
                 self.governance.record_protocol_violation(ip)
+                await websocket.send_json({"event": "error", "code": 1008, "error_code": ErrorCode.HANDSHAKE_REQUIRED, "message": "Handshake required"})
                 await websocket.close(code=1008, reason="Handshake required")
                 return
             
@@ -290,6 +318,7 @@ class ConnectionManager:
                 self.bytes_received[websocket] += len(message)
             else:
                 log.warning(f"[{conn_id}] Resource Exhaustion: Buffer limit reached.")
+                await websocket.send_json({"event": "error", "code": 1009, "error_code": ErrorCode.BUFFER_EXCEEDED, "message": "Buffer limit exceeded"})
                 await websocket.close(code=1009, reason="Buffer limit exceeded")
                 self.disconnect(websocket)
 
@@ -313,7 +342,7 @@ class ConnectionManager:
         
         if not buffer:
             log.warning(f"[{conn_id}] Transcription requested but buffer is empty.")
-            await websocket.send_json({"event": "error", "code": "NO_AUDIO", "message": "No audio data received"})
+            await websocket.send_json({"event": "error", "code": 422, "error_code": ErrorCode.NO_AUDIO, "message": "No audio data received"})
             return
 
         tmp_path = None
@@ -366,7 +395,7 @@ class ConnectionManager:
             
         except Exception as e:
             log.error(f"[{conn_id}] Transcription failed: {e}")
-            await websocket.send_json({"event": "error", "message": "Transcription failed"})
+            await websocket.send_json({"event": "error", "code": 1011, "error_code": ErrorCode.TRANSCRIPTION_FAILED, "message": "Transcription failed"})
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 try:

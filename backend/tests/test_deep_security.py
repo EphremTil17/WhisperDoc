@@ -83,12 +83,15 @@ def test_protocol_enforcement_audio_before_auth():
                 
                 # 2. Immediately send raw bytes (Protocol Violation)
                 websocket.send_bytes(b"\x00\x01\x02\x03")
-                
-                # 3. Expect Disconnect with 1008
+
+                # 3. Server sends structured error, then closes with 1008
+                error_msg = websocket.receive_json()
+                assert error_msg["event"] == "error"
+                assert error_msg["error_code"] == "HANDSHAKE_REQUIRED"
+
                 with pytest.raises(WebSocketDisconnect) as exc:
                     websocket.receive_json()
                 assert exc.value.code == 1008
-                assert "Handshake required" in exc.value.reason
 
 def test_protocol_enforcement_invalid_event_before_auth():
     """Verify that sending non-hello event before auth results in 1008 Close."""

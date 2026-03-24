@@ -16,6 +16,11 @@ __pycache__/
 *.log
 **/logs/
 *.tmp
+.coverage
+.coverage.*
+.pytest_cache/
+.pyright/
+*.egg-info/
 
 # Large audio files (test recordings, samples)
 # Small UI assets (flutter_client/assets/audio/) are tracked intentionally.

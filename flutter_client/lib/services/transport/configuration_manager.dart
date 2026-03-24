@@ -13,13 +13,21 @@ class ConfigurationManager extends ChangeNotifier {
   String? _lastKnownApiKey;
   bool _lastKnownIncognito;
 
+  // OIDC identity fingerprint — tracks whether the authenticated user or
+  // auth state has actually changed.  Prevents unnecessary reconnects on
+  // silent token refreshes where the identity is unchanged.
+  String? _lastKnownUserId;
+  bool _lastKnownIsAuthenticated = false;
+
   VoidCallback? _onReconnectNeeded;
   VoidCallback? _onAutoConnectDesired;
 
   ConfigurationManager(this._authService, this._settingsService)
     : _lastKnownUri = _settingsService.serverUri,
       _lastKnownApiKey = _settingsService.cachedApiKey,
-      _lastKnownIncognito = _settingsService.incognitoMode;
+      _lastKnownIncognito = _settingsService.incognitoMode,
+      _lastKnownUserId = _authService.currentUser?['id'] as String?,
+      _lastKnownIsAuthenticated = _authService.isAuthenticated;
 
   void startObserving({
     required VoidCallback onReconnectNeeded,
@@ -27,6 +35,12 @@ class ConfigurationManager extends ChangeNotifier {
   }) {
     _onReconnectNeeded = onReconnectNeeded;
     _onAutoConnectDesired = onAutoConnectDesired;
+
+    // Snapshot auth state at the moment observation starts so an already-
+    // authenticated launch doesn't treat the first silent-refresh pulse as
+    // a fresh identity change.
+    _lastKnownUserId = _authService.currentUser?['id'] as String?;
+    _lastKnownIsAuthenticated = _authService.isAuthenticated;
 
     _authService.addListener(_handleAuthChange);
     _settingsService.addListener(_handleSettingsChange);
@@ -51,16 +65,30 @@ class ConfigurationManager extends ChangeNotifier {
   }
 
   void _handleAuthChange() {
-    _logger.info('ConfigurationManager: Auth state pulse detected');
+    final currentUserId = _authService.currentUser?['id'] as String?;
+    final isAuthenticated = _authService.isAuthenticated;
 
-    // Always trigger a reconnect if we are currently connected to force identity update
-    _onReconnectNeeded?.call();
+    // OIDC identity fingerprint: reconnect only when identity state changes.
+    // API key, server URI, and incognito are tracked by _handleSettingsChange.
+    final bool identityChanged = currentUserId != _lastKnownUserId;
+    final bool authStateChanged = isAuthenticated != _lastKnownIsAuthenticated;
 
-    // If we just became authenticated and are currently idle, trigger auto-connect
-    if (_authService.isAuthenticated) {
+    if (identityChanged || authStateChanged) {
       _logger.info(
-        'ConfigurationManager: System authenticated, requesting auto-connect',
+        'ConfigurationManager: OIDC identity state changed '
+        '(identity: $identityChanged, authState: $authStateChanged)',
       );
+      _lastKnownUserId = currentUserId;
+      _lastKnownIsAuthenticated = isAuthenticated;
+      _onReconnectNeeded?.call();
+    } else {
+      _logger.info(
+        'ConfigurationManager: Auth pulse (identity unchanged, skipping reconnect)',
+      );
+    }
+
+    // Auto-connect if we are authenticated and currently idle
+    if (isAuthenticated) {
       _onAutoConnectDesired?.call();
     }
   }

@@ -4,9 +4,11 @@ Minimal FastAPI server for speech-to-text transcription
 Uses faster-whisper with GPU acceleration
 """
 
+import logging
 import os
 import time
 import asyncio
+import subprocess
 
 # Initialize uvloop for performance before anything else
 try:
@@ -65,13 +67,17 @@ try:
 
     _h11mod.H11Protocol.handle_websocket_upgrade = _fixed_ws_upgrade
 
-except Exception:
+except Exception as exc:
     # If the patch fails (uvicorn internals changed), fall through —
     # the original code path still works when NeMo is not loaded.
-    pass
+    logging.getLogger("uvicorn.error").warning(
+        "WhisperDoc h11 WebSocket upgrade patch was not applied; "
+        "startup continues without the NeMo workaround: %s",
+        exc,
+    )
 
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import datetime
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -178,18 +184,23 @@ from fastapi.middleware.gzip import GZipMiddleware
 # Compress responses to save bandwidth on large transcription results
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Configure CORS
+# Configure CORS — wildcard origins with allow_credentials=True violates the
+# CORS spec (browsers reject it).  Credentials are only enabled when specific
+# origins are configured via ALLOWED_ORIGINS.
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"], # Restrict methods
-    allow_headers=["Authorization", "Content-Type"], # Restrict headers
+    allow_credentials="*" not in ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
-# Ensure the app trusts ONLY the local proxy (Cloudflare Tunnel)
-# Tunnel runs on the same loop/host, so we only trust 127.0.0.1
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost").split(",")
+# Trusted Host Check: default "*" disables the check (matches .env.template).
+# Cloudflare Tunnel forwards with the public hostname as Host header, not
+# "localhost", so restricting to "localhost" would silently reject all tunnel
+# traffic.  The real auth gate is OIDC / API key, not the Host header.
+# Restrict to specific hostnames only when running without a reverse proxy.
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 # --- Global Exception Handler (Error Masking) ---
@@ -231,19 +242,21 @@ async def transcribe_audio(file: UploadFile = File(...)):
     """Transcribe uploaded audio file"""
     if manager is None:
         raise HTTPException(status_code=503, detail="System not initialized")
+
+    filename = file.filename or "upload"
     
     # Validate file type
     if not file.content_type or not file.content_type.startswith('audio/'):
         # Also accept common audio file extensions
         allowed_extensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
-        if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
+        if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
             log.warning(f"Invalid file type received: {file.content_type}")
             raise HTTPException(
                 status_code=400, 
                 detail=f"Invalid file type. Expected audio file, got: {file.content_type}"
             )
     
-    log.info(f"Processing file: {file.filename} ({file.content_type})")
+    log.info(f"Processing file: {filename} ({file.content_type})")
     
     # Optional: Check file size if content-length is provided
     # Note: For UploadFile, we may need to read it to be 100% sure
@@ -262,7 +275,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
     temp_path = None
     wav_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+        suffix = os.path.splitext(filename)[1] or ".tmp"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             shutil.copyfileobj(file.file, temp_file)
             temp_path = temp_file.name
 
@@ -270,7 +284,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
         # Normalize to WAV (16kHz, mono, 16-bit) for engine compatibility
         wav_path = temp_path + ".wav"
-        import subprocess
         proc = await asyncio.to_thread(
             subprocess.run,
             ["ffmpeg", "-y", "-i", temp_path, "-ar", "16000", "-ac", "1", "-sample_fmt", "s16", wav_path],
@@ -320,9 +333,12 @@ async def ingest_logs(batch: LogBatch):
     for record in batch.logs:
         # Convert timestamp to datetime object
         client_time = datetime.fromisoformat(record.timestamp)
-        
-        # Use opt(record=...) to properly override the record's time
-        log.opt(record={"time": client_time}).bind(source=record.source).log(
+
+        def _inject_time(entry):
+            entry["time"] = client_time
+
+        # Patch the emitted record so the stored timestamp reflects the client event time.
+        log.patch(_inject_time).bind(source=record.source).log(
             record.level, 
             record.message
         )

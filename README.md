@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.23.2
+# WhisperDoc - Speech-to-Text System v2.23.5
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -16,7 +16,7 @@ Before starting, ensure your system meets the following requirements:
 
 - **Linux/Ubuntu** (Tested on Ubuntu 22.04/24.04) for automated setup
 - **Windows/MacOS/Linux** for manual setup
-- **Python 3.10+** and [uv](https://docs.astral.sh/uv/) (or `pip`)
+- **Python 3.10+** and [uv](https://docs.astral.sh/uv/)
 - **Docker** and **Docker Compose**
 
 ### GPU Requirements (Optional, but Recommended)
@@ -34,10 +34,10 @@ For high-performance transcription, an NVIDIA GPU is required:
 
 1. **Check Prerequisites**: Ensure Docker and (optionally) NVIDIA drivers are installed.
 2. **Run Setup**:
-   - First make sure to have a python virtual environment activated
+   - First make sure to have a Python virtual environment activated
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate
+   uv venv
+   source .venv/bin/activate
    # Run the setup script to check dependencies and create config files
    ./setup.sh
    ```
@@ -73,16 +73,12 @@ For high-performance transcription, an NVIDIA GPU is required:
    docker compose up -d whisper-backend
    ```
 
-3. **(Optional) Local Client Setup**
+3. **(Optional) Local Terminal Client Setup**
 
    ```bash
-   # Only needed if running the Python terminal client locally
-   python3 -m venv venv
-   source venv/bin/activate          # Linux/Mac
-   # .\venv\Scripts\Activate.ps1     # Windows PowerShell
-
-   pip install uv
-   uv pip install -r terminal_client/requirements.txt
+   # Lightweight fallback/debug client if the Flutter app is unavailable
+   cd terminal_client
+   uv sync --group dev
    ```
 
 4. **Test the API**
@@ -101,7 +97,7 @@ docker compose exec whisper-backend python3 -m pytest tests/test_api.py
 **Run Locally:**
 
 ```bash
-# Requires a local venv with backend/requirements.txt installed
+# Requires backend/requirements.txt in your active Python environment
 pytest backend/tests
 ```
 
@@ -150,10 +146,11 @@ pytest backend/tests
 - **Memory Hygiene (malloc_trim)**: Aggressive RAM reclamation using `malloc_trim` to force the Linux kernel to reclaim heap memory immediately after models are unloaded from VRAM.
 - **Drift-Proof Security Tracking**: Re-engineered the security maintenance loop to be time-interval based rather than clock-modulo based, ensuring robust IP-ban cleanup regardless of event-loop timing.
 
-### 7. Error Handling & Update Controls
+### 7. Structured Error Codes & Update Controls
 
+- **Structured Error Protocol**: All WebSocket error payloads include both a numeric `code` (for backwards compatibility) and a structured `error_code` string (e.g., `AUTH_FAILED`, `VERSION_OUTDATED`, `IP_BANNED`) for precise client-side error routing.
 - **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol, ensuring descriptive error messages for bans or version mismatches.
-- Added **Profile-Based Logic** to prevent "Update Available" notifications from appearing during active transcription sessions and Ensures that if a security patch is available, the user is immediately notified and blocked from using the service until updated.
+- Added **Profile-Based Logic** to prevent "Update Available" notifications from appearing during active transcription sessions and ensures that if a security patch is available, the user is immediately notified and blocked from using the service until updated.
 
 ## Configuration
 
@@ -190,16 +187,17 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) on standardized evaluation datasets:
 
-| Engine | Model | WER (%) ↓ | RTFx ↑ | Language | VRAM (fp16) |
-|--------|-------|-----------|--------|----------|-------------|
-| **Parakeet** | `nvidia/parakeet-tdt-0.6b-v2` | **6.05** | **3,386** | English | ~2.4 GB |
-| **Whisper** | `openai/whisper-large-v3-turbo` | 7.83 | 200 | Multilingual | ~3.5 GB |
+| Engine       | Model                           | WER (%) ↓ | RTFx ↑    | Language     | VRAM (fp16) |
+| ------------ | ------------------------------- | --------- | --------- | ------------ | ----------- |
+| **Parakeet** | `nvidia/parakeet-tdt-0.6b-v2`   | **6.05**  | **3,386** | English      | ~2.4 GB     |
+| **Whisper**  | `openai/whisper-large-v3-turbo` | 7.83      | 200       | Multilingual | ~3.5 GB     |
 
 - **WER** (Word Error Rate): Lower is better. Parakeet achieves 23% lower WER than Whisper Turbo.
 - **RTFx** (Real-Time Factor): Higher is better. Parakeet is ~17x faster than Whisper Turbo due to its non-autoregressive TDT architecture.
 - Both engines run in **float16** precision with negligible accuracy loss vs float32.
 
 > **Research to watch**:
+>
 > - [LiteASR](https://github.com/efeslab/LiteASR) (EMNLP 2025) — PCA-based encoder compression that reduces Whisper encoder size by ~33-40% with near-zero WER degradation. Currently requires HuggingFace Transformers inference (no CTranslate2 or NeMo support), but if CTranslate2 adds low-rank layer support, this could meaningfully reduce VRAM for the Whisper engine.
 > - [CrisperWhisper](https://github.com/nyrahealth/CrisperWhisper) (INTERSPEECH 2024) — Fine-tuned Whisper Large v3 for verbatim transcription (6.66% avg WER vs 7.7% for standard v3) with filler detection (`[UM]`, `[UH]`) and hallucination mitigation. An official [CTranslate2 conversion](https://huggingface.co/nyrahealth/faster_CrisperWhisper) exists for faster-whisper, though word-level timestamp precision degrades outside their custom pipeline. Licensed CC-BY-NC-4.0 (non-commercial only).
 
@@ -212,7 +210,7 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v2.23.2
+### Flutter Client (Windows) v2.23.5
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
@@ -225,16 +223,20 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.23.2
+### Python Terminal Client v2.23.5
 
 A secure, modular, and production-ready terminal client for high-performance dictation.
 
 - **Secure API Key Storage** (OS Enclave)
-- **Active Defense Awareness** (Handles 1008 Ban states)
+- **Structured Error Handling** (Routes all 12 `error_code` types with user-specific guidance)
+- **Keepalive Ping** (Prevents Cloudflare Tunnel idle drops)
+- **Exponential Backoff Reconnection** (Jittered retries, max 10 attempts)
+- **Granular Handshake State Machine** (BANNED, VERSION_OUTDATED, FAILED states)
 - **Fail-Secure Handshake**
 - **Auto Copy/Paste**
 - **Automated First-Time Setup**
 - **Incognito Mode** (Ghost Mode)
+- **Pytest + Pyright + Ruff Quality Gates** for the fallback/debug client
 
 📖 **[Terminal Client Documentation](terminal_client/README.md)**
 

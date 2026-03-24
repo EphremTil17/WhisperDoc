@@ -111,13 +111,16 @@ def test_handshake_caging_blocks_audio():
             websocket.receive_json()
             
             # Send binary (audio) data BEFORE auth
+            websocket.send_bytes(b"audio data")
+
+            # Server sends structured error, then closes with 1008
+            error_msg = websocket.receive_json()
+            assert error_msg["event"] == "error"
+            assert error_msg["error_code"] == "HANDSHAKE_REQUIRED"
+
             with pytest.raises(WebSocketDisconnect) as exc:
-                websocket.send_bytes(b"audio data")
-                # The server should drop the connection immediately
-                websocket.receive_json() 
-            
+                websocket.receive_json()
             assert exc.value.code == 1008
-            assert "Handshake required" in exc.value.reason
 
 def test_handshake_caging_blocks_invalid_first_event():
     """
