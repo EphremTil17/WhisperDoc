@@ -34,10 +34,15 @@ class RecordingController:
 
         # State
         self.is_recording = False
+        self._background_tasks: set[asyncio.Task[object]] = set()
 
         # Wire up transport listeners
         self.transport.add_message_listener(self._handle_server_message)
         self.transport.handshake.add_listener(self._on_handshake_state_changed)
+
+    def _track_task(self, task: asyncio.Task[object]) -> None:
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def toggle_recording(self):
         """Main entry point triggered by Hotkey."""
@@ -60,10 +65,10 @@ class RecordingController:
         self.buffer_manager.clear()
 
         # 3. Ensure Transport is connected in background (Auto-Wake)
-        asyncio.create_task(self.transport.ensure_connected())
+        self._track_task(asyncio.create_task(self.transport.ensure_connected()))
 
         # 4. Start the Pipe loop
-        asyncio.create_task(self._process_audio_pipe())
+        self._track_task(asyncio.create_task(self._process_audio_pipe()))
 
     async def _stop_recording_session(self):
         if not self.is_recording:
@@ -171,5 +176,8 @@ class RecordingController:
             self.kb.release("v")
 
     async def shutdown(self):
+        for task in self._background_tasks:
+            task.cancel()
+        self._background_tasks.clear()
         await self.transport.disconnect(reason="App shutdown")
         self.audio.stop_stream()

@@ -1,6 +1,6 @@
 # --- STAGE 0: FFmpeg Source ---
 # We use a specialized static build to avoid 600MB of apt-dependencies
-FROM mwader/static-ffmpeg:latest AS ffmpeg-source
+FROM mwader/static-ffmpeg:8.1 AS ffmpeg-source
 
 # --- STAGE 1: Builder ---
 FROM python:3.12-slim AS builder
@@ -80,14 +80,6 @@ LABEL version=${VERSION}
 HEALTHCHECK --interval=10m --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')" || exit 1
 
-# We use shell form for CMD to allow environment variable expansion.
-# The backend now runs from the UV-managed virtual environment rather than
-# relying on a copied source tree plus PYTHONPATH hacks.
-CMD python -m uvicorn api_server:app \
-    --host 0.0.0.0 \
-    --port ${API_PORT} \
-    --ws websockets-sansio \
-    --proxy-headers \
-    --forwarded-allow-ips='*' \
-    --ws-max-size 1048576 \
-    --timeout-keep-alive 60
+# Exec form wrapping sh -c to preserve env var expansion (${API_PORT}).
+# The shell expands ${API_PORT}, then exec replaces it so uvicorn becomes PID 1.
+CMD ["sh", "-c", "exec python -m uvicorn api_server:app --host 0.0.0.0 --port ${API_PORT} --ws websockets-sansio --proxy-headers --forwarded-allow-ips='*' --ws-max-size 1048576 --timeout-keep-alive 60"]

@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import requests
 from cachetools import TTLCache
-from jose import JWTError, jwt
+from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 from logging_config import log
 
@@ -289,7 +289,7 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
     except JWTClaimsError as e:
         log.warning(f"JWT validation failed: Claims error - {e}")
         return None
-    except (JWTError, Exception) as e:
+    except Exception as e:
         # Catch all JWT and cryptographic errors as a failed handshake
         log.warning(f"JWT validation failed: {e}")
         return None

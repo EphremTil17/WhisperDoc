@@ -71,7 +71,7 @@ class ModelManager:
                         download_root="/app/model-cache",
                         local_files_only=True,
                     )
-                except (FileNotFoundError, OSError, ValueError):
+                except (OSError, ValueError):
                     # Cache miss or corrupt local state — fall back to network download
                     self.model = whisper_model_class(
                         self.model_name,

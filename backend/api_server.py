@@ -86,7 +86,7 @@ import shutil
 import tempfile
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import (
     FastAPI,
@@ -203,8 +203,18 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 # Compress responses to save bandwidth on large transcription results
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Configure CORS — wildcard origins with allow_credentials=True violates the
-# CORS spec (browsers reject it).  Credentials are only enabled when specific
+# Trusted Host Check: default "*" disables the check (matches .env.template).
+# Cloudflare Tunnel forwards with the public hostname as Host header, not
+# "localhost", so restricting to "localhost" would silently reject all tunnel
+# traffic.  The real auth gate is OIDC / API key, not the Host header.
+# Restrict to specific hostnames only when running without a reverse proxy.
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+# Configure CORS — added last so it executes first (FastAPI LIFO ordering).
+# This ensures CORS headers are present even on TrustedHost rejections.
+# Wildcard origins with allow_credentials=True violates the CORS spec
+# (browsers reject it).  Credentials are only enabled when specific
 # origins are configured via ALLOWED_ORIGINS.
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
@@ -214,13 +224,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-# Trusted Host Check: default "*" disables the check (matches .env.template).
-# Cloudflare Tunnel forwards with the public hostname as Host header, not
-# "localhost", so restricting to "localhost" would silently reject all tunnel
-# traffic.  The real auth gate is OIDC / API key, not the Host header.
-# Restrict to specific hostnames only when running without a reverse proxy.
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 
 # --- Global Exception Handler (Error Masking) ---
@@ -259,17 +262,9 @@ async def health_check():
     )
 
 
-@app.post("/transcribe", dependencies=[Depends(verify_api_key)])
-async def transcribe_audio(file: UploadFile = File(...)):
-    """Transcribe uploaded audio file"""
-    if manager is None:
-        raise HTTPException(status_code=503, detail="System not initialized")
-
-    filename = file.filename or "upload"
-
-    # Validate file type
+def _validate_upload(file: UploadFile, filename: str) -> None:
+    """Validate file type and size, raising HTTPException on failure."""
     if not file.content_type or not file.content_type.startswith("audio/"):
-        # Also accept common audio file extensions
         allowed_extensions = [".wav", ".mp3", ".m4a", ".flac", ".ogg"]
         if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
             log.warning(f"Invalid file type received: {file.content_type}")
@@ -278,10 +273,6 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 detail=f"Invalid file type. Expected audio file, got: {file.content_type}",
             )
 
-    log.info(f"Processing file: {filename} ({file.content_type})")
-
-    # Optional: Check file size if content-length is provided
-    # Note: For UploadFile, we may need to read it to be 100% sure
     file.file.seek(0, os.SEEK_END)
     file_size = file.file.tell()
     file.file.seek(0)
@@ -295,6 +286,34 @@ async def transcribe_audio(file: UploadFile = File(...)):
             detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.",
         )
 
+
+def _save_upload_to_temp(file_obj, suffix: str) -> str:
+    """Write uploaded file to a temporary path (sync, for use with to_thread)."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file_obj, tmp)
+        return tmp.name
+
+
+@app.post(
+    "/transcribe",
+    dependencies=[Depends(verify_api_key)],
+    responses={
+        400: {"description": "Invalid file type or unsupported audio format"},
+        413: {"description": "File too large"},
+        500: {"description": "Transcription failed"},
+        503: {"description": "System not initialized"},
+    },
+)
+async def transcribe_audio(file: Annotated[UploadFile, File()]):
+    """Transcribe uploaded audio file"""
+    if manager is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    filename = file.filename or "upload"
+    _validate_upload(file, filename)
+
+    log.info(f"Processing file: {filename} ({file.content_type})")
+
     # Save uploaded file and normalize to 16kHz mono WAV via FFmpeg.
     # This makes the endpoint engine-agnostic: Whisper can ingest any
     # format, but NeMo (Parakeet) expects WAV.  FFmpeg is present in
@@ -303,9 +322,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
     wav_path = None
     try:
         suffix = os.path.splitext(filename)[1] or ".tmp"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            shutil.copyfileobj(file.file, temp_file)
-            temp_path = temp_file.name
+        temp_path = await asyncio.to_thread(_save_upload_to_temp, file.file, suffix)
 
         log.debug(f"Saved to temp file: {temp_path}")
 
@@ -380,8 +397,8 @@ async def ingest_logs(batch: LogBatch):
         # Convert timestamp to datetime object
         client_time = datetime.fromisoformat(record.timestamp)
 
-        def _inject_time(entry):
-            entry["time"] = client_time
+        def _inject_time(entry, _t=client_time):
+            entry["time"] = _t
 
         # Patch the emitted record so the stored timestamp reflects the client event time.
         log.patch(_inject_time).bind(source=record.source).log(

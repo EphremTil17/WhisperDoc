@@ -46,7 +46,7 @@ def validate_token(token: str) -> bool:
     return False
 
 
-async def verify_api_key(header_value: str = Security(api_key_header)):
+def verify_api_key(header_value: str = Security(api_key_header)):
     """
     FastAPI dependency for HTTP route authentication.
     Expects 'Authorization: Bearer <token>'
