@@ -9,6 +9,7 @@ class SettingsService extends ChangeNotifier {
   // Secure Vault Keys (sensitive data)
   static const String _vaultApiKeyKey = 'api_key';
   static const String _vaultGroqApiKey = 'groq_api_key';
+  static const String _vaultGroqPrompt = 'groq_prompt';
 
   // SharedPreferences Keys (non-sensitive data)
   static const String _keyServerUri = 'server_uri';
@@ -129,7 +130,16 @@ class SettingsService extends ChangeNotifier {
       _groqApiKey = await _vault.retrieveCredential(_vaultGroqApiKey);
       _groqLanguage =
           _prefs.getString(_keyGroqLanguage) ?? _defaultGroqLanguage;
-      _groqPrompt = _prefs.getString(_keyGroqPrompt) ?? _defaultGroqPrompt;
+      _groqPrompt =
+          await _vault.retrieveCredential(_vaultGroqPrompt) ??
+          _prefs.getString(_keyGroqPrompt) ??
+          _defaultGroqPrompt;
+      if (_prefs.containsKey(_keyGroqPrompt)) {
+        if (_groqPrompt.isNotEmpty) {
+          await _vault.storeCredential(_vaultGroqPrompt, _groqPrompt);
+        }
+        await _prefs.remove(_keyGroqPrompt);
+      }
 
       // Load version info once
       final info = await PackageInfo.fromPlatform();
@@ -314,7 +324,14 @@ class SettingsService extends ChangeNotifier {
     if (_groqPrompt == prompt) return;
 
     _groqPrompt = prompt;
-    await _prefs.setString(_keyGroqPrompt, prompt);
+    if (prompt.isEmpty) {
+      await _vault.deleteCredential(_vaultGroqPrompt);
+    } else {
+      await _vault.storeCredential(_vaultGroqPrompt, prompt);
+    }
+    if (_prefs.containsKey(_keyGroqPrompt)) {
+      await _prefs.remove(_keyGroqPrompt);
+    }
     notifyListeners();
     LoggingService().info('Groq prompt updated');
   }

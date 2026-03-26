@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
@@ -6,12 +7,15 @@ import 'package:flutter_client/services/utility/secure_vault_service.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 class HistoryService {
+  static const String _gcmPrefix = 'gcm:';
+
   late Isar _isar;
   final SecureVaultService _vault;
   final LoggingService _logger = LoggingService();
   bool _isInitialized = false;
 
-  late encrypt.Encrypter _encrypter;
+  late encrypt.Encrypter _gcmEncrypter;
+  late encrypt.Encrypter _legacyCbcEncrypter;
 
   HistoryService(this._vault);
 
@@ -24,7 +28,10 @@ class HistoryService {
       // Get encryption key bytes from vault
       final keyBytes = _vault.getEncryptionKeyBytes();
       final key = encrypt.Key(keyBytes);
-      _encrypter = encrypt.Encrypter(
+      _gcmEncrypter = encrypt.Encrypter(
+        encrypt.AES(key, mode: encrypt.AESMode.gcm),
+      );
+      _legacyCbcEncrypter = encrypt.Encrypter(
         encrypt.AES(key, mode: encrypt.AESMode.cbc),
       );
 
@@ -34,7 +41,7 @@ class HistoryService {
         [TranscriptionEntrySchema],
         directory: dir.path,
         name: 'WhisperDocHistory',
-        inspector: true,
+        inspector: kDebugMode,
       );
 
       _isInitialized = true;
@@ -57,11 +64,11 @@ class HistoryService {
     _ensureInitialized();
     if (isIncognito) return;
 
-    final iv = encrypt.IV.fromLength(16);
-    final encrypted = _encrypter.encrypt(text, iv: iv);
+    final iv = encrypt.IV.fromSecureRandom(16);
+    final encrypted = _gcmEncrypter.encrypt(text, iv: iv);
 
     final entry = TranscriptionEntry(
-      encryptedText: encrypted.base64,
+      encryptedText: '$_gcmPrefix${encrypted.base64}',
       ivBase64: iv.base64,
       timestamp: timestamp,
       durationMs: durationMs,
@@ -77,8 +84,18 @@ class HistoryService {
   String decryptEntry(TranscriptionEntry entry) {
     _ensureInitialized();
     final iv = encrypt.IV.fromBase64(entry.ivBase64);
+
+    if (entry.encryptedText.startsWith(_gcmPrefix)) {
+      final encrypted = encrypt.Encrypted.fromBase64(
+        entry.encryptedText.substring(_gcmPrefix.length),
+      );
+      return _gcmEncrypter.decrypt(encrypted, iv: iv);
+    }
+
+    // Backward-compatibility for pre-hardening history entries written with
+    // AES-CBC. New entries are always written as AES-GCM.
     final encrypted = encrypt.Encrypted.fromBase64(entry.encryptedText);
-    return _encrypter.decrypt(encrypted, iv: iv);
+    return _legacyCbcEncrypter.decrypt(encrypted, iv: iv);
   }
 
   Future<List<TranscriptionEntry>> getHistory({int limit = 50}) async {

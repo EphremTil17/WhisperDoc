@@ -22,6 +22,16 @@ class AuthService extends ChangeNotifier {
   bool get isAuthenticating => _isAuthenticating;
   String? get idToken => _idToken;
 
+  String _formatPrincipal(Map<String, dynamic>? user) {
+    final sub = (user?['sub'] ?? 'unknown').toString();
+    final email =
+        (user?['email'] ?? user?['preferred_username'])?.toString().trim();
+    if (email != null && email.isNotEmpty) {
+      return 'sub=$sub email=$email';
+    }
+    return 'sub=$sub';
+  }
+
   Future<void> initialize() async {
     if (_isInitialized) {
       return;
@@ -48,7 +58,9 @@ class AuthService extends ChangeNotifier {
           }
         } else {
           _currentUser = _session.extractUser(_idToken!);
-          _logger.info('Restored OIDC session for: ${_currentUser?['email']}');
+          _logger.info(
+            'Restored OIDC session for ${_formatPrincipal(_currentUser)}',
+          );
         }
       }
     } catch (e) {
@@ -101,7 +113,8 @@ class AuthService extends ChangeNotifier {
 
       _currentUser = _session.extractUser(_idToken!);
       _logger.info(
-        'Sign-in successful: ${_currentUser?['email']} (Refresh Token: ${tokens['refresh_token'] != null ? 'YES' : 'NO'})',
+        'Sign-in successful for ${_formatPrincipal(_currentUser)} '
+        '(Refresh Token: ${tokens['refresh_token'] != null ? 'YES' : 'NO'})',
       );
     } catch (e) {
       if (!e.toString().contains('CANCELED')) {
@@ -146,7 +159,9 @@ class AuthService extends ChangeNotifier {
       );
 
       _currentUser = _session.extractUser(_idToken!);
-      _logger.info('Silent refresh successful: ${_currentUser?['email']}');
+      _logger.info(
+        'Silent refresh successful for ${_formatPrincipal(_currentUser)}',
+      );
       notifyListeners();
       _refreshCompleter?.complete(true);
       return true;

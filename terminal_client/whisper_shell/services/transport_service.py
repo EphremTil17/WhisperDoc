@@ -388,8 +388,8 @@ class TransportService:
         if self._ws:
             try:
                 await self._ws.close(1000, reason)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Ignoring socket-close error during teardown: {e}")
             self._ws = None
 
         if reset_handshake:

@@ -5,6 +5,7 @@ Handles OpenID Connect provider discovery, JWKS caching, and JWT validation
 
 import os
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import requests
 from cachetools import TTLCache
@@ -16,6 +17,9 @@ from logging_config import log
 OIDC_ISSUER_URL = os.getenv("OIDC_ISSUER_URL", "").strip()
 OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "").strip()
 OIDC_API_RESOURCE = os.getenv("OIDC_API_RESOURCE", "https://api.whisperdoc.com").strip()
+OIDC_CONFIG_CACHE_SECONDS = int(
+    os.getenv("OIDC_CONFIG_CACHE_SECONDS", os.getenv("OIDC_JWKS_CACHE_SECONDS", "3600"))
+)
 OIDC_JWKS_CACHE_SECONDS = int(os.getenv("OIDC_JWKS_CACHE_SECONDS", "3600"))
 
 
@@ -25,14 +29,74 @@ def _validate_oidc_url(url: str) -> bool:
     if not url:
         return True  # Empty is valid (OIDC disabled)
 
+    if " " in url or "\n" in url or "\t" in url:
+        log.error("OIDC_ISSUER_URL contains invalid characters")
+        return False
+
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        log.error(f"OIDC_ISSUER_URL must be an absolute URL: {url}")
+        return False
+
     # Must be HTTPS in production (allow HTTP for localhost testing)
-    if not url.startswith(("https://", "http://localhost", "http://127.0.0.1")):
+    if not _is_secure_or_loopback(parsed):
         log.error(f"OIDC_ISSUER_URL must use HTTPS (or localhost): {url}")
         return False
 
-    # Basic URL structure check
-    if " " in url or "\n" in url or "\t" in url:
-        log.error("OIDC_ISSUER_URL contains invalid characters")
+    return True
+
+
+def _normalize_url(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path.rstrip("/") or ""
+    return parsed._replace(
+        scheme=parsed.scheme.lower(),
+        netloc=parsed.netloc.lower(),
+        path=path,
+        params="",
+        query="",
+        fragment="",
+    ).geturl()
+
+
+def _origin_tuple(url: str) -> tuple[str, str, int]:
+    parsed = urlparse(url)
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme.lower() == "https" else 80
+    return parsed.scheme.lower(), (parsed.hostname or "").lower(), port
+
+
+def _is_loopback_host(hostname: str) -> bool:
+    normalized = hostname.lower()
+    return normalized in {"localhost", "127.0.0.1", "::1"}
+
+
+def _is_secure_or_loopback(parsed) -> bool:
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    return scheme == "https" or (scheme == "http" and _is_loopback_host(hostname))
+
+
+def _validate_same_origin(url: str, label: str) -> bool:
+    if not url:
+        log.error(f"OIDC discovery missing {label}")
+        return False
+
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        log.error(f"OIDC {label} must be an absolute URL: {url}")
+        return False
+
+    if not _is_secure_or_loopback(parsed):
+        log.error(f"OIDC {label} must use HTTPS (or localhost): {url}")
+        return False
+
+    if _origin_tuple(url) != _origin_tuple(OIDC_ISSUER_URL):
+        log.error(
+            f"OIDC {label} must stay on the configured issuer origin. "
+            f"Expected origin={_origin_tuple(OIDC_ISSUER_URL)}, got origin={_origin_tuple(url)}"
+        )
         return False
 
     return True
@@ -42,9 +106,9 @@ if OIDC_ISSUER_URL and not _validate_oidc_url(OIDC_ISSUER_URL):
     log.warning("OIDC configuration invalid. OIDC authentication disabled.")
     OIDC_ISSUER_URL = ""
 
-# JWKS Cache (thread-safe, TTL-based)
+# OIDC caches (thread-safe, TTL-based)
+_oidc_config_cache: TTLCache = TTLCache(maxsize=1, ttl=OIDC_CONFIG_CACHE_SECONDS)
 _jwks_cache: TTLCache = TTLCache(maxsize=10, ttl=OIDC_JWKS_CACHE_SECONDS)
-_oidc_config_cache: Optional[Dict[str, Any]] = None
 
 
 def fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
@@ -53,13 +117,11 @@ def fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
     Uses module-level cache to avoid repeated network calls.
     Returns None if OIDC is not configured or fetch fails.
     """
-    global _oidc_config_cache
-
     if not OIDC_ISSUER_URL:
         return None
 
-    if _oidc_config_cache:
-        return _oidc_config_cache
+    if "config" in _oidc_config_cache:
+        return _oidc_config_cache["config"]
 
     try:
         # Normalize issuer URL (remove trailing slash)
@@ -71,7 +133,25 @@ def fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
         response.raise_for_status()
 
         config = response.json()
-        _oidc_config_cache = config
+        discovered_issuer = config.get("issuer")
+        if not isinstance(discovered_issuer, str) or not discovered_issuer.strip():
+            log.warning("OIDC discovery document missing valid issuer")
+            return None
+
+        if _normalize_url(discovered_issuer) != _normalize_url(OIDC_ISSUER_URL):
+            log.warning(
+                "OIDC discovery issuer mismatch. "
+                f"Expected {_normalize_url(OIDC_ISSUER_URL)}, got {_normalize_url(discovered_issuer)}"
+            )
+            return None
+
+        jwks_uri = config.get("jwks_uri")
+        if not isinstance(jwks_uri, str) or not _validate_same_origin(
+            jwks_uri, "jwks_uri"
+        ):
+            return None
+
+        _oidc_config_cache["config"] = config
         log.success(f"OIDC configuration loaded. Issuer: {config.get('issuer')}")
         return config
     except Exception as e:
@@ -95,6 +175,8 @@ def fetch_jwks() -> Optional[Dict[str, Any]]:
     jwks_uri = config.get("jwks_uri")
     if not jwks_uri:
         log.error("OIDC configuration missing jwks_uri")
+        return None
+    if not _validate_same_origin(jwks_uri, "jwks_uri"):
         return None
 
     try:
@@ -196,10 +278,8 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
             },
         )
 
-        # Extract user identity for audit logging
-        user_id = payload.get("sub", "unknown")
-        email = payload.get("email") or payload.get("preferred_username")
-        log.info(f"JWT validated for user: {email or user_id}")
+        # Keep auth logs non-PII. The stable subject claim is enough for audit correlation.
+        log.info(f"JWT validated successfully for sub={payload.get('sub', 'unknown')}")
 
         return payload
 
