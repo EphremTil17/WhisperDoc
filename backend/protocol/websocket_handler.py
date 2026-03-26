@@ -364,12 +364,20 @@ class ConnectionManager:
                             await websocket.close(code=1008)
                             return
 
-                        # Identify user by OIDC 'sub' claim
-                        connection_data["user_id"] = payload.get("sub")
-                        connection_data["user_email"] = payload.get("email")
-                        log.info(
-                            f"[{conn_id}] OIDC Verified for: {connection_data['user_email']}"
+                        # Keep the stable OIDC subject as the canonical identity.
+                        # Email is useful for development-time observability, but it
+                        # is not authoritative enough to store as connection state.
+                        user_sub = payload.get("sub", "unknown")
+                        user_email = payload.get("email") or payload.get(
+                            "preferred_username"
                         )
+                        connection_data["user_id"] = user_sub
+                        if user_email:
+                            log.info(
+                                f"[{conn_id}] OIDC verified for sub={user_sub} email={user_email}"
+                            )
+                        else:
+                            log.info(f"[{conn_id}] OIDC verified for sub={user_sub}")
                     else:
                         # Fallback to static API key validation
                         if not validate_token(token):

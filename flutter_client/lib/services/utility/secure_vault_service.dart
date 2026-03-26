@@ -19,6 +19,7 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// - No plain-text credentials in SharedPreferences
 class SecureVaultService {
   static const String _saltKey = 'whisperdoc_salt';
+  static const String _fallbackDeviceIdKey = 'whisperdoc_fallback_device_id';
   static const int _pbkdf2Iterations = 100000;
   static const int _keyLength = 32; // 256-bit key
 
@@ -151,34 +152,88 @@ class SecureVaultService {
     try {
       final windowsInfo = await _deviceInfo.windowsInfo;
       // Use Windows machine GUID as device ID
-      return windowsInfo.deviceId;
+      final deviceId = windowsInfo.deviceId.trim();
+      if (deviceId.isNotEmpty) {
+        return deviceId;
+      }
+      _logger.warning('Device ID was empty, using persisted fallback');
+      return _getOrCreateFallbackDeviceId();
     } catch (e) {
-      _logger.warning('Failed to get device ID, using fallback');
-      return 'fallback-device-id';
+      _logger.warning('Failed to get device ID, using persisted fallback');
+      return _getOrCreateFallbackDeviceId();
     }
   }
 
   String _generateSalt() {
     // Generate 32-byte cryptographically secure random salt
+    return _generateRandomBase64(32);
+  }
+
+  String _generateRandomBase64(int byteLength) {
     final secureRandom = Random.secure();
-    final random = List<int>.generate(32, (_) => secureRandom.nextInt(256));
+    final random = List<int>.generate(byteLength, (_) => secureRandom.nextInt(256));
     return base64Encode(random);
   }
 
-  String _deriveKey(String deviceId, String salt) {
-    // PBKDF2 key derivation
-    const codec = Utf8Codec();
-    final password = codec.encode(deviceId);
-    final saltBytes = base64Decode(salt);
-
-    // Simplified PBKDF2 using repeated SHA256 hashing
-    // Note: Dart's crypto package doesn't have built-in PBKDF2, so we implement it
-    Uint8List derivedKey = Uint8List.fromList(password + saltBytes);
-
-    for (int i = 0; i < _pbkdf2Iterations; i++) {
-      derivedKey = Uint8List.fromList(sha256.convert(derivedKey).bytes);
+  Future<String> _getOrCreateFallbackDeviceId() async {
+    final existing = await _storage.read(key: _fallbackDeviceIdKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
     }
 
-    return base64Encode(derivedKey.sublist(0, _keyLength));
+    final generated = _generateRandomBase64(32);
+    await _storage.write(key: _fallbackDeviceIdKey, value: generated);
+    _logger.warning(
+      'Persisted per-install fallback device identifier for key derivation',
+    );
+    return generated;
+  }
+
+  String _deriveKey(String deviceId, String salt) {
+    // PBKDF2-HMAC-SHA256 key derivation
+    final password = utf8.encode(deviceId);
+    final saltBytes = base64Decode(salt);
+    final prf = Hmac(sha256, password);
+    final hLen = sha256.convert(const <int>[]).bytes.length;
+    final blockCount = (_keyLength / hLen).ceil();
+    final derivedKey = Uint8List(_keyLength);
+
+    var outputOffset = 0;
+    for (var blockIndex = 1; blockIndex <= blockCount; blockIndex++) {
+      final block = _pbkdf2Block(
+        prf: prf,
+        salt: saltBytes,
+        blockIndex: blockIndex,
+      );
+      final remaining = _keyLength - outputOffset;
+      final bytesToCopy = remaining < block.length ? remaining : block.length;
+      derivedKey.setRange(
+        outputOffset,
+        outputOffset + bytesToCopy,
+        block.take(bytesToCopy),
+      );
+      outputOffset += bytesToCopy;
+    }
+
+    return base64Encode(derivedKey);
+  }
+
+  List<int> _pbkdf2Block({
+    required Hmac prf,
+    required List<int> salt,
+    required int blockIndex,
+  }) {
+    final blockIndexBytes = ByteData(4)..setUint32(0, blockIndex, Endian.big);
+    var u = prf.convert([...salt, ...blockIndexBytes.buffer.asUint8List()]).bytes;
+    final output = Uint8List.fromList(u);
+
+    for (var i = 1; i < _pbkdf2Iterations; i++) {
+      u = prf.convert(u).bytes;
+      for (var j = 0; j < output.length; j++) {
+        output[j] ^= u[j];
+      }
+    }
+
+    return output;
   }
 }
