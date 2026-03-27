@@ -234,10 +234,6 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
         # Fallback to OIDC_API_RESOURCE if Client ID is not set.
         target_audience = OIDC_CLIENT_ID or OIDC_API_RESOURCE
 
-        # Pre-decode to verify identity and get the actual 'iss' string from the token
-        unverified_claims = jwt.get_unverified_claims(token)
-        token_issuer_raw = unverified_claims.get("iss", "")
-
         # Identify our expected issuer (Discovery config is the source of truth)
         oidc_config = fetch_oidc_configuration()
         if not oidc_config:
@@ -249,23 +245,14 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
             log.warning("OIDC Validation failed: Discovery doc missing 'issuer'.")
             return None
 
-        # Principal-Level Pinning: Direct comparison of raw strings
-        # This prevents an attacker from providing a valid token from a DIFFERENT
-        # tenant/identity-provider if the server was misconfigured to trust any JWT.
-        if token_issuer_raw != expected_issuer_raw:
-            log.warning(
-                f"OIDC PINNING VIOLATION! Expected: {expected_issuer_raw}, Found: {token_issuer_raw}"
-            )
-            return None
-
-        # Pass the token's own raw string to jwt.decode to ensure an exact character match
-        # for its internal validation logic, now that we've verified they match normalized.
+        # jwt.decode validates the issuer claim after verifying the signature,
+        # which is strictly stronger than a pre-signature unverified-claims check.
         payload = jwt.decode(
             token,
             rsa_key,
             algorithms=["RS256"],
             audience=target_audience,
-            issuer=token_issuer_raw,
+            issuer=expected_issuer_raw,
             options={
                 "verify_signature": True,
                 "verify_exp": True,

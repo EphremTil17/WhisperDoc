@@ -119,14 +119,37 @@ class ParakeetEngine(BaseEngine):
                     model = cast(
                         Any, nemo_asr.models.ASRModel.from_pretrained(self._model_name)
                     )
+                    # Convert to FP16 on CPU *before* moving to GPU.  This halves the
+                    # PCIe transfer size and avoids a transient FP32+FP16 double-buffer
+                    # on the GPU that would otherwise spike VRAM during the .cuda() call.
+                    model = model.half()
                     model = cast(
                         Any,
                         model.to(self._device)
                         if self._device != "cuda"
                         else model.cuda(),
                     )
-                    model = model.half()  # Fp16 for faster inference; Parakeet supports it and it reduces VRAM usage by ~50%
                     model.eval()
+
+                    # Force CUDA kernel JIT compilation with a dummy inference.
+                    # NeMo TDT models compile kernels on the first transcribe() call
+                    # for each input shape, which causes a ~1s delay and a transient
+                    # VRAM spike (~2x steady-state).  Running a short silent WAV here
+                    # moves both the latency and the memory spike to startup, where
+                    # they are expected.  The temporary file is deleted immediately.
+                    self._jit_warmup(model)
+
+                # Reclaim transient VRAM from JIT compilation immediately
+                # so steady-state memory is visible right after startup.
+                gc.collect()
+                try:
+                    import torch  # type: ignore[import-untyped]
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except ImportError:
+                    pass
+
                 self._model = model
                 log.success(
                     f"ParakeetEngine: model loaded in {time.time() - start:.2f}s"
@@ -144,6 +167,36 @@ class ParakeetEngine(BaseEngine):
                 log.error(f"ParakeetEngine: model load failed: {e}")
                 raise
 
+    @staticmethod
+    def _jit_warmup(model: Any) -> None:
+        """Run a dummy inference to force CUDA kernel JIT compilation.
+
+        NeMo TDT models compile device kernels lazily on the first
+        transcribe() call.  This causes a ~1 s latency spike and a transient
+        VRAM peak (~2x steady-state) that would otherwise hit the first real
+        user request.  A 0.5 s silent WAV is enough to trigger compilation
+        without meaningful overhead.
+        """
+        import tempfile
+        import wave
+
+        log.debug("ParakeetEngine: running JIT warmup inference...")
+        warmup_start = time.time()
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+                with wave.open(tmp, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)  # 16-bit
+                    wf.setframerate(16000)
+                    wf.writeframes(b"\x00\x00" * 8000)  # 0.5 s of silence
+                tmp.flush()
+                model.transcribe([tmp.name], verbose=False)
+            log.debug(
+                f"ParakeetEngine: JIT warmup completed in {time.time() - warmup_start:.2f}s"
+            )
+        except Exception as e:
+            log.warning(f"ParakeetEngine: JIT warmup failed (non-fatal): {e}")
+
     def transcribe(self, audio_path: str) -> TranscriptionResult:
         """
         Transcribe a 16kHz/16-bit/mono WAV file using NeMo Parakeet TDT.
@@ -159,6 +212,10 @@ class ParakeetEngine(BaseEngine):
         """
         if self._model is None:
             self._load_model()
+
+        # NeMo re-attaches stdout StreamHandlers on every transcribe() call.
+        # Re-mute before each inference to suppress the noise (~10μs cost).
+        _mute_nemo_loggers()
 
         start = time.time()
 

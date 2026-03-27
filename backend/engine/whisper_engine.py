@@ -82,16 +82,18 @@ class WhisperEngine(BaseEngine):
             log_prob_threshold=self._log_prob_threshold,
             condition_on_previous_text=self._condition_on_previous_text,
         )
-        # Materialize the lazy generator here, inside the thread
-        segments_list = list(segments_iter)
+        # Materialize the lazy generator here, inside the thread.
+        # Strip segment text once during materialization — avoids a redundant
+        # second pass when joining into full_text.
+        segments_out = [
+            SegmentResult(start=s.start, end=s.end, text=s.text.strip())
+            for s in segments_iter
+        ]
         processing_time = time.time() - start
 
         return TranscriptionResult(
-            text=" ".join(s.text.strip() for s in segments_list),
-            segments=[
-                SegmentResult(start=s.start, end=s.end, text=s.text.strip())
-                for s in segments_list
-            ],
+            text=" ".join(s.text for s in segments_out),
+            segments=segments_out,
             language=info.language,
             processing_time=processing_time,
         )

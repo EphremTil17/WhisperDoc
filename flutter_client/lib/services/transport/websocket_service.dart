@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show WebSocket;
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
@@ -156,9 +157,18 @@ class WebSocketService extends ChangeNotifier {
         throw Exception('Security violation');
       }
 
-      _channel = IOWebSocketChannel.connect(
-        Uri.parse(_transportSecurity.normalizeUri(uriString)),
+      // Open the socket manually so we can set pingInterval before handing
+      // it to the channel. Dart's IOWebSocketChannel.connect() convenience
+      // constructor does not expose this — but the underlying dart:io WebSocket
+      // sends protocol-level ping frames automatically when pingInterval is set,
+      // Python's websockets library does this by default (every 20 s); we match
+      // that behaviour here so the Flutter client stays connected as long as the
+      // terminal client does under the same tunnel.
+      final socket = await WebSocket.connect(
+        _transportSecurity.normalizeUri(uriString),
       );
+      socket.pingInterval = const Duration(seconds: 30);
+      _channel = IOWebSocketChannel(socket);
       await _channel!.ready;
 
       _channel!.stream.listen(
@@ -191,6 +201,7 @@ class WebSocketService extends ChangeNotifier {
   Future<void> disconnect({String reason = 'Client closed'}) async {
     _isIntentionalDisconnect = true;
     _reconnection.reset();
+    _logger.info('Disconnect requested by client | Reason: $reason');
     if (_channel != null) await _channel!.sink.close(1000, reason);
   }
 
@@ -303,15 +314,27 @@ class WebSocketService extends ChangeNotifier {
     _handleDisconnect();
   }
 
-  void _handleSocketError(dynamic error) => _handleDisconnect();
+  void _handleSocketError(dynamic error) {
+    _logger.error('WebSocket transport error', error: error);
+    _handleDisconnect();
+  }
 
-  void _handleSocketClose() =>
-      _processClose(_channel?.closeCode, _channel?.closeReason);
+  void _handleSocketClose() {
+    final code = _channel?.closeCode;
+    final reason = _channel?.closeReason;
+    _logger.info(
+      'WebSocket closed | Code: ${code ?? "none"} | Reason: ${reason ?? "none"}',
+    );
+    _processClose(code, reason);
+  }
 
   void _processClose(int? code, String? reason) {
     if (code == 4001) {
       // Server evicted an idle authenticated session with no audio activity.
       // Go quietly idle — reconnecting would only produce an immediate re-eviction loop.
+      _logger.info(
+        'Server closed idle session | Code: 4001 | Reason: ${reason ?? "No audio activity"}',
+      );
       _isIntentionalDisconnect = true;
       _handleDisconnect();
       return;
@@ -319,6 +342,9 @@ class WebSocketService extends ChangeNotifier {
 
     if (code == 1008) {
       if (_lastHandshakeError == null) {
+        _logger.warning(
+          'Server rejected connection | Code: 1008 | Reason: ${reason ?? "Policy violation"}',
+        );
         _handleAuthError(reason);
       } else {
         _handleDisconnect();
@@ -395,6 +421,9 @@ class WebSocketService extends ChangeNotifier {
     _pendingConfigChange = false;
 
     if (configPending && !_banState.isBanned) {
+      _logger.info(
+        'Reconnecting immediately | Reason: configuration or identity update',
+      );
       // Config/identity changed mid-session: reconnect immediately with fresh
       // settings. Bypassing ReconnectionManager's backoff timer avoids a gap
       // where connect() has already returned true but the socket is gone and
@@ -413,6 +442,9 @@ class WebSocketService extends ChangeNotifier {
         }
       }));
     } else if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
+      _logger.warning(
+        'Unexpected disconnect while active | Scheduling reconnect with backoff',
+      );
       // Genuine unexpected drop: use the backoff timer so we don't hammer the
       // server after a transient network failure.
       _reconnection.schedule(

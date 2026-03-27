@@ -262,8 +262,8 @@ async def health_check():
     )
 
 
-def _validate_upload(file: UploadFile, filename: str) -> None:
-    """Validate file type and size, raising HTTPException on failure."""
+def _validate_upload_type(file: UploadFile, filename: str) -> None:
+    """Validate file content type, raising HTTPException on failure."""
     if not file.content_type or not file.content_type.startswith("audio/"):
         allowed_extensions = [".wav", ".mp3", ".m4a", ".flac", ".ogg"]
         if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
@@ -273,9 +273,17 @@ def _validate_upload(file: UploadFile, filename: str) -> None:
                 detail=f"Invalid file type. Expected audio file, got: {file.content_type}",
             )
 
-    file.file.seek(0, os.SEEK_END)
-    file_size = file.file.tell()
-    file.file.seek(0)
+
+def _save_upload_to_temp(file_obj, suffix: str) -> str:
+    """Write uploaded file to a temporary path and validate size (sync, for use with to_thread).
+
+    The size check is performed here (off the event loop) rather than in the
+    async caller, avoiding a synchronous seek/tell on Starlette's
+    SpooledTemporaryFile that would block the event loop for large uploads.
+    """
+    file_obj.seek(0, os.SEEK_END)
+    file_size = file_obj.tell()
+    file_obj.seek(0)
 
     if file_size > MAX_FILE_SIZE:
         log.warning(
@@ -286,9 +294,6 @@ def _validate_upload(file: UploadFile, filename: str) -> None:
             detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.",
         )
 
-
-def _save_upload_to_temp(file_obj, suffix: str) -> str:
-    """Write uploaded file to a temporary path (sync, for use with to_thread)."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file_obj, tmp)
         return tmp.name
@@ -310,7 +315,7 @@ async def transcribe_audio(file: Annotated[UploadFile, File()]):
         raise HTTPException(status_code=503, detail="System not initialized")
 
     filename = file.filename or "upload"
-    _validate_upload(file, filename)
+    _validate_upload_type(file, filename)
 
     log.info(f"Processing file: {filename} ({file.content_type})")
 
@@ -343,7 +348,8 @@ async def transcribe_audio(file: Annotated[UploadFile, File()]):
                 "s16",
                 wav_path,
             ],
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         if proc.returncode != 0:
             log.error(
@@ -382,10 +388,10 @@ async def transcribe_audio(file: Annotated[UploadFile, File()]):
 
     finally:
         for path in (temp_path, wav_path):
-            if path and os.path.exists(path):
+            if path:
                 try:
                     os.unlink(path)
-                except Exception:
+                except FileNotFoundError:
                     pass
 
 

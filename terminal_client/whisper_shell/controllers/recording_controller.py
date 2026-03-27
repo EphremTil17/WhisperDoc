@@ -47,11 +47,11 @@ class RecordingController:
     async def toggle_recording(self):
         """Main entry point triggered by Hotkey."""
         if not self.is_recording:
-            await self._start_recording_session()
+            self._start_recording_session()
         else:
             await self._stop_recording_session()
 
-    async def _start_recording_session(self):
+    def _start_recording_session(self):
         if self.is_recording:
             return
 
@@ -104,7 +104,7 @@ class RecordingController:
                 logger.error(f"Audio pipe error: {e}")
                 break
 
-    async def _on_handshake_state_changed(self, state: HandshakeState):
+    def _on_handshake_state_changed(self, state: HandshakeState):
         """Reacts to handshake state transitions."""
         if state == HandshakeState.AUTHENTICATED:
             logger.debug("Handshake Authenticated. Pipe loop will flush buffer.")
@@ -132,7 +132,14 @@ class RecordingController:
             self.buffer_manager.clear()
 
     async def _handle_server_message(self, msg: ServerMessage) -> None:
-        """Processes transcription results and server errors."""
+        """Processes transcription results and server errors.
+
+        Intentionally async despite no current awaits. TransportService dispatches
+        all MessageListener callbacks with `await cb(msg)`, so this must return a
+        coroutine. Future work that would naturally use this — writing results to an
+        async queue, aiofiles logging, or rate-limited paste — should be added here
+        directly rather than spawning a new task.
+        """
         event = msg.get("event")
 
         if "text" in msg:

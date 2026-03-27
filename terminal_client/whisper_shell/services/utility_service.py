@@ -49,7 +49,7 @@ def release_single_instance_lock(handle):
         ctypes.windll.kernel32.CloseHandle(handle)
 
 
-def _prompt_audio_api(api_map, Fore, Style) -> str | None:
+def _prompt_audio_api(api_map, fore, style) -> str | None:
     """Prompt user to select an audio API. Returns the API name or None for 'All'."""
     while True:
         print("\nSelect Audio API:")
@@ -58,34 +58,42 @@ def _prompt_audio_api(api_map, Fore, Style) -> str | None:
         if api_choice in api_map:
             return api_map[api_choice]
         print(
-            f"{Fore.RED}Invalid choice. Please select from 0, 1, 2, or 3.{Style.RESET_ALL}"
+            f"{fore.RED}Invalid choice. Please select from 0, 1, 2, or 3.{style.RESET_ALL}"
         )
 
 
-def _prompt_audio_device(target_api, api_map, Fore, Style) -> int:
+def _list_input_devices(
+    target_api: str | None, devices, host_apis, default_input
+) -> list[int]:
+    """Print available input devices filtered by API and return their IDs."""
+    valid_ids = []
+    print(f"\nAvailable Input Devices ({target_api or 'All'}):")
+    for i, dev in enumerate(devices):
+        if dev["max_input_channels"] <= 0:
+            continue
+        api_name = host_apis[dev["hostapi"]]["name"]
+        if target_api and api_name != target_api:
+            continue
+        valid_ids.append(i)
+        marker = " (DEFAULT)" if i == default_input else ""
+        print(f" [{i}] {dev['name']} | {api_name}{marker}")
+    return valid_ids
+
+
+def _prompt_audio_device(target_api, api_map, fore, style) -> int:
     """Prompt user to select an audio input device. Returns the device ID."""
     devices = sd.query_devices()
     host_apis = sd.query_hostapis()
     default_input = sd.query_hostapis()[0].get("default_input")
 
     while True:
-        valid_ids = []
-        print(f"\nAvailable Input Devices ({target_api or 'All'}):")
-        for i, dev in enumerate(devices):
-            if dev["max_input_channels"] > 0:
-                api_name = host_apis[dev["hostapi"]]["name"]
-                if target_api and api_name != target_api:
-                    continue
-
-                valid_ids.append(i)
-                marker = " (DEFAULT)" if i == default_input else ""
-                print(f" [{i}] {dev['name']} | {api_name}{marker}")
+        valid_ids = _list_input_devices(target_api, devices, host_apis, default_input)
 
         if not valid_ids:
             print(
-                f"{Fore.RED}No devices found for the selected API. Please choose another API.{Style.RESET_ALL}"
+                f"{fore.RED}No devices found for the selected API. Please choose another API.{style.RESET_ALL}"
             )
-            target_api = _prompt_audio_api(api_map, Fore, Style)
+            target_api = _prompt_audio_api(api_map, fore, style)
             continue
 
         device_id_str = input(
@@ -96,10 +104,10 @@ def _prompt_audio_device(target_api, api_map, Fore, Style) -> int:
             if device_id in valid_ids:
                 return device_id
             print(
-                f"{Fore.RED}Invalid Device ID {device_id}. Please choose from the list above.{Style.RESET_ALL}"
+                f"{fore.RED}Invalid Device ID {device_id}. Please choose from the list above.{style.RESET_ALL}"
             )
         except ValueError:
-            print(f"{Fore.RED}Please enter a numeric Device ID.{Style.RESET_ALL}")
+            print(f"{fore.RED}Please enter a numeric Device ID.{style.RESET_ALL}")
 
 
 def _save_setup_config(uri: str, device_id: int) -> None:

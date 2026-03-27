@@ -635,20 +635,23 @@ class ConnectionManager:
         try:
             user_id = data.get("user_id", "anonymous")
 
+            # Write WAV outside the GPU semaphore — this is pure IO and does
+            # not need to block other users' transcriptions.
+            tmp_path = await asyncio.to_thread(self._write_wav_temp, buffer)
+
             # IPC GUARD: Per-Identity Concurrency Lock
             # Ensures User A cannot bomb the GPU while User B remains unblocked.
             async with self.user_semaphores[user_id]:
                 log.debug(f"[{conn_id}] IPC-LOCK ACQUIRED. Running transcription...")
-
-                # Wrap the raw PCM buffer in a proper WAV header (off the event loop)
-                tmp_path = await asyncio.to_thread(self._write_wav_temp, buffer)
 
                 # engine.transcribe() is synchronous and handles load-on-demand
                 # internally. Run in a thread to keep the WebSocket loop alive.
                 result = await asyncio.to_thread(self.engine.transcribe, tmp_path)
 
             # 1. Backend Sanitization (Zero-Latency Security Gate)
-            full_text = Sanitizer.sanitize(result.text)
+            # Sanitize each segment once and derive full_text from the results.
+            # This avoids a redundant second sanitization pass on the joined text
+            # and guarantees full_text is consistent with the segment texts.
             safe_segments = [
                 {
                     "start": s.start,
@@ -657,6 +660,7 @@ class ConnectionManager:
                 }
                 for s in result.segments
             ]
+            full_text = " ".join(seg["text"] for seg in safe_segments)
 
             # 2. Security: Wipe buffer immediately
             data["buffer"] = bytearray()
