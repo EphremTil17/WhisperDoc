@@ -1,12 +1,6 @@
-import 'package:isar/isar.dart';
-
-part 'transcription_entry.g.dart';
-
-/// Represents a single transcription event.
-@collection
+/// Represents a single transcription event with field-level encryption.
 class TranscriptionEntry {
-  Id id = Isar.autoIncrement;
-
+  final int? id;
   final String encryptedText;
   final String ivBase64;
   final DateTime timestamp;
@@ -14,6 +8,7 @@ class TranscriptionEntry {
   final bool isIncognito;
 
   TranscriptionEntry({
+    this.id,
     required this.encryptedText,
     required this.ivBase64,
     required this.timestamp,
@@ -21,13 +16,6 @@ class TranscriptionEntry {
     this.isIncognito = false,
   });
 
-  /// Get the decrypted text using the provided key
-  String getDecryptedText(String key) {
-    // This will be implemented in HistoryService or as a helper
-    return ''; // Placeholder
-  }
-
-  // For future JSON serialization
   Map<String, dynamic> toJson() {
     return {
       'encrypted_text': encryptedText,

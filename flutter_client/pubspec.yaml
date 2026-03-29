@@ -14,9 +14,9 @@ dependencies:
   ffi: ^2.1.4
   provider: ^6.1.5+1
   web_socket_channel: ^3.0.3
-  system_tray: ^2.0.3
   window_manager: ^0.5.1
   record: ^6.1.2
+  path: ^1.9.0
   path_provider: ^2.1.5
   logger: ^2.6.2
   google_fonts: ^8.0.2
@@ -29,8 +29,8 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   device_info_plus: ^12.3.0
   crypto: ^3.0.6
-  isar: ^3.1.0+1
-  isar_flutter_libs: ^3.1.0+1
+  drift: ^2.27.0
+  sqlite3_flutter_libs: ^0.6.0+eol
   encrypt: ^5.0.3
   flutter_web_auth_2: ^5.0.0
   jwt_decoder: ^2.0.1
@@ -43,7 +43,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   mocktail: ^1.0.4
   stream_channel: ^2.1.4
-  isar_generator: ^3.1.0+1
+  drift_dev: ^2.27.0
   build_runner: ^2.4.13
 
 flutter:

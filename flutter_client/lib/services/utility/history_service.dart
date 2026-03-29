@@ -1,15 +1,20 @@
-import 'package:flutter/foundation.dart';
-import 'package:isar/isar.dart';
-import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+
+import 'package:drift/drift.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import 'package:flutter_client/infrastructure/database/app_database.dart'
+    hide TranscriptionEntry;
 import 'package:flutter_client/logic/models/transcription_entry.dart';
-import 'package:flutter_client/services/utility/secure_vault_service.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
+import 'package:flutter_client/services/utility/secure_vault_service.dart';
 
 class HistoryService {
   static const String _gcmPrefix = 'gcm:';
 
-  late Isar _isar;
+  late AppDatabase _db;
   final SecureVaultService _vault;
   final LoggingService _logger = LoggingService();
   bool _isInitialized = false;
@@ -23,9 +28,6 @@ class HistoryService {
     if (_isInitialized) return;
 
     try {
-      final dir = await getApplicationSupportDirectory();
-
-      // Get encryption key bytes from vault
       final keyBytes = _vault.getEncryptionKeyBytes();
       final key = encrypt.Key(keyBytes);
       _gcmEncrypter = encrypt.Encrypter(
@@ -35,26 +37,22 @@ class HistoryService {
         encrypt.AES(key, mode: encrypt.AESMode.cbc),
       );
 
-      // Isar 3.x on Windows doesn't support native encryptionKey in open()
-      // so we use field-level encryption for the transcription content.
-      _isar = await Isar.open(
-        [TranscriptionEntrySchema],
-        directory: dir.path,
-        name: 'WhisperDocHistory',
-        inspector: kDebugMode,
-      );
+      _db = await AppDatabase.open();
 
       _isInitialized = true;
       _logger.info(
-        'HistoryService (Isar) initialized with field-level encryption',
+        'HistoryService (Drift/SQLite) initialized with field-level encryption',
       );
+
+      // One-time cleanup: remove old Isar database files if present.
+      await _cleanupLegacyIsarFiles();
     } catch (e) {
       _logger.error('Failed to initialize HistoryService', error: e);
       rethrow;
     }
   }
 
-  /// Encrypt and save a transcription
+  /// Encrypt and save a transcription.
   Future<void> saveTranscription({
     required String text,
     required DateTime timestamp,
@@ -64,23 +62,22 @@ class HistoryService {
     _ensureInitialized();
     if (isIncognito) return;
 
-    final iv = encrypt.IV.fromSecureRandom(16);
+    // AES-GCM is most efficient and conventional with a 96-bit (12-byte) nonce.
+    final iv = encrypt.IV.fromSecureRandom(12);
     final encrypted = _gcmEncrypter.encrypt(text, iv: iv);
 
-    final entry = TranscriptionEntry(
-      encryptedText: '$_gcmPrefix${encrypted.base64}',
-      ivBase64: iv.base64,
-      timestamp: timestamp,
-      durationMs: durationMs,
-      isIncognito: isIncognito,
-    );
-
-    await _isar.writeTxn(() async {
-      await _isar.transcriptionEntrys.put(entry);
-    });
+    await _db.into(_db.transcriptionEntries).insert(
+          TranscriptionEntriesCompanion.insert(
+            encryptedText: '$_gcmPrefix${encrypted.base64}',
+            ivBase64: iv.base64,
+            timestamp: timestamp,
+            durationMs: Value(durationMs),
+            isIncognito: Value(isIncognito),
+          ),
+        );
   }
 
-  /// Decrypt a transcription entry
+  /// Decrypt a transcription entry.
   String decryptEntry(TranscriptionEntry entry) {
     _ensureInitialized();
     final iv = encrypt.IV.fromBase64(entry.ivBase64);
@@ -100,18 +97,28 @@ class HistoryService {
 
   Future<List<TranscriptionEntry>> getHistory({int limit = 50}) async {
     _ensureInitialized();
-    return await _isar.transcriptionEntrys
-        .where()
-        .sortByTimestampDesc()
-        .limit(limit)
-        .findAll();
+    final rows = await (_db.select(_db.transcriptionEntries)
+          ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])
+          ..limit(limit))
+        .get();
+
+    return rows
+        .map(
+          (row) => TranscriptionEntry(
+            id: row.id,
+            encryptedText: row.encryptedText,
+            ivBase64: row.ivBase64,
+            timestamp: row.timestamp,
+            durationMs: row.durationMs,
+            isIncognito: row.isIncognito,
+          ),
+        )
+        .toList();
   }
 
   Future<void> clearAll() async {
     _ensureInitialized();
-    await _isar.writeTxn(() async {
-      await _isar.transcriptionEntrys.clear();
-    });
+    await _db.delete(_db.transcriptionEntries).go();
     _logger.warning('Transcription history cleared');
   }
 
@@ -125,7 +132,23 @@ class HistoryService {
 
   Future<void> dispose() async {
     if (_isInitialized) {
-      await _isar.close();
+      await _db.close();
+    }
+  }
+
+  /// Remove legacy Isar database files from the app support directory.
+  Future<void> _cleanupLegacyIsarFiles() async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final isarFile = File(p.join(dir.path, 'WhisperDocHistory.isar'));
+      if (isarFile.existsSync()) {
+        isarFile.deleteSync();
+        final lockFile = File(p.join(dir.path, 'WhisperDocHistory.isar.lock'));
+        if (lockFile.existsSync()) lockFile.deleteSync();
+        _logger.info('Cleaned up legacy Isar database files');
+      }
+    } catch (e) {
+      _logger.warning('Failed to clean up legacy Isar files: $e');
     }
   }
 }

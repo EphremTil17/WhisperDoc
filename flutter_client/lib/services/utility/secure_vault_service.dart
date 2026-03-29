@@ -14,7 +14,7 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// - Device ID is fetched from Windows machine ID
 ///
 /// Security Properties:
-/// - Even if .isar file is stolen, it cannot be decrypted on another machine
+/// - Even if .sqlite file is stolen, it cannot be decrypted on another machine
 /// - Credentials stored in Windows Credential Manager (encrypted at-rest)
 /// - No plain-text credentials in SharedPreferences
 class SecureVaultService {
@@ -132,7 +132,7 @@ class SecureVaultService {
     return _encryptionKey!;
   }
 
-  /// Get the derived encryption key as raw bytes for Isar
+  /// Get the derived encryption key as raw bytes for database field-level encryption
   Uint8List getEncryptionKeyBytes() {
     _ensureInitialized();
     return base64Decode(_encryptionKey!);
