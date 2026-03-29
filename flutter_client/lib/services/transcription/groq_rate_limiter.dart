@@ -12,13 +12,31 @@ class GroqRateLimiter {
   DateTime _dailyResetDate = _todayUtc();
   DateTime? _retryAfterUntil;
 
+  /// Duration the caller must wait before retrying (zero if no back-off).
+  Duration get retryAfter {
+    final retryUntil = _retryAfterUntil;
+    if (retryUntil == null) return Duration.zero;
+    final remaining = retryUntil.difference(DateTime.now().toUtc());
+
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  /// Human-readable status for diagnostic display.
+  String get statusMessage {
+    _pruneExpiredTimestamps();
+    _resetDailyIfNeeded();
+
+    return '${_requestTimestamps.length}/${AppConstants.groqMaxRpm} RPM, '
+        '$_dailyCount/${AppConstants.groqMaxRpd} RPD';
+  }
+
   /// Whether a request can be made right now without hitting a known limit.
   bool canRequest() {
     _pruneExpiredTimestamps();
     _resetDailyIfNeeded();
 
-    if (_retryAfterUntil != null &&
-        DateTime.now().toUtc().isBefore(_retryAfterUntil!)) {
+    final retryUntil = _retryAfterUntil;
+    if (retryUntil != null && DateTime.now().toUtc().isBefore(retryUntil)) {
       return false;
     }
 
@@ -38,25 +56,11 @@ class GroqRateLimiter {
     if (retryAfter != null) {
       final seconds = int.tryParse(retryAfter);
       if (seconds != null) {
-        _retryAfterUntil =
-            DateTime.now().toUtc().add(Duration(seconds: seconds));
+        _retryAfterUntil = DateTime.now().toUtc().add(
+          Duration(seconds: seconds),
+        );
       }
     }
-  }
-
-  /// Duration the caller must wait before retrying (zero if no back-off).
-  Duration get retryAfter {
-    if (_retryAfterUntil == null) return Duration.zero;
-    final remaining = _retryAfterUntil!.difference(DateTime.now().toUtc());
-    return remaining.isNegative ? Duration.zero : remaining;
-  }
-
-  /// Human-readable status for diagnostic display.
-  String get statusMessage {
-    _pruneExpiredTimestamps();
-    _resetDailyIfNeeded();
-    return '${_requestTimestamps.length}/${AppConstants.groqMaxRpm} RPM, '
-        '$_dailyCount/${AppConstants.groqMaxRpd} RPD';
   }
 
   // -- Internals --
@@ -76,6 +80,7 @@ class GroqRateLimiter {
 
   static DateTime _todayUtc() {
     final now = DateTime.now().toUtc();
+
     return DateTime.utc(now.year, now.month, now.day);
   }
 }

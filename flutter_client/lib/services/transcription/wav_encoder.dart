@@ -7,56 +7,86 @@ import 'dart:typed_data';
 /// the optimal input format for Groq's Whisper API (lowest server-side decode
 /// overhead).
 class WavEncoder {
-  static const int _sampleRate = 16000;
+  static const int _sampleRateHertz = 16000;
   static const int _bitsPerSample = 16;
-  static const int _numChannels = 1;
-  static const int _audioFormat = 1; // PCM
-  static const int _headerSize = 44;
+  static const int _channelCount = 1;
+  static const int _pcmAudioFormatCode = 1;
+  static const int _waveHeaderSizeBytes = 44;
+  static const int _riffChunkSizeExcludesLeadingBytes = 8;
+  static const int _bitsPerByte = 8;
+  static const int _pcmFmtChunkSizeBytes = 16;
+  static const int _fourCcLength = 4;
+
+  static const int _riffChunkIdOffset = 0;
+  static const int _riffChunkSizeOffset = 4;
+  static const int _waveFormatOffset = 8;
+  static const int _fmtChunkIdOffset = 12;
+  static const int _fmtChunkSizeOffset = 16;
+  static const int _audioFormatOffset = 20;
+  static const int _channelCountOffset = 22;
+  static const int _sampleRateOffset = 24;
+  static const int _byteRateOffset = 28;
+  static const int _blockAlignOffset = 32;
+  static const int _bitsPerSampleOffset = 34;
+  static const int _dataChunkIdOffset = 36;
+  static const int _dataChunkSizeOffset = 40;
+
+  static const String _riffChunkId = 'RIFF';
+  static const String _waveFormat = 'WAVE';
+  static const String _fmtChunkId = 'fmt ';
+  static const String _dataChunkId = 'data';
 
   /// Wraps [pcmData] (raw 16-bit LE mono samples at 16 kHz) in a WAV container.
   static Uint8List encode(Uint8List pcmData) {
-    final int dataSize = pcmData.length;
-    final int fileSize = dataSize + _headerSize - 8; // RIFF chunk size
-    final int byteRate = _sampleRate * _numChannels * (_bitsPerSample ~/ 8);
-    final int blockAlign = _numChannels * (_bitsPerSample ~/ 8);
+    final int dataSizeBytes = pcmData.length;
+    final int bytesPerSample = _bitsPerSample ~/ _bitsPerByte;
+    final int riffChunkSize =
+        dataSizeBytes +
+        _waveHeaderSizeBytes -
+        _riffChunkSizeExcludesLeadingBytes;
+    final int byteRate = _sampleRateHertz * _channelCount * bytesPerSample;
+    final int blockAlign = _channelCount * bytesPerSample;
 
-    final buffer = ByteData(_headerSize + dataSize);
+    final ByteData buffer = ByteData(_waveHeaderSizeBytes + dataSizeBytes);
 
     // RIFF header
-    buffer.setUint8(0, 0x52); // 'R'
-    buffer.setUint8(1, 0x49); // 'I'
-    buffer.setUint8(2, 0x46); // 'F'
-    buffer.setUint8(3, 0x46); // 'F'
-    buffer.setUint32(4, fileSize, Endian.little);
-    buffer.setUint8(8, 0x57); // 'W'
-    buffer.setUint8(9, 0x41); // 'A'
-    buffer.setUint8(10, 0x56); // 'V'
-    buffer.setUint8(11, 0x45); // 'E'
+    _writeFourCc(buffer, _riffChunkIdOffset, _riffChunkId);
+    buffer.setUint32(_riffChunkSizeOffset, riffChunkSize, Endian.little);
+    _writeFourCc(buffer, _waveFormatOffset, _waveFormat);
 
     // fmt sub-chunk
-    buffer.setUint8(12, 0x66); // 'f'
-    buffer.setUint8(13, 0x6D); // 'm'
-    buffer.setUint8(14, 0x74); // 't'
-    buffer.setUint8(15, 0x20); // ' '
-    buffer.setUint32(16, 16, Endian.little); // Sub-chunk size (PCM = 16)
-    buffer.setUint16(20, _audioFormat, Endian.little);
-    buffer.setUint16(22, _numChannels, Endian.little);
-    buffer.setUint32(24, _sampleRate, Endian.little);
-    buffer.setUint32(28, byteRate, Endian.little);
-    buffer.setUint16(32, blockAlign, Endian.little);
-    buffer.setUint16(34, _bitsPerSample, Endian.little);
+    _writeFourCc(buffer, _fmtChunkIdOffset, _fmtChunkId);
+    buffer.setUint32(_fmtChunkSizeOffset, _pcmFmtChunkSizeBytes, Endian.little);
+    buffer.setUint16(_audioFormatOffset, _pcmAudioFormatCode, Endian.little);
+    buffer.setUint16(_channelCountOffset, _channelCount, Endian.little);
+    buffer.setUint32(_sampleRateOffset, _sampleRateHertz, Endian.little);
+    buffer.setUint32(_byteRateOffset, byteRate, Endian.little);
+    buffer.setUint16(_blockAlignOffset, blockAlign, Endian.little);
+    buffer.setUint16(_bitsPerSampleOffset, _bitsPerSample, Endian.little);
 
     // data sub-chunk
-    buffer.setUint8(36, 0x64); // 'd'
-    buffer.setUint8(37, 0x61); // 'a'
-    buffer.setUint8(38, 0x74); // 't'
-    buffer.setUint8(39, 0x61); // 'a'
-    buffer.setUint32(40, dataSize, Endian.little);
+    _writeFourCc(buffer, _dataChunkIdOffset, _dataChunkId);
+    buffer.setUint32(_dataChunkSizeOffset, dataSizeBytes, Endian.little);
 
     // Copy PCM data after header
-    final bytes = buffer.buffer.asUint8List();
-    bytes.setRange(_headerSize, _headerSize + dataSize, pcmData);
+    final Uint8List bytes = buffer.buffer.asUint8List();
+    bytes.setRange(
+      _waveHeaderSizeBytes,
+      _waveHeaderSizeBytes + dataSizeBytes,
+      pcmData,
+    );
 
     return bytes;
+  }
+
+  static void _writeFourCc(ByteData buffer, int offset, String value) {
+    if (value.length != _fourCcLength) {
+      throw ArgumentError.value(value, 'value', 'FourCC must be 4 characters.');
+    }
+
+    final List<int> charCodes = value.codeUnits;
+    for (int index = 0; index < _fourCcLength; index++) {
+      buffer.setUint8(offset + index, charCodes[index]);
+    }
   }
 }

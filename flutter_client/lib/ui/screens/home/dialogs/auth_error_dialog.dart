@@ -3,17 +3,27 @@ import 'package:flutter_client/ui/screens/settings_screen.dart';
 import 'dart:async';
 
 class AuthErrorDialog extends StatelessWidget {
+  const AuthErrorDialog({super.key, required this.error});
+
   final String error;
 
-  const AuthErrorDialog({super.key, required this.error});
+  void _handleVerifySettings(BuildContext context) {
+    Navigator.of(context).pop();
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (context) => const SettingsScreen(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF1a1a2e),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Colors.redAccent, width: 1),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        side: BorderSide(color: Colors.redAccent, width: 1),
       ),
       title: const Row(
         children: [
@@ -35,15 +45,7 @@ class AuthErrorDialog extends StatelessWidget {
           child: const Text('Close', style: TextStyle(color: Colors.white54)),
         ),
         ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            unawaited(
-              showDialog(
-                context: context,
-                builder: (context) => const SettingsScreen(),
-              ),
-            );
-          },
+          onPressed: () => _handleVerifySettings(context),
           style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
           child: const Text(
             'Verify Settings',

@@ -17,197 +17,60 @@ import 'package:flutter_client/controllers/recording_controller.dart';
 
 /// Bottom action bar with icon buttons for app controls
 class ActionBar extends StatelessWidget {
-  /// Whether incognito mode is active
-  final bool isIncognitoMode;
-
-  /// Callback when incognito button is tapped
-  final VoidCallback onIncognitoTap;
-
   const ActionBar({
     super.key,
     required this.isIncognitoMode,
     required this.onIncognitoTap,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // 1. Incognito button
-        Consumer<SettingsService>(
-          builder: (context, settings, child) {
-            final String incognitoTooltip;
-            if (isIncognitoMode && settings.isGroqMode) {
-              incognitoTooltip = 'Incognito (Local Only)';
-            } else if (isIncognitoMode) {
-              incognitoTooltip = 'Disable Incognito';
-            } else {
-              incognitoTooltip = 'Enable Incognito';
-            }
-            return Tooltip(
-              message: incognitoTooltip,
-              preferBelow: false,
-              verticalOffset: 20,
-              child: RefinedIconButton(
-                icon: isIncognitoMode
-                    ? Icons.visibility_off
-                    : Icons.visibility_off_outlined,
-                iconColor:
-                    isIncognitoMode ? Colors.orangeAccent : Colors.white38,
-                iconSize: 16,
-                onTap: onIncognitoTap,
-              ),
-            );
-          },
-        ),
-        const SizedBox(width: 8),
+  static const double _tooltipVerticalOffset = 20;
+  static const double _compactIconSize = 16;
+  static const double _standardIconSize = 18;
+  static const double _iconSpacing = 8;
+  static const double _silenceWarningPulseAlpha = 0.3;
 
-        // 2. History button
-        Tooltip(
-          message: 'Recent Transcriptions',
-          preferBelow: false,
-          verticalOffset: 20,
-          child: RefinedIconButton(
-            icon: Icons.history,
-            iconColor: Colors.white38,
-            iconSize: 16,
-            onTap: () => _showHistoryDialog(context),
-          ),
-        ),
-        const SizedBox(width: 8),
+  /// Whether incognito mode is active
+  final bool isIncognitoMode;
 
-        // 3. Connection Status Lock / Cloud Icon (CENTER)
-        Consumer4<
-          WebSocketService,
-          AuthService,
-          SettingsService,
-          UpdateService
-        >(
-          builder: (context, wsService, authService, settings, updateService, child) {
-            // Groq mode: show cloud icon, bypass backend state entirely.
-            if (settings.isGroqMode) {
-              final groqService = context.watch<GroqTranscriptionService>();
-              final descriptor = ConnectionStateMapper.mapGroqState(
-                hasGroqKey: groqService.hasValidCredentials,
-                status: groqService.status,
-              );
+  /// Callback when incognito button is tapped
+  final VoidCallback onIncognitoTap;
 
-              return Tooltip(
-                message: descriptor.tooltip,
-                preferBelow: false,
-                verticalOffset: 20,
-                child: RefinedIconButton(
-                  icon: descriptor.icon,
-                  iconColor: descriptor.iconColor,
-                  iconSize: 18,
-                  isPulsing: descriptor.isPulsing,
-                  pulseColor: descriptor.pulseColor,
-                  onTap: () {
-                    if (!groqService.hasValidCredentials) {
-                      _showSettingsDialog(context);
-                    }
-                  },
-                ),
-              );
-            }
+  VoidCallback _buildGroqConnectionTapHandler(
+    BuildContext context,
+    GroqTranscriptionService groqService,
+  ) {
+    return () {
+      if (!groqService.hasValidCredentials) {
+        _showSettingsDialog(context);
+      }
+    };
+  }
 
-            // Backend mode: existing logic unchanged.
-            final descriptor = ConnectionStateMapper.mapState(
-              status: wsService.status,
-              handshake: wsService.handshakeState.state,
-              security: wsService.securityStatus,
-              hasAnyCreds: wsService.hasValidCredentials,
-              updateStatus: updateService.status,
-            );
+  VoidCallback _buildBackendConnectionTapHandler(
+    BuildContext context,
+    WebSocketService wsService,
+    UpdateService updateService,
+  ) {
+    return () {
+      // Direct Action: If update required, go straight to Profile Hub
+      if (updateService.status == UpdateStatus.required) {
+        _showProfileHub(context);
 
-            return Tooltip(
-              message: descriptor.tooltip,
-              preferBelow: false,
-              verticalOffset: 20,
-              child: RefinedIconButton(
-                icon: descriptor.icon,
-                iconColor: descriptor.iconColor,
-                iconSize: 18,
-                isPulsing: descriptor.isPulsing,
-                pulseColor: descriptor.pulseColor,
-                onTap: () {
-                  // Direct Action: If update required, go straight to Profile Hub
-                  if (updateService.status == UpdateStatus.required) {
-                    _showProfileHub(context);
-                    return;
-                  }
+        return;
+      }
 
-                  final status = wsService.status;
-                  if (status == ConnectionStatus.connected ||
-                      status == ConnectionStatus.connecting) {
-                    return;
-                  }
+      final status = wsService.status;
+      if (status == ConnectionStatus.connected ||
+          status == ConnectionStatus.connecting) {
+        return;
+      }
 
-                  if (!wsService.hasValidCredentials) {
-                    _showSettingsDialog(context);
-                  } else {
-                    unawaited(wsService.connect());
-                  }
-                },
-              ),
-            );
-          },
-        ),
-        const SizedBox(width: 8),
-
-        // 4. Settings button
-        Tooltip(
-          message: 'System Settings',
-          preferBelow: false,
-          verticalOffset: 20,
-          child: RefinedIconButton(
-            icon: Icons.settings_outlined,
-            iconColor: AppTheme.crimsonPrimary,
-            iconSize: 18,
-            onTap: () => _showSettingsDialog(context),
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        // 5. Log button
-        Tooltip(
-          message: 'Debug Logs',
-          preferBelow: false,
-          verticalOffset: 20,
-          child: RefinedIconButton(
-            icon: Icons.terminal_outlined,
-            iconColor: Colors.white38,
-            iconSize: 16,
-            onTap: () => _showLogDialog(context),
-          ),
-        ),
-
-        // 6. Silence Warning (Conditional)
-        Consumer<RecordingController>(
-          builder: (context, controller, child) {
-            if (!controller.showSilenceWarning) return const SizedBox.shrink();
-
-            return Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Tooltip(
-                message: 'No audio detected. Check Microphone Settings.',
-                preferBelow: false,
-                verticalOffset: 20,
-                child: RefinedIconButton(
-                  icon: Icons.warning_amber_rounded,
-                  iconColor: Colors.orangeAccent,
-                  iconSize: 18,
-                  isPulsing: true,
-                  pulseColor: Colors.orangeAccent.withValues(alpha: 0.3),
-                  onTap: () => _showSettingsDialog(context),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
+      if (!wsService.hasValidCredentials) {
+        _showSettingsDialog(context);
+      } else {
+        unawaited(wsService.connect());
+      }
+    };
   }
 
   void _showHistoryDialog(BuildContext context) {
@@ -231,6 +94,184 @@ class ActionBar extends StatelessWidget {
   void _showLogDialog(BuildContext context) {
     unawaited(
       showDialog(context: context, builder: (ctx) => const LogViewerDialog()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // 1. Incognito button
+        Consumer<SettingsService>(
+          builder: (context, settings, child) {
+            final String incognitoTooltip;
+            if (isIncognitoMode && settings.isGroqMode) {
+              incognitoTooltip = 'Incognito (Local Only)';
+            } else if (isIncognitoMode) {
+              incognitoTooltip = 'Disable Incognito';
+            } else {
+              incognitoTooltip = 'Enable Incognito';
+            }
+
+            return Tooltip(
+              message: incognitoTooltip,
+              preferBelow: false,
+              verticalOffset: _tooltipVerticalOffset,
+              child: RefinedIconButton(
+                icon: isIncognitoMode
+                    ? Icons.visibility_off
+                    : Icons.visibility_off_outlined,
+                iconColor: isIncognitoMode
+                    ? Colors.orangeAccent
+                    : Colors.white38,
+                iconSize: _compactIconSize,
+                onTap: onIncognitoTap,
+              ),
+            );
+          },
+        ),
+        const SizedBox(width: _iconSpacing),
+
+        // 2. History button
+        Tooltip(
+          message: 'Recent Transcriptions',
+          preferBelow: false,
+          verticalOffset: _tooltipVerticalOffset,
+          child: RefinedIconButton(
+            icon: Icons.history,
+            iconColor: Colors.white38,
+            iconSize: _compactIconSize,
+            onTap: () => _showHistoryDialog(context),
+          ),
+        ),
+        const SizedBox(width: _iconSpacing),
+
+        // 3. Connection Status Lock / Cloud Icon (CENTER)
+        Consumer4<
+          WebSocketService,
+          AuthService,
+          SettingsService,
+          UpdateService
+        >(
+          builder:
+              (
+                context,
+                wsService,
+                authService,
+                settings,
+                updateService,
+                child,
+              ) {
+                // Groq mode: show cloud icon, bypass backend state entirely.
+                if (settings.isGroqMode) {
+                  final groqService = context.watch<GroqTranscriptionService>();
+                  final descriptor = ConnectionStateMapper.mapGroqState(
+                    hasGroqKey: groqService.hasValidCredentials,
+                    status: groqService.status,
+                  );
+
+                  return Tooltip(
+                    message: descriptor.tooltip,
+                    preferBelow: false,
+                    verticalOffset: _tooltipVerticalOffset,
+                    child: RefinedIconButton(
+                      icon: descriptor.icon,
+                      iconColor: descriptor.iconColor,
+                      iconSize: _standardIconSize,
+                      isPulsing: descriptor.isPulsing,
+                      pulseColor: descriptor.pulseColor,
+                      onTap: _buildGroqConnectionTapHandler(
+                        context,
+                        groqService,
+                      ),
+                    ),
+                  );
+                }
+
+                // Backend mode: existing logic unchanged.
+                final descriptor = ConnectionStateMapper.mapState(
+                  status: wsService.status,
+                  handshake: wsService.handshakeState.state,
+                  security: wsService.securityStatus,
+                  hasAnyCreds: wsService.hasValidCredentials,
+                  updateStatus: updateService.status,
+                );
+
+                return Tooltip(
+                  message: descriptor.tooltip,
+                  preferBelow: false,
+                  verticalOffset: _tooltipVerticalOffset,
+                  child: RefinedIconButton(
+                    icon: descriptor.icon,
+                    iconColor: descriptor.iconColor,
+                    iconSize: _standardIconSize,
+                    isPulsing: descriptor.isPulsing,
+                    pulseColor: descriptor.pulseColor,
+                    onTap: _buildBackendConnectionTapHandler(
+                      context,
+                      wsService,
+                      updateService,
+                    ),
+                  ),
+                );
+              },
+        ),
+        const SizedBox(width: _iconSpacing),
+
+        // 4. Settings button
+        Tooltip(
+          message: 'System Settings',
+          preferBelow: false,
+          verticalOffset: _tooltipVerticalOffset,
+          child: RefinedIconButton(
+            icon: Icons.settings_outlined,
+            iconColor: AppTheme.crimsonPrimary,
+            iconSize: _standardIconSize,
+            onTap: () => _showSettingsDialog(context),
+          ),
+        ),
+        const SizedBox(width: _iconSpacing),
+
+        // 5. Log button
+        Tooltip(
+          message: 'Debug Logs',
+          preferBelow: false,
+          verticalOffset: _tooltipVerticalOffset,
+          child: RefinedIconButton(
+            icon: Icons.terminal_outlined,
+            iconColor: Colors.white38,
+            iconSize: _compactIconSize,
+            onTap: () => _showLogDialog(context),
+          ),
+        ),
+
+        // 6. Silence Warning (Conditional)
+        Consumer<RecordingController>(
+          builder: (context, controller, child) {
+            if (!controller.showSilenceWarning) return const SizedBox.shrink();
+
+            return Padding(
+              padding: const EdgeInsets.only(left: _iconSpacing),
+              child: Tooltip(
+                message: 'No audio detected. Check Microphone Settings.',
+                preferBelow: false,
+                verticalOffset: _tooltipVerticalOffset,
+                child: RefinedIconButton(
+                  icon: Icons.warning_amber_rounded,
+                  iconColor: Colors.orangeAccent,
+                  iconSize: _standardIconSize,
+                  isPulsing: true,
+                  pulseColor: Colors.orangeAccent.withValues(
+                    alpha: _silenceWarningPulseAlpha,
+                  ),
+                  onTap: () => _showSettingsDialog(context),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

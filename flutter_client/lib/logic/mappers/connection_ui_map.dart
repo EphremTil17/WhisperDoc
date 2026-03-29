@@ -7,14 +7,14 @@ import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 
 /// Descriptor for how the connection UI should look and behave.
-class ConnectionUIDescriptor {
+class ConnectionUiMap {
   final IconData icon;
   final Color iconColor;
   final String tooltip;
   final bool isPulsing;
   final Color? pulseColor;
 
-  const ConnectionUIDescriptor({
+  const ConnectionUiMap({
     required this.icon,
     required this.iconColor,
     required this.tooltip,
@@ -26,7 +26,12 @@ class ConnectionUIDescriptor {
 /// Pure logic class to map service states to UI descriptors.
 /// Adheres to "Agnostic Components" rule: UI doesn't know "why", it just knows "what".
 class ConnectionStateMapper {
-  static ConnectionUIDescriptor mapState({
+  static const _secureAlpha = 0.4;
+  static const _connectingAlpha = 0.6;
+  static const _dimAlpha = 0.4;
+  static const _groqActiveAlpha = 0.8;
+
+  static ConnectionUiMap mapState({
     required ConnectionStatus status,
     required HandshakeState handshake,
     required SecurityStatus security,
@@ -60,19 +65,19 @@ class ConnectionStateMapper {
       iconData = Icons.lock_open;
     } else if (status == ConnectionStatus.connected) {
       if (security == SecurityStatus.secure) {
-        iconColor = Colors.greenAccent.withValues(alpha: 0.4);
+        iconColor = Colors.greenAccent.withValues(alpha: _secureAlpha);
         iconData = Icons.lock;
       } else {
-        iconColor = Colors.orangeAccent.withValues(alpha: 0.4);
+        iconColor = Colors.orangeAccent.withValues(alpha: _secureAlpha);
         iconData = Icons.lock_open;
       }
     } else if (status == ConnectionStatus.connecting) {
-      iconColor = Colors.orangeAccent.withValues(alpha: 0.6);
+      iconColor = Colors.orangeAccent.withValues(alpha: _connectingAlpha);
     } else if (status == ConnectionStatus.banned) {
       iconColor = AppTheme.crimsonPrimary;
       iconData = Icons.block;
     } else {
-      iconColor = AppTheme.crimsonPrimary.withValues(alpha: 0.4);
+      iconColor = AppTheme.crimsonPrimary.withValues(alpha: _dimAlpha);
     }
 
     // Determine Tooltip
@@ -96,7 +101,7 @@ class ConnectionStateMapper {
       tooltipMsg = 'Disconnected. Click to Connect.';
     }
 
-    return ConnectionUIDescriptor(
+    return ConnectionUiMap(
       icon: iconData,
       iconColor: iconColor,
       tooltip: tooltipMsg,
@@ -108,40 +113,41 @@ class ConnectionStateMapper {
   /// Maps Groq Cloud engine state to a UI descriptor.
   ///
   /// Called instead of [mapState] when the app is in Groq mode.
-  static ConnectionUIDescriptor mapGroqState({
+  static ConnectionUiMap mapGroqState({
     required bool hasGroqKey,
     required GroqTranscriptionStatus status,
   }) {
     switch (status) {
       case GroqTranscriptionStatus.buffering:
-        return ConnectionUIDescriptor(
+        return ConnectionUiMap(
           icon: Icons.cloud_upload,
-          iconColor: Colors.greenAccent.withValues(alpha: 0.8),
+          iconColor: Colors.greenAccent.withValues(alpha: _groqActiveAlpha),
           tooltip: 'Recording (Groq Cloud)',
         );
       case GroqTranscriptionStatus.transcribing:
-        return ConnectionUIDescriptor(
+        return ConnectionUiMap(
           icon: Icons.cloud_sync,
-          iconColor: Colors.greenAccent.withValues(alpha: 0.8),
+          iconColor: Colors.greenAccent.withValues(alpha: _groqActiveAlpha),
           tooltip: 'Transcribing via Groq...',
           isPulsing: true,
           pulseColor: Colors.greenAccent,
         );
       case GroqTranscriptionStatus.error:
-        return const ConnectionUIDescriptor(
+        return const ConnectionUiMap(
           icon: Icons.cloud_off,
           iconColor: AppTheme.crimsonPrimary,
           tooltip: 'Groq Cloud Error',
         );
       case GroqTranscriptionStatus.idle:
         if (hasGroqKey) {
-          return ConnectionUIDescriptor(
+          return ConnectionUiMap(
             icon: Icons.cloud_done,
-            iconColor: Colors.greenAccent.withValues(alpha: 0.8),
+            iconColor: Colors.greenAccent.withValues(alpha: _groqActiveAlpha),
             tooltip: 'Groq Cloud (Ready)',
           );
         }
-        return const ConnectionUIDescriptor(
+
+        return const ConnectionUiMap(
           icon: Icons.cloud_off,
           iconColor: Colors.orangeAccent,
           tooltip: 'Groq Cloud — API Key Required',

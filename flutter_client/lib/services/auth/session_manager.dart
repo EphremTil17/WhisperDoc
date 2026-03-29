@@ -41,6 +41,7 @@ class SessionManager {
   Map<String, dynamic>? extractUser(String idToken) {
     try {
       final decoded = JwtDecoder.decode(idToken);
+
       return {
         'id': decoded['sub'],
         'email': decoded['email'],

@@ -5,21 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
-/// Configuration for the waveform visualizer (easily adjustable)
-class WaveformConfig {
-  static const int sampleCount = 50;
-  static const int fadeBarCount = 10;
-  static const double barWidth = 2.0;
-  static const double barGap = 2.0;
-  static const double minBarHeight = 3.0;
-  static const double maxBarHeightRatio = 0.9;
-  static const double gainMultiplier = 500.0; // Reduce for less sensitivity
-  static const int throttleMs =
-      16; // 60fps - smooth without excessive CPU (20 for 5fps, 16 for 60fps)
-  static const double invisibleThreshold = 0.05; // Skip bars below this opacity
-  static const double glowThreshold = 0.15; // Min amplitude for glow effect
-}
-
 /// High-performance scrolling waveform visualizer
 ///
 /// Optimizations:
@@ -48,12 +33,6 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
 
   StreamSubscription<double>? _subscription;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _setupSubscription();
-  }
-
   void _setupSubscription() {
     unawaited(_subscription?.cancel());
     final audioService = context.read<AudioService>();
@@ -62,9 +41,12 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
 
   void _onAmplitude(double rawAmplitude) {
     // Logarithmic scaling with configurable gain
-    _pendingAmplitude = rawAmplitude > 0.0001
-        ? (math.log(rawAmplitude * WaveformConfig.gainMultiplier + 1) /
-                  math.log(11))
+    _pendingAmplitude = rawAmplitude > WaveformConfig.amplitudeInputFloor
+        ? (math.log(
+                    rawAmplitude * WaveformConfig.gainMultiplier +
+                        WaveformConfig.logOffset,
+                  ) /
+                  math.log(WaveformConfig.logNormalizationBase))
               .clamp(0.0, 1.0)
         : 0.0;
     _hasPendingUpdate = true;
@@ -90,6 +72,12 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _setupSubscription();
+  }
+
+  @override
   void dispose() {
     _throttleTimer?.cancel();
     unawaited(_subscription?.cancel());
@@ -102,8 +90,8 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
 
     return RepaintBoundary(
       child: SizedBox(
-        height: 40,
-        width: 220,
+        height: WaveformConfig.visualizerHeight,
+        width: WaveformConfig.visualizerWidth,
         child: CustomPaint(
           painter: _WaveformPainter(
             buffer: _buffer,
@@ -133,8 +121,12 @@ class _WaveformPainter extends CustomPainter {
 
   static final Paint _glowPaint = Paint()
     ..strokeCap = StrokeCap.round
-    ..strokeWidth = WaveformConfig.barWidth + 2
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    ..strokeWidth =
+        WaveformConfig.barWidth + WaveformConfig.glowStrokeExtraWidth
+    ..maskFilter = const MaskFilter.blur(
+      BlurStyle.normal,
+      WaveformConfig.glowBlurSigma,
+    );
 
   _WaveformPainter({
     required this.buffer,
@@ -149,11 +141,11 @@ class _WaveformPainter extends CustomPainter {
     if (buffer.isEmpty) return;
 
     const totalBarWidth = WaveformConfig.barWidth + WaveformConfig.barGap;
-    final centerY = size.height / 2;
+    final centerY = size.height / WaveformConfig.halfDivisor;
     final maxBarHeight = size.height * WaveformConfig.maxBarHeightRatio;
 
     const totalWidth = WaveformConfig.sampleCount * totalBarWidth;
-    final startX = (size.width - totalWidth) / 2;
+    final startX = (size.width - totalWidth) / WaveformConfig.halfDivisor;
 
     for (int i = 0; i < WaveformConfig.sampleCount; i++) {
       // Calculate edge fade first (early skip optimization)
@@ -169,7 +161,9 @@ class _WaveformPainter extends CustomPainter {
       }
 
       // Early skip for invisible bars (saves all subsequent calculations)
-      final baseOpacity = isActive ? 1.0 : 0.3;
+      final baseOpacity = isActive
+          ? WaveformConfig.activeBarOpacity
+          : WaveformConfig.inactiveBarOpacity;
       final barOpacity = baseOpacity * edgeFade;
       if (barOpacity < WaveformConfig.invisibleThreshold) continue;
 
@@ -181,13 +175,15 @@ class _WaveformPainter extends CustomPainter {
           WaveformConfig.minBarHeight +
           (amplitude * (maxBarHeight - WaveformConfig.minBarHeight));
       final x = startX + (i * totalBarWidth);
-      final halfHeight = barHeight / 2;
+      final halfHeight = barHeight / WaveformConfig.halfDivisor;
 
       // Glow effect for visible bars with sufficient amplitude
       if (amplitude > WaveformConfig.glowThreshold &&
           isActive &&
-          edgeFade > 0.3) {
-        _glowPaint.color = color.withValues(alpha: 0.25 * edgeFade);
+          edgeFade > WaveformConfig.edgeFadeGlowThreshold) {
+        _glowPaint.color = color.withValues(
+          alpha: edgeFade * WaveformConfig.glowOpacityMultiplier,
+        );
         canvas.drawLine(
           Offset(x, centerY - halfHeight),
           Offset(x, centerY + halfHeight),
@@ -210,4 +206,31 @@ class _WaveformPainter extends CustomPainter {
     // O(1) comparison using version number
     return version != oldDelegate.version || isActive != oldDelegate.isActive;
   }
+}
+
+/// Configuration for the waveform visualizer (easily adjustable)
+class WaveformConfig {
+  static const int sampleCount = 50;
+  static const int fadeBarCount = 10;
+  static const int throttleMs = 16; // 60fps - smooth without excessive CPU
+
+  static const double visualizerHeight = 40.0;
+  static const double visualizerWidth = 220.0;
+  static const double barWidth = 2.0;
+  static const double barGap = 2.0;
+  static const double minBarHeight = 3.0;
+  static const double maxBarHeightRatio = 0.9;
+  static const double gainMultiplier = 500.0; // Reduce for less sensitivity
+  static const double amplitudeInputFloor = 0.0001;
+  static const double logOffset = 1.0;
+  static const double logNormalizationBase = 11.0;
+  static const double halfDivisor = 2.0;
+  static const double activeBarOpacity = 1.0;
+  static const double inactiveBarOpacity = 0.3;
+  static const double invisibleThreshold = 0.05; // Skip bars below this opacity
+  static const double glowThreshold = 0.15; // Min amplitude for glow effect
+  static const double edgeFadeGlowThreshold = 0.3;
+  static const double glowOpacityMultiplier = 0.25;
+  static const double glowStrokeExtraWidth = 2.0;
+  static const double glowBlurSigma = 3.0;
 }

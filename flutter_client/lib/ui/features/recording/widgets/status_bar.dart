@@ -11,108 +11,94 @@ import 'package:provider/provider.dart';
 class StatusBar extends StatelessWidget {
   const StatusBar({super.key});
 
+  static const double _statusColorAlpha = 0.8;
+  static const double _statusDotSize = 6;
+  static const double _statusSpacing = 8;
+  static const double _statusFontSize = 11;
+  static const double _statusLetterSpacing = 0.2;
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
+    Color statusColor;
+    String statusText;
 
     // Groq mode: show Groq-specific status.
     if (settings.isGroqMode) {
-      return _buildGroqStatus(context);
-    }
+      final groqService = context.watch<GroqTranscriptionService>();
 
-    // Backend mode: existing WebSocket status.
-    return _buildBackendStatus(context);
-  }
-
-  Widget _buildGroqStatus(BuildContext context) {
-    final groqService = context.watch<GroqTranscriptionService>();
-
-    Color statusColor;
-    String statusText;
-
-    switch (groqService.status) {
-      case GroqTranscriptionStatus.idle:
+      if (groqService.status == GroqTranscriptionStatus.idle) {
         if (groqService.hasValidCredentials) {
-          statusColor = Colors.greenAccent.withValues(alpha: 0.8);
+          statusColor = Colors.greenAccent.withValues(alpha: _statusColorAlpha);
           statusText = 'Groq Cloud (Ready)';
         } else {
-          statusColor = Colors.orangeAccent.withValues(alpha: 0.8);
+          statusColor = Colors.orangeAccent.withValues(
+            alpha: _statusColorAlpha,
+          );
           statusText = 'Groq Cloud (No API Key)';
         }
-      case GroqTranscriptionStatus.buffering:
-        statusColor = Colors.greenAccent.withValues(alpha: 0.8);
+      } else if (groqService.status == GroqTranscriptionStatus.buffering) {
+        statusColor = Colors.greenAccent.withValues(alpha: _statusColorAlpha);
         statusText = 'Recording (Groq Cloud)';
-      case GroqTranscriptionStatus.transcribing:
-        statusColor = Colors.greenAccent.withValues(alpha: 0.8);
+      } else if (groqService.status == GroqTranscriptionStatus.transcribing) {
+        statusColor = Colors.greenAccent.withValues(alpha: _statusColorAlpha);
         statusText = 'Transcribing via Groq...';
-      case GroqTranscriptionStatus.error:
-        statusColor = Colors.redAccent.withValues(alpha: 0.8);
+      } else {
+        statusColor = Colors.redAccent.withValues(alpha: _statusColorAlpha);
         statusText = 'Groq Cloud Error';
-    }
+      }
+    } else {
+      // Backend mode: existing WebSocket status.
+      final wsService = context.watch<WebSocketService>();
+      final authService = context.watch<AuthService>();
 
-    return _buildRow(statusColor, statusText);
-  }
+      final status = wsService.status;
+      final security = wsService.securityStatus;
+      final handshake = wsService.handshakeState.state;
+      final isAuthenticated = authService.isAuthenticated;
 
-  Widget _buildBackendStatus(BuildContext context) {
-    final wsService = context.watch<WebSocketService>();
-    final authService = context.watch<AuthService>();
-
-    final status = wsService.status;
-    final security = wsService.securityStatus;
-    final handshake = wsService.handshakeState.state;
-    final isAuthenticated = authService.isAuthenticated;
-
-    Color statusColor;
-    String statusText;
-
-    switch (status) {
-      case ConnectionStatus.banned:
-        statusColor = Colors.redAccent.withValues(alpha: 0.8);
-        statusText = "Connection Banned";
-      case ConnectionStatus.connected:
+      if (status == ConnectionStatus.banned) {
+        statusColor = Colors.redAccent.withValues(alpha: _statusColorAlpha);
+        statusText = 'Connection Banned';
+      } else if (status == ConnectionStatus.connected) {
         final isEncrypted = security == SecurityStatus.secure;
         statusColor = isEncrypted
-            ? Colors.greenAccent.withValues(alpha: 0.8)
-            : Colors.orangeAccent.withValues(alpha: 0.8);
+            ? Colors.greenAccent.withValues(alpha: _statusColorAlpha)
+            : Colors.orangeAccent.withValues(alpha: _statusColorAlpha);
 
-        final String authType = isAuthenticated ? "OIDC Verified" : "API Key";
+        final authType = isAuthenticated ? 'OIDC Verified' : 'API Key';
         statusText = isEncrypted
-            ? "Connected ($authType • TLS 1.3)"
-            : "Connected ($authType • Unencrypted)";
-      case ConnectionStatus.connecting:
-        statusColor = Colors.orangeAccent.withValues(alpha: 0.8);
-        statusText = "Connecting...";
-      default:
-        if (handshake == HandshakeState.failed) {
-          statusColor = Colors.redAccent.withValues(alpha: 0.8);
-          statusText = "Authentication Failed";
-        } else {
-          statusColor = Colors.white38;
-          statusText = "Ready (Deep Sleep)";
-        }
+            ? 'Connected ($authType • TLS 1.3)'
+            : 'Connected ($authType • Unencrypted)';
+      } else if (status == ConnectionStatus.connecting) {
+        statusColor = Colors.orangeAccent.withValues(alpha: _statusColorAlpha);
+        statusText = 'Connecting...';
+      } else if (handshake == HandshakeState.failed) {
+        statusColor = Colors.redAccent.withValues(alpha: _statusColorAlpha);
+        statusText = 'Authentication Failed';
+      } else {
+        statusColor = Colors.white38;
+        statusText = 'Ready (Deep Sleep)';
+      }
     }
 
-    return _buildRow(statusColor, statusText);
-  }
-
-  Widget _buildRow(Color color, String text) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          width: _statusDotSize,
+          height: _statusDotSize,
+          decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: _statusSpacing),
         Text(
-          text,
+          statusText,
           style: TextStyle(
-            color: color,
-            fontSize: 11,
+            color: statusColor,
+            fontSize: _statusFontSize,
             fontWeight: FontWeight.w400,
             fontFamily: GoogleFonts.lexend().fontFamily,
-            letterSpacing: 0.2,
+            letterSpacing: _statusLetterSpacing,
           ),
         ),
       ],

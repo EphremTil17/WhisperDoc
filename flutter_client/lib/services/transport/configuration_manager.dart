@@ -127,6 +127,7 @@ class ConfigurationManager extends ChangeNotifier {
           _onAutoConnectDesired?.call();
         }
       }
+
       return;
     }
 

@@ -2,12 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
 class SettingsToggle extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  final bool enabled;
-
   const SettingsToggle({
     super.key,
     required this.title,
@@ -17,10 +11,18 @@ class SettingsToggle extends StatelessWidget {
     this.enabled = true,
   });
 
+  static const _disabledAlpha = 0.4;
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final bool enabled;
+
   @override
   Widget build(BuildContext context) {
     return Opacity(
-      opacity: enabled ? 1.0 : 0.4,
+      opacity: enabled ? 1.0 : _disabledAlpha,
       child: SwitchListTile(
         title: Text(title, style: const TextStyle(fontSize: 14)),
         subtitle: Text(

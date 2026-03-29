@@ -10,6 +10,9 @@ class AppTheme {
   static const Color glassBorder = Color(0x1AFFFFFF); // White with low opacity
   static const Color cardBackground = Color(0x0DFFFFFF); // Very subtle white
 
+  static const double _shadowAlpha = 0.2;
+  static const double _shadowBlur = 16;
+
   static ThemeData get darkTheme {
     return ThemeData(
       brightness: Brightness.dark,
@@ -39,12 +42,12 @@ class AppTheme {
 
   static BoxDecoration get glassDecoration => BoxDecoration(
     color: surface,
-    border: Border.all(color: glassBorder),
-    borderRadius: BorderRadius.circular(16),
+    border: const Border.fromBorderSide(BorderSide(color: glassBorder)),
+    borderRadius: const BorderRadius.all(Radius.circular(16)),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withValues(alpha: 0.2),
-        blurRadius: 16,
+        color: Colors.black.withValues(alpha: _shadowAlpha),
+        blurRadius: _shadowBlur,
         offset: const Offset(0, 4),
       ),
     ],

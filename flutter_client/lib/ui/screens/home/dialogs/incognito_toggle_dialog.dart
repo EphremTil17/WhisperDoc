@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 class IncognitoToggleDialog extends StatelessWidget {
   const IncognitoToggleDialog({super.key});
 
+  static const _borderAlpha = 0.1;
+  static const _enableButtonAlpha = 0.2;
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF1a1a2e),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        borderRadius: const BorderRadius.all(Radius.circular(16)),
+        side: BorderSide(color: Colors.white.withValues(alpha: _borderAlpha)),
       ),
       title: const Row(
         children: [
@@ -34,7 +37,9 @@ class IncognitoToggleDialog extends StatelessWidget {
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
           style: TextButton.styleFrom(
-            backgroundColor: Colors.orangeAccent.withValues(alpha: 0.2),
+            backgroundColor: Colors.orangeAccent.withValues(
+              alpha: _enableButtonAlpha,
+            ),
           ),
           child: const Text(
             'Enable',

@@ -1,15 +1,6 @@
 import 'dart:async';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
-/// Handshake states for WebSocket connection lifecycle
-enum HandshakeState {
-  locked, // Initial state, no handshake initiated
-  authenticating, // Sent hello, waiting for authenticated response
-  authenticated, // Handshake complete, can send audio
-  failed, // Authentication failed or timeout
-  banned, // IP banned by server (1008 close code)
-}
-
 /// Handshake state machine enforcing protocol sequence.
 ///
 /// Implements the security requirement that audio data must NOT be transmitted
@@ -47,6 +38,7 @@ class HandshakeStateMachine {
       _logger.warning(
         'Invalid state transition: ${_state.name} → ${newState.name}',
       );
+
       return;
     }
 
@@ -124,4 +116,13 @@ class HandshakeStateMachine {
     _handshakeTimeout?.cancel();
     _handshakeTimeout = null;
   }
+}
+
+/// Handshake states for WebSocket connection lifecycle
+enum HandshakeState {
+  locked, // Initial state, no handshake initiated
+  authenticating, // Sent hello, waiting for authenticated response
+  authenticated, // Handshake complete, can send audio
+  failed, // Authentication failed or timeout
+  banned, // IP banned by server (1008 close code)
 }

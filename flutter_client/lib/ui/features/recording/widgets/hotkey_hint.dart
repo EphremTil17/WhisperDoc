@@ -6,22 +6,31 @@ import 'package:provider/provider.dart';
 class HotkeyHint extends StatelessWidget {
   const HotkeyHint({super.key});
 
+  static const _outerAlpha = 0.05;
+  static const _outerRadius = 8.0;
+  static const _borderAlpha = 0.1;
+  static const _hintFontSize = 12.0;
+  static const _keyFontSize = 11.0;
+  static const _keyAlpha = 0.1;
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
+    final fontFamily = GoogleFonts.lexend().fontFamily;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        color: Colors.white.withValues(alpha: _outerAlpha),
+        borderRadius: const BorderRadius.all(Radius.circular(_outerRadius)),
+        border: Border.all(color: Colors.white.withValues(alpha: _borderAlpha)),
       ),
-      child: RichText(
-        text: TextSpan(
+      child: Text.rich(
+        TextSpan(
           style: TextStyle(
             color: Colors.white54,
-            fontSize: 12,
-            fontFamily: GoogleFonts.lexend().fontFamily,
+            fontSize: _hintFontSize,
+            fontFamily: fontFamily,
           ),
           children: [
             const TextSpan(text: 'Press '),
@@ -31,15 +40,15 @@ class HotkeyHint extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.white.withValues(alpha: _keyAlpha),
+                  borderRadius: const BorderRadius.all(Radius.circular(4)),
                 ),
                 child: Text(
                   settings.globalHotkey,
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: 11,
-                    fontFamily: GoogleFonts.lexend().fontFamily,
+                    fontSize: _keyFontSize,
+                    fontFamily: fontFamily,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

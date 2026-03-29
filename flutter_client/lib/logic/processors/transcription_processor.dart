@@ -15,6 +15,7 @@ class TranscriptionProcessor {
   /// Processes raw websocket text into a buffer.
   String appendText(String currentBuffer, String newText) {
     if (newText.trim().isEmpty) return currentBuffer;
+
     return currentBuffer.isEmpty ? newText : '$currentBuffer $newText';
   }
 

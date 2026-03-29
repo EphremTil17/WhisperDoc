@@ -20,35 +20,21 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late TextEditingController _uriController;
-  late TextEditingController _apiKeyController;
-  late TextEditingController _groqApiKeyController;
-  late TextEditingController _groqLanguageController;
-  late TextEditingController _groqPromptController;
+  final TextEditingController _uriController = TextEditingController();
+  final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _groqApiKeyController = TextEditingController();
+  final TextEditingController _groqLanguageController = TextEditingController();
+  final TextEditingController _groqPromptController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     final settings = context.read<SettingsService>();
-    _uriController = TextEditingController(text: settings.serverUri);
-    _apiKeyController = TextEditingController(text: settings.cachedApiKey);
-    _groqApiKeyController = TextEditingController(
-      text: settings.cachedGroqApiKey,
-    );
-    _groqLanguageController = TextEditingController(
-      text: settings.groqLanguage,
-    );
-    _groqPromptController = TextEditingController(text: settings.groqPrompt);
-  }
-
-  @override
-  void dispose() {
-    _uriController.dispose();
-    _apiKeyController.dispose();
-    _groqApiKeyController.dispose();
-    _groqLanguageController.dispose();
-    _groqPromptController.dispose();
-    super.dispose();
+    _uriController.text = settings.serverUri;
+    _apiKeyController.text = settings.cachedApiKey ?? '';
+    _groqApiKeyController.text = settings.cachedGroqApiKey ?? '';
+    _groqLanguageController.text = settings.groqLanguage;
+    _groqPromptController.text = settings.groqPrompt;
   }
 
   Future<void> _saveSettings() async {
@@ -61,6 +47,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  void _handleDoneTap() {
+    unawaited(_saveSettings());
+  }
+
+  @override
+  void dispose() {
+    _uriController.dispose();
+    _apiKeyController.dispose();
+    _groqApiKeyController.dispose();
+    _groqLanguageController.dispose();
+    _groqPromptController.dispose();
+    super.dispose();
   }
 
   @override
@@ -78,7 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           TextButton(
-            onPressed: _saveSettings,
+            onPressed: _handleDoneTap,
             child: Text(
               'Done',
               style: TextStyle(
@@ -93,12 +93,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: Consumer<SettingsService>(
         builder: (context, settings, child) {
           final isGroqMode = settings.isGroqMode;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Mode-aware connection (URI vs Groq API key)
                 ConnectionSection(
                   uriController: _uriController,
                   groqApiKeyController: _groqApiKeyController,
@@ -106,9 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   groqPromptController: _groqPromptController,
                 ),
                 const SizedBox(height: 16),
-                // Common: Audio input
                 const AudioSection(),
-                // WhisperDoc-only: Identity & developer API key
                 if (!isGroqMode) ...[
                   const SizedBox(height: 16),
                   AuthSection(
@@ -117,7 +115,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                // Common: Hotkey & Automation
                 const HotkeySection(),
                 const SizedBox(height: 16),
                 const AutomationSection(),

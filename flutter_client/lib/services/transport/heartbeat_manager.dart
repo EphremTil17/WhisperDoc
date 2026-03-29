@@ -4,9 +4,10 @@ import '../utility/logging_service.dart';
 
 /// Manages the WebSocket idle timeout heartbeat.
 class HeartbeatManager {
+  final Duration timeout = AppConstants.wsIdleTimeout;
+
   final LoggingService _logger = LoggingService();
   Timer? _idleTimer;
-  final Duration timeout = AppConstants.wsIdleTimeout;
 
   /// Resets the idle timer. Should be called on every inbound/outbound event.
   void reset({required void Function() onTimeout}) {

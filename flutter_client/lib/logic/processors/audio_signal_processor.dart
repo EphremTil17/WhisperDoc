@@ -4,6 +4,8 @@ import 'dart:async';
 ///
 /// Provides heuristic checks for signal quality, such as silence detection.
 class AudioSignalProcessor {
+  static const double _analogNoiseFloor = 0.00000001;
+
   /// Detects if an audio stream is "dead silent" over a given duration.
   ///
   /// Monitors the [stream] of amplitude values (0.0 to 1.0).
@@ -12,7 +14,8 @@ class AudioSignalProcessor {
   Future<bool> detectSilence(
     Stream<double> stream, {
     Duration timeout = const Duration(seconds: 3),
-    double threshold = 0.00000001, // Near-zero to allow for analog noise floors
+    double threshold =
+        _analogNoiseFloor, // Near-zero to allow for analog noise floors
   }) async {
     double peakSeen = 0.0;
 

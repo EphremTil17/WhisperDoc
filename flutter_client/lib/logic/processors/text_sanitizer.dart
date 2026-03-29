@@ -17,9 +17,7 @@ class TextSanitizer {
 
   // Whitelist: printable ASCII (\x20-\x7E) + safe whitespace (\n, \r, \t).
   // Everything else (ANSI \x1b, null \x00, other control chars < \x20) is stripped.
-  static final RegExp _nonPrintableRegex = RegExp(
-    r'[^\x20-\x7E\n\r\t]',
-  );
+  static final RegExp _nonPrintableRegex = RegExp(r'[^\x20-\x7E\n\r\t]');
 
   /// Strips ANSI escapes and non-printable characters from [text].
   ///

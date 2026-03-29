@@ -7,6 +7,15 @@ class ProfileController extends ChangeNotifier {
   final AuthService _authService;
   final UpdateService _updateService;
 
+  // Auth delegation
+  bool get isAuthenticated => _authService.isAuthenticated;
+  Map<String, dynamic>? get currentUser => _authService.currentUser;
+
+  // Update delegation
+  UpdateStatus get updateStatus => _updateService.status;
+  String? get latestDownloadUrl => _updateService.latestDownloadUrl;
+  UpdateUIDescriptor get updateUI => UpdateMapper.map(_updateService.status);
+
   ProfileController({
     required AuthService authService,
     required UpdateService updateService,
@@ -16,20 +25,12 @@ class ProfileController extends ChangeNotifier {
     _updateService.addListener(notifyListeners);
   }
 
+  Future<void> signOut() => _authService.signOut();
+
   @override
   void dispose() {
     _authService.removeListener(notifyListeners);
     _updateService.removeListener(notifyListeners);
     super.dispose();
   }
-
-  // Auth delegation
-  bool get isAuthenticated => _authService.isAuthenticated;
-  Map<String, dynamic>? get currentUser => _authService.currentUser;
-  Future<void> signOut() => _authService.signOut();
-
-  // Update delegation
-  UpdateStatus get updateStatus => _updateService.status;
-  String? get latestDownloadUrl => _updateService.latestDownloadUrl;
-  UpdateUIDescriptor get updateUI => UpdateMapper.map(_updateService.status);
 }

@@ -1,13 +1,6 @@
 import 'dart:io';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
-/// Security status for WebSocket connections
-enum SecurityStatus {
-  secure, // WSS connection
-  localDev, // WS connection on private IP (RFC 1918)
-  blocked, // WS connection on public IP (security violation)
-}
-
 /// Transport security service for RFC 1918 validation and WSS enforcement.
 ///
 /// Implements transport layer security following established patterns from the
@@ -21,6 +14,10 @@ enum SecurityStatus {
 /// - Protects credentials from man-in-the-middle attacks
 /// - Allows flexible local development without SSL overhead
 class TransportSecurityService {
+  static const int _shift24 = 24;
+  static const int _shift16 = 16;
+  static const int _shift8 = 8;
+
   final LoggingService _logger = LoggingService();
 
   // RFC 1918 private network ranges
@@ -68,11 +65,9 @@ class TransportSecurityService {
         // If it's already ws or wss, leave it alone to allow validation to catch public ws
       } else {
         // No scheme provided: apply defaults based on host
-        if (_isWhitelistedLocal(host) || isPrivateIP(host)) {
-          scheme = 'ws';
-        } else {
-          scheme = 'wss';
-        }
+        scheme = (_isWhitelistedLocal(host) || isPrivateIP(host))
+            ? 'ws'
+            : 'wss';
       }
 
       // 3. Robust Path Management
@@ -91,6 +86,7 @@ class TransportSecurityService {
       ).toString();
     } catch (e) {
       _logger.warning('Normalization failed for "$uriString": $e');
+
       return uriString;
     }
   }
@@ -106,12 +102,14 @@ class TransportSecurityService {
       // 1. WSS is always secure
       if (scheme == 'wss') {
         _logger.info('Transport security: WSS (secure)');
+
         return SecurityStatus.secure;
       }
 
       // 2. Non-WS/WSS is blocked
       if (scheme != 'ws') {
         _logger.warning('Transport security: Invalid scheme $scheme (blocked)');
+
         return SecurityStatus.blocked;
       }
 
@@ -120,21 +118,20 @@ class TransportSecurityService {
         _logger.info(
           'Transport security: WS on whitelisted local host (localDev)',
         );
+
         return SecurityStatus.localDev;
       }
 
       // 4. Resolve hostname to IP if needed
-      String? resolvedIp;
-      if (_isValidIPAddress(host)) {
-        resolvedIp = host;
-      } else {
-        resolvedIp = await _resolveHostname(host);
-      }
+      final resolvedIp = _isValidIPAddress(host)
+          ? host
+          : await _resolveHostname(host);
 
       if (resolvedIp == null) {
         _logger.warning(
           'Transport security: Failed to resolve hostname (blocked)',
         );
+
         return SecurityStatus.blocked;
       }
 
@@ -143,6 +140,7 @@ class TransportSecurityService {
         _logger.info(
           'Transport security: WS on private IP $resolvedIp (localDev)',
         );
+
         return SecurityStatus.localDev;
       }
 
@@ -150,9 +148,11 @@ class TransportSecurityService {
       _logger.error(
         'Transport security: WS connection to public IP $resolvedIp (BLOCKED)',
       );
+
       return SecurityStatus.blocked;
     } catch (e) {
       _logger.error('Transport security validation failed', error: e);
+
       return SecurityStatus.blocked;
     }
   }
@@ -218,22 +218,33 @@ class TransportSecurityService {
       if (addresses.isNotEmpty) {
         final ip = addresses.first.address;
         _logger.info('Resolved $hostname to $ip');
+
         return ip;
       }
+
       return null;
     } catch (e) {
       _logger.warning('DNS resolution failed for $hostname');
+
       return null;
     }
   }
 
   int _ipToInt(String ip) {
     final parts = ip.split('.');
-    return (int.parse(parts[0]) << 24) |
-        (int.parse(parts[1]) << 16) |
-        (int.parse(parts[2]) << 8) |
+
+    return (int.parse(parts.first) << _shift24) |
+        (int.parse(parts[1]) << _shift16) |
+        (int.parse(parts[2]) << _shift8) |
         int.parse(parts[3]);
   }
+}
+
+/// Security status for WebSocket connections
+enum SecurityStatus {
+  secure, // WSS connection
+  localDev, // WS connection on private IP (RFC 1918)
+  blocked, // WS connection on public IP (security violation)
 }
 
 /// Helper class for IP range checking
@@ -241,15 +252,20 @@ class _IPRange {
   final int start;
   final int end;
 
+  static const int _shift24 = 24;
+  static const int _shift16 = 16;
+  static const int _shift8 = 8;
+
   _IPRange(String startIp, String endIp)
     : start = _ipStringToInt(startIp),
       end = _ipStringToInt(endIp);
 
   static int _ipStringToInt(String ip) {
     final parts = ip.split('.');
-    return (int.parse(parts[0]) << 24) |
-        (int.parse(parts[1]) << 16) |
-        (int.parse(parts[2]) << 8) |
+
+    return (int.parse(parts.first) << _shift24) |
+        (int.parse(parts[1]) << _shift16) |
+        (int.parse(parts[2]) << _shift8) |
         int.parse(parts[3]);
   }
 }

@@ -39,9 +39,10 @@ class SettingsService extends ChangeNotifier {
   static const String _defaultTranscriptionMode = 'backend';
   static const String _defaultGroqLanguage = '';
   static const String _defaultGroqPrompt = '';
+  static const int _jwtPartCount = 3;
 
-  late SharedPreferences _prefs;
-  late SecureVaultService _vault;
+  SharedPreferences? _prefs;
+  SecureVaultService? _vault;
   bool _isInitialized = false;
 
   String _serverUri = _defaultServerUri;
@@ -74,71 +75,73 @@ class SettingsService extends ChangeNotifier {
   bool get showVisualizer => _showVisualizer;
   bool get incognitoMode => _incognitoMode;
   String? get cachedApiKey => _apiKey;
-  SecureVaultService get vault => _vault;
+  SecureVaultService get vault => _requireVault();
   String get transcriptionMode => _transcriptionMode;
   bool get isGroqMode => _transcriptionMode == 'groq';
   String? get cachedGroqApiKey => _groqApiKey;
   String get groqLanguage => _groqLanguage;
   String get groqPrompt => _groqPrompt;
 
-  /// Loads settings from SharedPreferences and SecureVault.
+  /// Returns the cached API key, fetching from vault if not yet loaded.
   Future<String?> getApiKey() async {
-    _ensureInitialized();
-    _apiKey ??= await _vault.retrieveCredential(_vaultApiKeyKey);
+    final vault = _requireVault();
+    _apiKey ??= await vault.retrieveCredential(_vaultApiKeyKey);
+
     return _apiKey;
   }
 
-  /// Auto-detect token type: JWT (has 2 dots) vs Static API Key
+  /// Auto-detect token type: JWT (has 2 dots) vs Static API Key.
   String getTokenLabel(String token) {
-    if (token.contains('.') && token.split('.').length == 3) {
+    if (token.contains('.') && token.split('.').length == _jwtPartCount) {
       return 'Access Token (JWT)';
     }
+
     return 'API Key';
   }
 
   Future<void> load() async {
     try {
       // Initialize secure vault first
-      _vault = SecureVaultService();
-      await _vault.initialize();
+      final vault = SecureVaultService();
+      await vault.initialize();
+      _vault = vault;
 
       // Load shared preferences
-      _prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
+      _prefs = prefs;
 
       // Load non-sensitive settings from SharedPreferences
-      _serverUri = _prefs.getString(_keyServerUri) ?? _defaultServerUri;
-      _globalHotkey =
-          _prefs.getString(_keyGlobalHotkey) ?? _defaultGlobalHotkey;
+      _serverUri = prefs.getString(_keyServerUri) ?? _defaultServerUri;
+      _globalHotkey = prefs.getString(_keyGlobalHotkey) ?? _defaultGlobalHotkey;
       _hotkeyModifiers =
-          _prefs.getInt(_keyHotkeyModifiers) ?? _defaultHotkeyModifiers;
-      _hotkeyVKey = _prefs.getInt(_keyHotkeyVKey) ?? _defaultHotkeyVKey;
-      _microphoneId = _prefs.getString(_keyMicrophoneId);
-      _microphoneLabel = _prefs.getString(_keyMicrophoneLabel);
-      _autoCopy = _prefs.getBool(_keyAutoCopy) ?? _defaultAutoCopy;
-      _autoPaste = _prefs.getBool(_keyAutoPaste) ?? _defaultAutoPaste;
+          prefs.getInt(_keyHotkeyModifiers) ?? _defaultHotkeyModifiers;
+      _hotkeyVKey = prefs.getInt(_keyHotkeyVKey) ?? _defaultHotkeyVKey;
+      _microphoneId = prefs.getString(_keyMicrophoneId);
+      _microphoneLabel = prefs.getString(_keyMicrophoneLabel);
+      _autoCopy = prefs.getBool(_keyAutoCopy) ?? _defaultAutoCopy;
+      _autoPaste = prefs.getBool(_keyAutoPaste) ?? _defaultAutoPaste;
       _showVisualizer =
-          _prefs.getBool(_keyShowVisualizer) ?? _defaultShowVisualizer;
+          prefs.getBool(_keyShowVisualizer) ?? _defaultShowVisualizer;
       _incognitoMode =
-          _prefs.getBool(_keyIncognitoMode) ?? _defaultIncognitoMode;
+          prefs.getBool(_keyIncognitoMode) ?? _defaultIncognitoMode;
 
       // Load API key from secure vault (cached in memory)
-      _apiKey = await _vault.retrieveCredential(_vaultApiKeyKey);
+      _apiKey = await vault.retrieveCredential(_vaultApiKeyKey);
 
       // Load Groq Cloud settings
       _transcriptionMode =
-          _prefs.getString(_keyTranscriptionMode) ?? _defaultTranscriptionMode;
-      _groqApiKey = await _vault.retrieveCredential(_vaultGroqApiKey);
-      _groqLanguage =
-          _prefs.getString(_keyGroqLanguage) ?? _defaultGroqLanguage;
+          prefs.getString(_keyTranscriptionMode) ?? _defaultTranscriptionMode;
+      _groqApiKey = await vault.retrieveCredential(_vaultGroqApiKey);
+      _groqLanguage = prefs.getString(_keyGroqLanguage) ?? _defaultGroqLanguage;
       _groqPrompt =
-          await _vault.retrieveCredential(_vaultGroqPrompt) ??
-          _prefs.getString(_keyGroqPrompt) ??
+          await vault.retrieveCredential(_vaultGroqPrompt) ??
+          prefs.getString(_keyGroqPrompt) ??
           _defaultGroqPrompt;
-      if (_prefs.containsKey(_keyGroqPrompt)) {
+      if (prefs.containsKey(_keyGroqPrompt)) {
         if (_groqPrompt.isNotEmpty) {
-          await _vault.storeCredential(_vaultGroqPrompt, _groqPrompt);
+          await vault.storeCredential(_vaultGroqPrompt, _groqPrompt);
         }
-        await _prefs.remove(_keyGroqPrompt);
+        await prefs.remove(_keyGroqPrompt);
       }
 
       // Load version info once
@@ -157,51 +160,51 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setAutoCopy(bool value) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_autoCopy == value) return;
 
     _autoCopy = value;
     // If auto-copy is disabled, auto-paste must also be disabled
     if (!value && _autoPaste) {
       _autoPaste = false;
-      await _prefs.setBool(_keyAutoPaste, false);
+      await prefs.setBool(_keyAutoPaste, false);
     }
-    await _prefs.setBool(_keyAutoCopy, value);
+    await prefs.setBool(_keyAutoCopy, value);
     notifyListeners();
     LoggingService().info('Auto-copy updated to: $value');
   }
 
   Future<void> setAutoPaste(bool value) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_autoPaste == value) return;
 
     _autoPaste = value;
     // If auto-paste is enabled, auto-copy must also be enabled
     if (value && !_autoCopy) {
       _autoCopy = true;
-      await _prefs.setBool(_keyAutoCopy, true);
+      await prefs.setBool(_keyAutoCopy, true);
     }
-    await _prefs.setBool(_keyAutoPaste, value);
+    await prefs.setBool(_keyAutoPaste, value);
     notifyListeners();
     LoggingService().info('Auto-paste updated to: $value');
   }
 
   Future<void> setShowVisualizer(bool value) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_showVisualizer == value) return;
 
     _showVisualizer = value;
-    await _prefs.setBool(_keyShowVisualizer, value);
+    await prefs.setBool(_keyShowVisualizer, value);
     notifyListeners();
     LoggingService().info('Visualizer updated to: $value');
   }
 
   Future<void> setServerUri(String uri) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_serverUri == uri) return;
 
     _serverUri = uri;
-    await _prefs.setString(_keyServerUri, uri);
+    await prefs.setString(_keyServerUri, uri);
     notifyListeners();
     LoggingService().info('Server URI updated to: $uri');
   }
@@ -211,15 +214,15 @@ class SettingsService extends ChangeNotifier {
     required int modifiers,
     required int vKey,
   }) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
 
     _globalHotkey = display;
     _hotkeyModifiers = modifiers;
     _hotkeyVKey = vKey;
 
-    await _prefs.setString(_keyGlobalHotkey, display);
-    await _prefs.setInt(_keyHotkeyModifiers, modifiers);
-    await _prefs.setInt(_keyHotkeyVKey, vKey);
+    await prefs.setString(_keyGlobalHotkey, display);
+    await prefs.setInt(_keyHotkeyModifiers, modifiers);
+    await prefs.setInt(_keyHotkeyVKey, vKey);
 
     notifyListeners();
     LoggingService().info(
@@ -228,19 +231,19 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setMicrophoneSelection(String? id, String? label) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_microphoneId == id && _microphoneLabel == label) return;
 
     _microphoneId = id;
     _microphoneLabel = label;
 
     if (id == null) {
-      await _prefs.remove(_keyMicrophoneId);
-      await _prefs.remove(_keyMicrophoneLabel);
+      await prefs.remove(_keyMicrophoneId);
+      await prefs.remove(_keyMicrophoneLabel);
     } else {
-      await _prefs.setString(_keyMicrophoneId, id);
+      await prefs.setString(_keyMicrophoneId, id);
       if (label != null) {
-        await _prefs.setString(_keyMicrophoneLabel, label);
+        await prefs.setString(_keyMicrophoneLabel, label);
       }
     }
     notifyListeners();
@@ -248,15 +251,15 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setApiKey(String key) async {
-    _ensureInitialized();
+    final vault = _requireVault();
     if (_apiKey == key) return;
 
     if (key.isEmpty) {
       _apiKey = null;
-      await _vault.deleteCredential(_vaultApiKeyKey);
+      await vault.deleteCredential(_vaultApiKeyKey);
     } else {
       _apiKey = key;
-      await _vault.storeCredential(_vaultApiKeyKey, key);
+      await vault.storeCredential(_vaultApiKeyKey, key);
     }
     notifyListeners();
     LoggingService().info(
@@ -267,78 +270,93 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setIncognitoMode(bool value) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_incognitoMode == value) return;
 
     _incognitoMode = value;
-    await _prefs.setBool(_keyIncognitoMode, value);
+    await prefs.setBool(_keyIncognitoMode, value);
     notifyListeners();
     LoggingService().info('Incognito mode updated to: $value');
   }
 
   // === Groq Cloud Setters ===
 
+  /// Returns the cached Groq API key, fetching from vault if not yet loaded.
   Future<String?> getGroqApiKey() async {
-    _ensureInitialized();
-    _groqApiKey ??= await _vault.retrieveCredential(_vaultGroqApiKey);
+    final vault = _requireVault();
+    _groqApiKey ??= await vault.retrieveCredential(_vaultGroqApiKey);
+
     return _groqApiKey;
   }
 
   Future<void> setTranscriptionMode(String mode) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_transcriptionMode == mode) return;
 
     _transcriptionMode = mode;
-    await _prefs.setString(_keyTranscriptionMode, mode);
+    await prefs.setString(_keyTranscriptionMode, mode);
     notifyListeners();
     LoggingService().info('Transcription mode updated to: $mode');
   }
 
   Future<void> setGroqApiKey(String key) async {
-    _ensureInitialized();
+    final vault = _requireVault();
     if (_groqApiKey == key) return;
 
     if (key.isEmpty) {
       _groqApiKey = null;
-      await _vault.deleteCredential(_vaultGroqApiKey);
+      await vault.deleteCredential(_vaultGroqApiKey);
     } else {
       _groqApiKey = key;
-      await _vault.storeCredential(_vaultGroqApiKey, key);
+      await vault.storeCredential(_vaultGroqApiKey, key);
     }
     notifyListeners();
     LoggingService().info('Groq API key updated securely');
   }
 
   Future<void> setGroqLanguage(String language) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
     if (_groqLanguage == language) return;
 
     _groqLanguage = language;
-    await _prefs.setString(_keyGroqLanguage, language);
+    await prefs.setString(_keyGroqLanguage, language);
     notifyListeners();
     LoggingService().info('Groq language updated to: $language');
   }
 
   Future<void> setGroqPrompt(String prompt) async {
-    _ensureInitialized();
+    final prefs = _requirePrefs();
+    final vault = _requireVault();
     if (_groqPrompt == prompt) return;
 
     _groqPrompt = prompt;
     if (prompt.isEmpty) {
-      await _vault.deleteCredential(_vaultGroqPrompt);
+      await vault.deleteCredential(_vaultGroqPrompt);
     } else {
-      await _vault.storeCredential(_vaultGroqPrompt, prompt);
+      await vault.storeCredential(_vaultGroqPrompt, prompt);
     }
-    if (_prefs.containsKey(_keyGroqPrompt)) {
-      await _prefs.remove(_keyGroqPrompt);
+    if (prefs.containsKey(_keyGroqPrompt)) {
+      await prefs.remove(_keyGroqPrompt);
     }
     notifyListeners();
     LoggingService().info('Groq prompt updated');
   }
 
-  void _ensureInitialized() {
-    if (!_isInitialized) {
-      throw Exception('SettingsService not initialized. Call load() first.');
+  SharedPreferences _requirePrefs() {
+    final prefs = _prefs;
+    if (!_isInitialized || prefs == null) {
+      throw StateError('SettingsService not initialized. Call load() first.');
     }
+
+    return prefs;
+  }
+
+  SecureVaultService _requireVault() {
+    final vault = _vault;
+    if (!_isInitialized || vault == null) {
+      throw StateError('SettingsService not initialized. Call load() first.');
+    }
+
+    return vault;
   }
 }

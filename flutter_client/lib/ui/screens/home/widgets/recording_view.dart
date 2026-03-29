@@ -11,6 +11,29 @@ import 'package:provider/provider.dart';
 class RecordingView extends StatelessWidget {
   const RecordingView({super.key});
 
+  static const _statusFontSize = 12.0;
+  static const _visualizerPlaceholderHeight = 40.0;
+  static const _visualizerFadeDuration = Duration(milliseconds: 200);
+
+  static String _unauthorizedMessage({
+    required bool isGroqMode,
+    required bool isFailed,
+    required WebSocketService wsService,
+  }) {
+    if (isGroqMode) return 'Please add a Groq API key in Settings.';
+
+    if (isFailed) {
+      final handshakeError = wsService.lastHandshakeError;
+      if (handshakeError?.contains('Update') == true) {
+        return 'Update Required. Please check Profile Hub.';
+      }
+
+      return handshakeError ?? 'Authentication Failed.';
+    }
+
+    return 'Please authenticate in Settings to begin.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<RecordingController>();
@@ -27,8 +50,7 @@ class RecordingView extends StatelessWidget {
         : wsService.isAuthenticatedSession;
 
     // Capsule disabled during Groq transcription upload
-    final bool capsuleEnabled =
-        isAuthorized && !controller.isTranscribing;
+    final bool capsuleEnabled = isAuthorized && !controller.isTranscribing;
 
     final isFailed =
         !isGroqMode && wsService.handshakeState.state == HandshakeState.failed;
@@ -49,7 +71,7 @@ class RecordingView extends StatelessWidget {
               'Transcribing via Groq Cloud...',
               style: TextStyle(
                 color: Colors.blueAccent,
-                fontSize: 12,
+                fontSize: _statusFontSize,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -59,18 +81,14 @@ class RecordingView extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              isGroqMode
-                  ? 'Please add a Groq API key in Settings.'
-                  : (isFailed
-                      ? (wsService.lastHandshakeError?.contains('Update') ==
-                              true
-                          ? 'Update Required. Please check Profile Hub.'
-                          : (wsService.lastHandshakeError ??
-                              'Authentication Failed.'))
-                      : 'Please authenticate in Settings to begin.'),
+              _unauthorizedMessage(
+                isGroqMode: isGroqMode,
+                isFailed: isFailed,
+                wsService: wsService,
+              ),
               style: TextStyle(
                 color: isFailed ? Colors.redAccent : Colors.white38,
-                fontSize: 12,
+                fontSize: _statusFontSize,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -79,11 +97,11 @@ class RecordingView extends StatelessWidget {
         else if (settings.showVisualizer)
           AnimatedOpacity(
             opacity: isRecording ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
+            duration: _visualizerFadeDuration,
             child: const AudioVisualizer(),
           )
         else
-          const SizedBox(height: 40),
+          const SizedBox(height: _visualizerPlaceholderHeight),
         const SizedBox(height: 8),
       ],
     );

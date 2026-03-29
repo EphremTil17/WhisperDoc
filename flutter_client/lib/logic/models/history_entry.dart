@@ -1,5 +1,5 @@
-/// Represents a single transcription event with field-level encryption.
-class TranscriptionEntry {
+/// Represents a single encrypted history item persisted by the app.
+class HistoryEntry {
   final int? id;
   final String encryptedText;
   final String ivBase64;
@@ -7,7 +7,7 @@ class TranscriptionEntry {
   final int? durationMs;
   final bool isIncognito;
 
-  TranscriptionEntry({
+  HistoryEntry({
     this.id,
     required this.encryptedText,
     required this.ivBase64,
@@ -15,6 +15,16 @@ class TranscriptionEntry {
     this.durationMs,
     this.isIncognito = false,
   });
+
+  factory HistoryEntry.fromJson(Map<String, dynamic> json) {
+    return HistoryEntry(
+      encryptedText: json['encrypted_text'] as String,
+      ivBase64: json['iv_base64'] as String,
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      durationMs: json['duration_ms'] as int?,
+      isIncognito: json['is_incognito'] as bool? ?? false,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -24,15 +34,5 @@ class TranscriptionEntry {
       'duration_ms': durationMs,
       'is_incognito': isIncognito,
     };
-  }
-
-  factory TranscriptionEntry.fromJson(Map<String, dynamic> json) {
-    return TranscriptionEntry(
-      encryptedText: json['encrypted_text'] as String,
-      ivBase64: json['iv_base64'] as String,
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      durationMs: json['duration_ms'] as int?,
-      isIncognito: json['is_incognito'] as bool? ?? false,
-    );
   }
 }

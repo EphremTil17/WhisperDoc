@@ -14,6 +14,8 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// - "Banned for 60s"
 /// - "Retry in 240s"
 class BanStateService {
+  static const int _defaultBanSeconds = 300;
+
   final LoggingService _logger = LoggingService();
 
   bool _isBanned = false;
@@ -33,8 +35,9 @@ class BanStateService {
     if (closeReason == null || closeReason.isEmpty) {
       _logger.warning('Received 1008 close code without reason message');
       _setBan(
-        300,
+        _defaultBanSeconds,
       ); // Default 5min ban from backend config (BAN_DURATION_SECONDS)
+
       return;
     }
 
@@ -55,9 +58,12 @@ class BanStateService {
     for (final pattern in patterns) {
       final match = pattern.firstMatch(closeReason);
       if (match != null && match.groupCount >= 1) {
-        final duration = int.tryParse(match.group(1)!);
+        final group = match.group(1);
+        if (group == null) continue;
+        final duration = int.tryParse(group);
         if (duration != null) {
           _setBan(duration);
+
           return;
         }
       }
@@ -67,7 +73,7 @@ class BanStateService {
     _logger.warning(
       'Could not parse ban duration from: $closeReason, using default',
     );
-    _setBan(300);
+    _setBan(_defaultBanSeconds);
   }
 
   /// Manually clear the ban (for testing or after manual user action)
@@ -105,8 +111,9 @@ class BanStateService {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final now = DateTime.now();
 
-      if (_banExpiresAt != null && now.isBefore(_banExpiresAt!)) {
-        _cooldownSeconds = _banExpiresAt!.difference(now).inSeconds;
+      final expiresAt = _banExpiresAt;
+      if (expiresAt != null && now.isBefore(expiresAt)) {
+        _cooldownSeconds = expiresAt.difference(now).inSeconds;
         _cooldownController.add(_cooldownSeconds);
       } else {
         // Ban expired

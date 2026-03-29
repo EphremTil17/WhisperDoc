@@ -45,21 +45,20 @@ void main() {
 
     test('throws invalidApiKey on 401', () async {
       final mockClient = MockClient((_) async {
-        return http.Response(
-          '{"error": {"message": "Invalid API Key"}}',
-          401,
-        );
+        return http.Response('{"error": {"message": "Invalid API Key"}}', 401);
       });
 
       final client = GroqHttpClient(client: mockClient);
 
       expect(
         () => client.transcribe(wavBytes: fakeWav, apiKey: 'bad-key'),
-        throwsA(isA<GroqError>().having(
-          (e) => e.type,
-          'type',
-          GroqErrorType.invalidApiKey,
-        )),
+        throwsA(
+          isA<GroqError>().having(
+            (e) => e.type,
+            'type',
+            GroqErrorType.invalidApiKey,
+          ),
+        ),
       );
     });
 
@@ -95,11 +94,13 @@ void main() {
 
       expect(
         () => client.transcribe(wavBytes: fakeWav, apiKey: 'key'),
-        throwsA(isA<GroqError>().having(
-          (e) => e.type,
-          'type',
-          GroqErrorType.fileTooLarge,
-        )),
+        throwsA(
+          isA<GroqError>().having(
+            (e) => e.type,
+            'type',
+            GroqErrorType.fileTooLarge,
+          ),
+        ),
       );
     });
 
@@ -112,11 +113,13 @@ void main() {
 
       expect(
         () => client.transcribe(wavBytes: fakeWav, apiKey: 'key'),
-        throwsA(isA<GroqError>().having(
-          (e) => e.type,
-          'type',
-          GroqErrorType.serverError,
-        )),
+        throwsA(
+          isA<GroqError>().having(
+            (e) => e.type,
+            'type',
+            GroqErrorType.serverError,
+          ),
+        ),
       );
     });
 
@@ -126,10 +129,7 @@ void main() {
       });
 
       final client = GroqHttpClient(client: mockClient);
-      final result = await client.transcribe(
-        wavBytes: fakeWav,
-        apiKey: 'key',
-      );
+      final result = await client.transcribe(wavBytes: fakeWav, apiKey: 'key');
 
       expect(result.text, '');
     });
@@ -147,10 +147,7 @@ void main() {
       });
 
       final client = GroqHttpClient(client: mockClient);
-      final result = await client.transcribe(
-        wavBytes: fakeWav,
-        apiKey: 'key',
-      );
+      final result = await client.transcribe(wavBytes: fakeWav, apiKey: 'key');
 
       expect(result.responseHeaders['x-ratelimit-remaining-requests'], '18');
     });

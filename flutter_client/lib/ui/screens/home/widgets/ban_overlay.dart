@@ -14,6 +14,7 @@ class BanOverlay extends StatelessWidget {
         if (wsService.status != ConnectionStatus.banned) {
           return const SizedBox.shrink();
         }
+
         return Positioned.fill(
           child: Container(
             color: Colors.black87,

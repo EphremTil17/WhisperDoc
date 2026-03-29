@@ -7,6 +7,11 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// Service to capture raw audio chunks.
 /// Configured for 16kHz, Mono, 16-bit PCM.
 class AudioService extends ChangeNotifier {
+  static const int _sampleRate = 16000;
+  static const int _channelCount = 1;
+  static const int _bytesPerSample = 2;
+  static const double _pcm16NormalizationFactor = 32768.0;
+
   final AudioRecorder _audioRecorder = AudioRecorder();
   StreamSubscription<Uint8List>? _recordSubscription;
   final StreamController<Uint8List> _audioStreamController =
@@ -14,17 +19,16 @@ class AudioService extends ChangeNotifier {
 
   final StreamController<double> _amplitudeController =
       StreamController<double>.broadcast();
+  bool _isRecording = false;
+
   Stream<double> get amplitudeStream => _amplitudeController.stream;
 
   Stream<Uint8List> get audioStream => _audioStreamController.stream;
-
-  bool _isRecording = false;
   bool get isRecording => _isRecording;
 
   /// Lists available audio input devices (WASAPI on Windows).
-  Future<List<InputDevice>> listInputDevices() async {
-    return _audioRecorder.listInputDevices();
-  }
+  Future<List<InputDevice>> listInputDevices() =>
+      _audioRecorder.listInputDevices();
 
   Future<void> startRecording({String? deviceId, String? deviceLabel}) async {
     if (_isRecording) return;
@@ -35,14 +39,14 @@ class AudioService extends ChangeNotifier {
       final config = deviceId != null
           ? RecordConfig(
               encoder: AudioEncoder.pcm16bits,
-              sampleRate: 16000,
-              numChannels: 1,
+              sampleRate: _sampleRate,
+              numChannels: _channelCount,
               device: InputDevice(id: deviceId, label: deviceLabel ?? ''),
             )
           : const RecordConfig(
               encoder: AudioEncoder.pcm16bits,
-              sampleRate: 16000,
-              numChannels: 1,
+              sampleRate: _sampleRate,
+              numChannels: _channelCount,
             );
 
       final stream = await _audioRecorder.startStream(config);
@@ -63,7 +67,7 @@ class AudioService extends ChangeNotifier {
         },
         onError: (e) {
           LoggingService().error('Audio recording error', error: e);
-          // ignore: discarded_futures
+          // ignore: discarded_futures - stopRecording is intentionally fire-and-forget here.
           stopRecording();
         },
       );
@@ -73,30 +77,6 @@ class AudioService extends ChangeNotifier {
       notifyListeners();
       throw Exception('Microphone permission denied');
     }
-  }
-
-  void _calculateAmplitude(Uint8List data) {
-    if (data.isEmpty) return;
-
-    // PCM 16-bit Mono: Each sample is 2 bytes
-    double total = 0;
-    final int sampleCount = data.length ~/ 2;
-
-    for (int i = 0; i < data.length - 1; i += 2) {
-      // Convert 2 bytes to a 16-bit signed integer (Little Endian)
-      final sample = ByteData.sublistView(
-        data,
-        i,
-        i + 2,
-      ).getInt16(0, Endian.little);
-      total += sample.abs();
-    }
-
-    final average = total / sampleCount;
-    // Normalize to 0.0 - 1.0 (Approximate max for 16-bit is 32767)
-    final normalized = (average / 32768.0).clamp(0.0, 1.0);
-
-    _amplitudeController.add(normalized);
   }
 
   Future<void> stopRecording() async {
@@ -118,5 +98,28 @@ class AudioService extends ChangeNotifier {
     await _audioStreamController.close();
     await _amplitudeController.close();
     super.dispose();
+  }
+
+  void _calculateAmplitude(Uint8List data) {
+    if (data.isEmpty) return;
+
+    // PCM 16-bit Mono: each sample is 2 bytes.
+    double total = 0;
+    final sampleCount = data.length ~/ _bytesPerSample;
+
+    for (int i = 0; i < data.length - 1; i += _bytesPerSample) {
+      // Convert 2 bytes to a 16-bit signed integer (little endian).
+      final sample = ByteData.sublistView(
+        data,
+        i,
+        i + _bytesPerSample,
+      ).getInt16(0, Endian.little);
+      total += sample.abs();
+    }
+
+    final average = total / sampleCount;
+    // Normalize to 0.0 - 1.0.
+    final normalized = (average / _pcm16NormalizationFactor).clamp(0.0, 1.0);
+    _amplitudeController.add(normalized);
   }
 }

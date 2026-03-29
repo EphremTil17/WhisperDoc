@@ -1,85 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_client/ui/shared/widgets/window_button.dart';
 import 'package:window_manager/window_manager.dart';
 
 class CustomTitleBar extends StatelessWidget {
   const CustomTitleBar({super.key});
 
+  static const _titleBarHeight = 32.0;
+  static const _dragRegionLeftPadding = 16.0;
+  static const _trailingGap = SizedBox(width: 8);
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 32, // Standard title bar height
+      height: _titleBarHeight,
       child: Row(
         children: [
-          // Drag Region (Takes up most space)
           Expanded(
             child: GestureDetector(
-              onTap: () {}, // Capture taps to prevent passing through
+              // Keep taps from passing through the transparent title bar and
+              // clear any active text focus while the user interacts with it.
+              onTap: () => FocusScope.of(context).unfocus(),
               child: DragToMoveArea(
                 child: Container(
                   color: Colors.transparent,
                   alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.only(left: 16),
+                  padding: const EdgeInsets.only(left: _dragRegionLeftPadding),
                 ),
               ),
             ),
           ),
-
-          // Window Controls
-          _WindowButton(
+          WindowButton(
             icon: Icons.minimize,
             onPressed: () => windowManager.minimize(),
           ),
-          _WindowButton(
+          WindowButton(
             icon: Icons.close,
             isClose: true,
             onPressed: () => windowManager.close(),
           ),
-          const SizedBox(width: 8),
+          _trailingGap,
         ],
-      ),
-    );
-  }
-}
-
-class _WindowButton extends StatefulWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
-  final bool isClose;
-
-  const _WindowButton({
-    required this.icon,
-    required this.onPressed,
-    this.isClose = false,
-  });
-
-  @override
-  State<_WindowButton> createState() => _WindowButtonState();
-}
-
-class _WindowButtonState extends State<_WindowButton> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: 32,
-          height: 24, // Smaller height for sleek look
-          decoration: BoxDecoration(
-            color: _isHovered
-                ? (widget.isClose
-                      ? Colors.red
-                      : Colors.white.withValues(alpha: 0.1))
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Icon(widget.icon, size: 14, color: Colors.white),
-        ),
       ),
     );
   }

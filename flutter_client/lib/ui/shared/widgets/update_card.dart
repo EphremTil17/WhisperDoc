@@ -8,10 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 /// A modular card for update notifications.
 /// Follows the 'Atomic' shared widget pattern.
 class UpdateCard extends StatelessWidget {
-  final UpdateStatus status;
-  final UpdateUIDescriptor descriptor;
-  final String? downloadUrl;
-
   const UpdateCard({
     super.key,
     required this.status,
@@ -19,23 +15,67 @@ class UpdateCard extends StatelessWidget {
     this.downloadUrl,
   });
 
+  static const double _cardBackgroundAlpha = 0.05;
+  static const double _cardBorderAlpha = 0.15;
+  static const double _iconBackgroundAlpha = 0.1;
+  static const double _primaryTextAlpha = 0.9;
+  static const double _secondaryTextAlpha = 0.5;
+  static const double _chevronAlpha = 0.2;
+  static const double _downloadBackgroundAlpha = 0.2;
+  static const double _iconSize = 20;
+  static const double _titleFontSize = 14;
+  static const double _subtitleFontSize = 12;
+  static const double _downloadFontSize = 12;
+  static const double _cardBorderWidth = 1;
+
+  final UpdateStatus status;
+  final UpdateUIDescriptor descriptor;
+  final String? downloadUrl;
+
+  void _handleDownload() {
+    // If up to date, just go to the releases page.
+    // If update available, use the direct link if we have it.
+    final url = downloadUrl;
+    final String targetUrl = (status != UpdateStatus.upToDate && url != null)
+        ? url
+        : AppConstants.updateUrl;
+
+    unawaited(
+      launchUrl(Uri.parse(targetUrl), mode: LaunchMode.externalApplication),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    IconData statusIcon;
+    String subtitle;
+    switch (status) {
+      case UpdateStatus.required:
+        statusIcon = Icons.error_outline;
+        subtitle = 'Update required to connect';
+      case UpdateStatus.advisory:
+        statusIcon = Icons.update;
+        subtitle = 'A new version is available';
+      case UpdateStatus.upToDate:
+        statusIcon = Icons.check_circle_outline;
+        subtitle = 'Tap to view releases';
+    }
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _handleDownload(),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: const BorderRadius.all(Radius.circular(16)),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: descriptor.glowColor.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16),
+            color: descriptor.glowColor.withValues(alpha: _cardBackgroundAlpha),
+            borderRadius: const BorderRadius.all(Radius.circular(16)),
             border: Border.all(
-              color: descriptor.glowColor.withValues(alpha: 0.15),
-              width: 1,
+              color: descriptor.glowColor.withValues(alpha: _cardBorderAlpha),
+              width: _cardBorderWidth,
             ),
           ),
           child: Column(
@@ -46,17 +86,15 @@ class UpdateCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: descriptor.glowColor.withValues(alpha: 0.1),
+                      color: descriptor.glowColor.withValues(
+                        alpha: _iconBackgroundAlpha,
+                      ),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      status == UpdateStatus.required
-                          ? Icons.error_outline
-                          : status == UpdateStatus.advisory
-                          ? Icons.update
-                          : Icons.check_circle_outline,
+                      statusIcon,
                       color: descriptor.glowColor,
-                      size: 20,
+                      size: _iconSize,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -67,20 +105,20 @@ class UpdateCard extends StatelessWidget {
                         Text(
                           descriptor.label,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
+                            color: Colors.white.withValues(
+                              alpha: _primaryTextAlpha,
+                            ),
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: _titleFontSize,
                           ),
                         ),
                         Text(
-                          status == UpdateStatus.required
-                              ? 'Update required to connect'
-                              : status == UpdateStatus.advisory
-                              ? 'A new version is available'
-                              : 'Tap to view releases',
+                          subtitle,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 12,
+                            color: Colors.white.withValues(
+                              alpha: _secondaryTextAlpha,
+                            ),
+                            fontSize: _subtitleFontSize,
                           ),
                         ),
                       ],
@@ -88,8 +126,8 @@ class UpdateCard extends StatelessWidget {
                   ),
                   Icon(
                     Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.2),
-                    size: 20,
+                    color: Colors.white.withValues(alpha: _chevronAlpha),
+                    size: _iconSize,
                   ),
                 ],
               ),
@@ -99,8 +137,10 @@ class UpdateCard extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: descriptor.glowColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
+                    color: descriptor.glowColor.withValues(
+                      alpha: _downloadBackgroundAlpha,
+                    ),
+                    borderRadius: const BorderRadius.all(Radius.circular(8)),
                   ),
                   child: Center(
                     child: Text(
@@ -108,7 +148,7 @@ class UpdateCard extends StatelessWidget {
                       style: TextStyle(
                         color: descriptor.glowColor,
                         fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                        fontSize: _downloadFontSize,
                       ),
                     ),
                   ),
@@ -118,19 +158,6 @@ class UpdateCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  void _handleDownload() {
-    // If up to date, just go to the releases page.
-    // If update available, use the direct link if we have it.
-    final String targetUrl =
-        (status != UpdateStatus.upToDate && downloadUrl != null)
-        ? downloadUrl!
-        : AppConstants.updateUrl;
-
-    unawaited(
-      launchUrl(Uri.parse(targetUrl), mode: LaunchMode.externalApplication),
     );
   }
 }

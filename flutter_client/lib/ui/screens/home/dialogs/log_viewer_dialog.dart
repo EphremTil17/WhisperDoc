@@ -13,13 +13,159 @@ class LogViewerDialog extends StatefulWidget {
 class _LogViewerDialogState extends State<LogViewerDialog> {
   final ScrollController _scrollController = ScrollController();
 
+  List<TextSpan> _buildLogSpans({
+    required List<LogEntry> logs,
+    required String? monoFontFamily,
+  }) {
+    final spans = <TextSpan>[];
+
+    for (var i = 0; i < logs.length; i++) {
+      final entry = logs[i];
+
+      spans.addAll([
+        TextSpan(
+          text: _LogViewerDialogStyling.formatTimestamp(entry.timestamp),
+          style: _LogViewerDialogStyling.monoTextStyle(
+            color: Colors.grey,
+            fontFamily: monoFontFamily,
+            fontSize: _LogViewerDialogStyling.logFontSize,
+            height: _LogViewerDialogStyling.logLineHeight,
+          ),
+        ),
+        TextSpan(
+          text: ' | ',
+          style: _LogViewerDialogStyling.monoTextStyle(
+            color: Colors.white38,
+            fontFamily: monoFontFamily,
+            fontSize: _LogViewerDialogStyling.logFontSize,
+            height: _LogViewerDialogStyling.logLineHeight,
+          ),
+        ),
+        TextSpan(
+          text: entry.level.padRight(_LogViewerDialogStyling.levelWidth),
+          style: _LogViewerDialogStyling.monoTextStyle(
+            color: _LogViewerDialogStyling.levelColor(entry.level),
+            fontFamily: monoFontFamily,
+            fontSize: _LogViewerDialogStyling.logFontSize,
+            height: _LogViewerDialogStyling.logLineHeight,
+          ),
+        ),
+        TextSpan(
+          text: ' | ',
+          style: _LogViewerDialogStyling.monoTextStyle(
+            color: Colors.white38,
+            fontFamily: monoFontFamily,
+            fontSize: _LogViewerDialogStyling.logFontSize,
+            height: _LogViewerDialogStyling.logLineHeight,
+          ),
+        ),
+        TextSpan(
+          text: '${entry.message}${i < logs.length - 1 ? '\n' : ''}',
+          style: _LogViewerDialogStyling.monoTextStyle(
+            color: Colors.white70,
+            fontFamily: monoFontFamily,
+            fontSize: _LogViewerDialogStyling.logFontSize,
+            height: _LogViewerDialogStyling.logLineHeight,
+          ),
+        ),
+      ]);
+    }
+
+    return spans;
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
   }
 
-  Color _levelColor(String level) {
+  @override
+  Widget build(BuildContext context) {
+    final monoFontFamily = GoogleFonts.jetBrainsMono().fontFamily;
+    final loggingService = LoggingService();
+
+    return GlassDialog(
+      title: 'Application Logs',
+      body: StreamBuilder<LogEntry>(
+        stream: loggingService.onLog,
+        builder: (context, _) {
+          final logs = loggingService.logs;
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              _scrollController.jumpTo(
+                _scrollController.position.maxScrollExtent,
+              );
+            }
+          });
+
+          if (logs.isEmpty) {
+            return Center(
+              child: Text(
+                'No logs yet',
+                style: _LogViewerDialogStyling.monoTextStyle(
+                  color: Colors.white38,
+                  fontFamily: monoFontFamily,
+                  fontSize: _LogViewerDialogStyling.emptyStateFontSize,
+                ),
+              ),
+            );
+          }
+
+          return SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(
+              _LogViewerDialogStyling.logContentPadding,
+            ),
+            child: SelectableText.rich(
+              TextSpan(
+                children: _buildLogSpans(
+                  logs: logs,
+                  monoFontFamily: monoFontFamily,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+final class _LogViewerDialogStyling {
+  static const emptyStateFontSize = 12.0;
+  static const logFontSize = 11.0;
+  static const logLineHeight = 1.5;
+  static const logContentPadding = 12.0;
+  static const timeComponentWidth = 2;
+  static const levelWidth = 5;
+
+  const _LogViewerDialogStyling._();
+
+  static String formatTimestamp(DateTime timestamp) {
+    final hour = timestamp.hour.toString().padLeft(timeComponentWidth, '0');
+    final minute = timestamp.minute.toString().padLeft(timeComponentWidth, '0');
+    final second = timestamp.second.toString().padLeft(timeComponentWidth, '0');
+
+    return '$hour:$minute:$second';
+  }
+
+  static TextStyle monoTextStyle({
+    required Color color,
+    required String? fontFamily,
+    required double fontSize,
+    double? height,
+  }) {
+    return TextStyle(
+      color: color,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      height: height,
+    );
+  }
+
+  static Color levelColor(String level) {
     switch (level.trim()) {
       case 'ERROR':
         return Colors.redAccent;
@@ -32,113 +178,5 @@ class _LogViewerDialogState extends State<LogViewerDialog> {
       default:
         return Colors.white70;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassDialog(title: 'Application Logs', body: _buildLogContent());
-  }
-
-  Widget _buildLogContent() {
-    final monoFont = GoogleFonts.jetBrainsMono().fontFamily;
-
-    return StreamBuilder<LogEntry>(
-      stream: LoggingService().onLog,
-      builder: (context, snapshot) {
-        final logs = LoggingService().logs;
-
-        // Auto-scroll to bottom when new entry arrives
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(
-              _scrollController.position.maxScrollExtent,
-            );
-          }
-        });
-
-        if (logs.isEmpty) {
-          return Center(
-            child: Text(
-              'No logs yet',
-              style: TextStyle(
-                color: Colors.white38,
-                fontSize: 12,
-                fontFamily: monoFont,
-              ),
-            ),
-          );
-        }
-
-        // Build colored TextSpans matching terminal style:
-        // gray timestamp | colored level | white message
-        final spans = <TextSpan>[];
-        for (int i = 0; i < logs.length; i++) {
-          final entry = logs[i];
-          final timeStr =
-              '${entry.timestamp.hour.toString().padLeft(2, '0')}:'
-              '${entry.timestamp.minute.toString().padLeft(2, '0')}:'
-              '${entry.timestamp.second.toString().padLeft(2, '0')}';
-
-          spans.addAll([
-            // Gray timestamp
-            TextSpan(
-              text: timeStr,
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 11,
-                fontFamily: monoFont,
-                height: 1.5,
-              ),
-            ),
-            // Separator
-            TextSpan(
-              text: ' | ',
-              style: TextStyle(
-                color: Colors.white38,
-                fontSize: 11,
-                fontFamily: monoFont,
-                height: 1.5,
-              ),
-            ),
-            // Colored level
-            TextSpan(
-              text: entry.level.padRight(5),
-              style: TextStyle(
-                color: _levelColor(entry.level),
-                fontSize: 11,
-                fontFamily: monoFont,
-                height: 1.5,
-              ),
-            ),
-            // Separator
-            TextSpan(
-              text: ' | ',
-              style: TextStyle(
-                color: Colors.white38,
-                fontSize: 11,
-                fontFamily: monoFont,
-                height: 1.5,
-              ),
-            ),
-            // White message
-            TextSpan(
-              text: '${entry.message}${i < logs.length - 1 ? '\n' : ''}',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontFamily: monoFont,
-                height: 1.5,
-              ),
-            ),
-          ]);
-        }
-
-        return SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(12),
-          child: SelectableText.rich(TextSpan(children: spans)),
-        );
-      },
-    );
   }
 }

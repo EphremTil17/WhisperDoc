@@ -8,6 +8,13 @@ import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 
 /// Handles low-level OIDC protocol logic (PKCE, Discovery, Token Exchange).
 class OidcManager {
+  static const int _httpOk = 200;
+
+  static Uri get _configuredIssuerUri =>
+      _normalizeUri(Uri.parse(AppConstants.oidcIssuer));
+
+  static Uri get _issuerOrigin => _configuredIssuerUri.replace(path: '');
+
   /// Discovers OIDC endpoints from the issuer.
   Future<Map<String, dynamic>> discover() async {
     final discoveryUri = Uri.parse(AppConstants.oidcDiscoveryUrl);
@@ -18,7 +25,7 @@ class OidcManager {
     );
 
     final response = await http.get(discoveryUri);
-    if (response.statusCode != 200) {
+    if (response.statusCode != _httpOk) {
       throw Exception('Failed to discover OIDC endpoints: ${response.body}');
     }
 
@@ -28,6 +35,7 @@ class OidcManager {
     }
 
     _validateDiscoveryDocument(decoded);
+
     return decoded;
   }
 
@@ -88,7 +96,11 @@ class OidcManager {
       body['grant_type'] = 'authorization_code';
       body['code'] = code;
       body['redirect_uri'] = AppConstants.oidcRedirectUri;
-      body['code_verifier'] = codeVerifier!;
+      final verifier = codeVerifier;
+      if (verifier == null) {
+        throw ArgumentError('codeVerifier is required when code is provided');
+      }
+      body['code_verifier'] = verifier;
     } else if (refreshToken != null) {
       body['grant_type'] = 'refresh_token';
       body['refresh_token'] = refreshToken;
@@ -102,7 +114,7 @@ class OidcManager {
       body: body,
     );
 
-    if (response.statusCode != 200) {
+    if (response.statusCode != _httpOk) {
       throw Exception('Token exchange failed: ${response.body}');
     }
 
@@ -115,6 +127,7 @@ class OidcManager {
     const chars =
         'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~';
     final random = Random.secure();
+
     return List.generate(
       length,
       (index) => chars[random.nextInt(chars.length)],
@@ -124,18 +137,16 @@ class OidcManager {
   String generateCodeChallenge(String verifier) {
     final bytes = utf8.encode(verifier);
     final digest = sha256.convert(bytes);
+
     return base64UrlEncode(digest.bytes).replaceAll('=', '');
   }
 
-  static Uri get _configuredIssuerUri =>
-      _normalizeUri(Uri.parse(AppConstants.oidcIssuer));
-
-  static Uri get _issuerOrigin => _configuredIssuerUri.replace(path: '');
-
   static Uri _normalizeUri(Uri uri) {
-    final normalizedPath = uri.path.endsWith('/') && uri.path.length > 1
-        ? uri.path.substring(0, uri.path.length - 1)
-        : uri.path;
+    final path = uri.path;
+    final normalizedPath = path.endsWith('/') && path.length > 1
+        ? path.replaceFirst(RegExp(r'/$'), '')
+        : path;
+
     return uri.replace(
       scheme: uri.scheme.toLowerCase(),
       host: uri.host.toLowerCase(),
@@ -155,9 +166,12 @@ class OidcManager {
     );
 
     final discoveredIssuer = _normalizeUri(Uri.parse(issuer));
-    if (discoveredIssuer.toString() != _configuredIssuerUri.toString()) {
+    final configuredIssuer = _configuredIssuerUri.toString();
+    final discoveredIssuerString = discoveredIssuer.toString();
+
+    if (discoveredIssuerString != configuredIssuer) {
       throw Exception(
-        'OIDC discovery issuer mismatch: expected ${_configuredIssuerUri.toString()} but received ${discoveredIssuer.toString()}',
+        'OIDC discovery issuer mismatch: expected $configuredIssuer but received $discoveredIssuerString',
       );
     }
 
@@ -212,20 +226,23 @@ class OidcManager {
     if (uri.scheme == 'https') {
       return true;
     }
+
     return uri.scheme == 'http' && _isLoopbackHost(uri.host);
   }
 
   bool _isLoopbackHost(String host) {
     final normalizedHost = host.toLowerCase();
+
     return normalizedHost == 'localhost' ||
         normalizedHost == '127.0.0.1' ||
         normalizedHost == '::1';
   }
 
-  String _requireString(dynamic value, String fieldName) {
+  String _requireString(Object? value, String fieldName) {
     if (value is! String || value.trim().isEmpty) {
       throw Exception('OIDC discovery missing valid "$fieldName"');
     }
+
     return value;
   }
 }

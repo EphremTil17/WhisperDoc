@@ -23,6 +23,24 @@ import 'package:google_fonts/google_fonts.dart';
 /// );
 /// ```
 class GlassDialog extends StatelessWidget {
+  const GlassDialog({
+    super.key,
+    required this.title,
+    required this.body,
+    this.titleTrailing,
+    this.footer,
+    this.maxWidth = _defaultMaxWidth,
+    this.shrinkWrap = false,
+  });
+
+  static const _defaultMaxWidth = 500.0;
+  static const _separatorAlpha = 0.1;
+  static const _dialogBorderAlpha = 0.15;
+  static const _titleFontSize = 14.0;
+  static const _titleTrailingSpacing = 8.0;
+  static const _closeIconSize = 18.0;
+  static const _closeButtonSplashRadius = 16.0;
+
   /// The title displayed in the dialog header.
   final String title;
 
@@ -41,26 +59,20 @@ class GlassDialog extends StatelessWidget {
   /// If true, dialog sizes to content. If false, expands to fill available space.
   final bool shrinkWrap;
 
-  const GlassDialog({
-    super.key,
-    required this.title,
-    required this.body,
-    this.titleTrailing,
-    this.footer,
-    this.maxWidth = 500,
-    this.shrinkWrap = false,
-  });
-
   @override
   Widget build(BuildContext context) {
+    final separatorColor = Colors.white.withValues(alpha: _separatorAlpha);
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(16),
       child: Container(
         constraints: BoxConstraints(maxWidth: maxWidth),
         decoration: AppTheme.glassDecoration.copyWith(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          borderRadius: const BorderRadius.all(Radius.circular(16)),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: _dialogBorderAlpha),
+          ),
         ),
         child: Column(
           mainAxisSize: shrinkWrap ? MainAxisSize.min : MainAxisSize.max,
@@ -69,11 +81,7 @@ class GlassDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.1),
-                  ),
-                ),
+                border: Border(bottom: BorderSide(color: separatorColor)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -84,14 +92,14 @@ class GlassDialog extends StatelessWidget {
                         title,
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 14,
+                          fontSize: _titleFontSize,
                           fontWeight: FontWeight.w600,
                           fontFamily: GoogleFonts.lexend().fontFamily,
                         ),
                       ),
-                      if (titleTrailing != null) ...[
-                        const SizedBox(width: 8),
-                        titleTrailing!,
+                      if (titleTrailing case final trailing?) ...[
+                        const SizedBox(width: _titleTrailingSpacing),
+                        trailing,
                       ],
                     ],
                   ),
@@ -100,9 +108,9 @@ class GlassDialog extends StatelessWidget {
                     icon: const Icon(
                       Icons.close,
                       color: Colors.white54,
-                      size: 18,
+                      size: _closeIconSize,
                     ),
-                    splashRadius: 16,
+                    splashRadius: _closeButtonSplashRadius,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -116,46 +124,11 @@ class GlassDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-                  ),
+                  border: Border(top: BorderSide(color: separatorColor)),
                 ),
                 child: footer,
               ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A badge widget for use with GlassDialog's titleTrailing.
-///
-/// Example: Incognito mode indicator.
-class DialogBadge extends StatelessWidget {
-  final String text;
-  final Color color;
-
-  const DialogBadge({
-    super.key,
-    required this.text,
-    this.color = Colors.orangeAccent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );

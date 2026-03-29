@@ -1,26 +1,22 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-import 'package:flutter_client/infrastructure/database/app_database.dart'
-    hide TranscriptionEntry;
-import 'package:flutter_client/logic/models/transcription_entry.dart';
+import 'package:flutter_client/infrastructure/database/app_database.dart';
+import 'package:flutter_client/logic/models/history_entry.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/services/utility/secure_vault_service.dart';
 
 class HistoryService {
   static const String _gcmPrefix = 'gcm:';
+  static const int _gcmNonceBytes = 12;
+  static const int _defaultHistoryLimit = 50;
 
-  late AppDatabase _db;
   final SecureVaultService _vault;
   final LoggingService _logger = LoggingService();
-  bool _isInitialized = false;
 
-  late encrypt.Encrypter _gcmEncrypter;
-  late encrypt.Encrypter _legacyCbcEncrypter;
+  AppDatabase? _db;
+  encrypt.Encrypter? _gcmEncrypter;
+  bool _isInitialized = false;
 
   HistoryService(this._vault);
 
@@ -33,9 +29,6 @@ class HistoryService {
       _gcmEncrypter = encrypt.Encrypter(
         encrypt.AES(key, mode: encrypt.AESMode.gcm),
       );
-      _legacyCbcEncrypter = encrypt.Encrypter(
-        encrypt.AES(key, mode: encrypt.AESMode.cbc),
-      );
 
       _db = await AppDatabase.open();
 
@@ -43,9 +36,6 @@ class HistoryService {
       _logger.info(
         'HistoryService (Drift/SQLite) initialized with field-level encryption',
       );
-
-      // One-time cleanup: remove old Isar database files if present.
-      await _cleanupLegacyIsarFiles();
     } catch (e) {
       _logger.error('Failed to initialize HistoryService', error: e);
       rethrow;
@@ -59,14 +49,18 @@ class HistoryService {
     int? durationMs,
     bool isIncognito = false,
   }) async {
-    _ensureInitialized();
+    final db = _requireDb();
+    final encrypter = _requireEncrypter();
     if (isIncognito) return;
 
     // AES-GCM is most efficient and conventional with a 96-bit (12-byte) nonce.
-    final iv = encrypt.IV.fromSecureRandom(12);
-    final encrypted = _gcmEncrypter.encrypt(text, iv: iv);
+    final iv = encrypt.IV.fromSecureRandom(_gcmNonceBytes);
+    final encrypted = encrypter.encrypt(text, iv: iv);
+    final transcriptionEntries = db.transcriptionEntries;
 
-    await _db.into(_db.transcriptionEntries).insert(
+    await db
+        .into(transcriptionEntries)
+        .insert(
           TranscriptionEntriesCompanion.insert(
             encryptedText: '$_gcmPrefix${encrypted.base64}',
             ivBase64: iv.base64,
@@ -78,33 +72,30 @@ class HistoryService {
   }
 
   /// Decrypt a transcription entry.
-  String decryptEntry(TranscriptionEntry entry) {
-    _ensureInitialized();
+  String decryptEntry(HistoryEntry entry) {
+    final encrypter = _requireEncrypter();
     final iv = encrypt.IV.fromBase64(entry.ivBase64);
+    final encrypted = encrypt.Encrypted.fromBase64(
+      entry.encryptedText.replaceFirst(_gcmPrefix, ''),
+    );
 
-    if (entry.encryptedText.startsWith(_gcmPrefix)) {
-      final encrypted = encrypt.Encrypted.fromBase64(
-        entry.encryptedText.substring(_gcmPrefix.length),
-      );
-      return _gcmEncrypter.decrypt(encrypted, iv: iv);
-    }
-
-    // Backward-compatibility for pre-hardening history entries written with
-    // AES-CBC. New entries are always written as AES-GCM.
-    final encrypted = encrypt.Encrypted.fromBase64(entry.encryptedText);
-    return _legacyCbcEncrypter.decrypt(encrypted, iv: iv);
+    return encrypter.decrypt(encrypted, iv: iv);
   }
 
-  Future<List<TranscriptionEntry>> getHistory({int limit = 50}) async {
-    _ensureInitialized();
-    final rows = await (_db.select(_db.transcriptionEntries)
-          ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])
-          ..limit(limit))
-        .get();
+  Future<List<HistoryEntry>> getHistory({
+    int limit = _defaultHistoryLimit,
+  }) async {
+    final db = _requireDb();
+    final transcriptionEntries = db.transcriptionEntries;
+    final rows =
+        await (db.select(transcriptionEntries)
+              ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])
+              ..limit(limit))
+            .get();
 
     return rows
         .map(
-          (row) => TranscriptionEntry(
+          (row) => HistoryEntry(
             id: row.id,
             encryptedText: row.encryptedText,
             ivBase64: row.ivBase64,
@@ -117,38 +108,37 @@ class HistoryService {
   }
 
   Future<void> clearAll() async {
-    _ensureInitialized();
-    await _db.delete(_db.transcriptionEntries).go();
+    final db = _requireDb();
+    final transcriptionEntries = db.transcriptionEntries;
+    await db.delete(transcriptionEntries).go();
     _logger.warning('Transcription history cleared');
-  }
-
-  void _ensureInitialized() {
-    if (!_isInitialized) {
-      throw Exception(
-        'HistoryService not initialized. Call initialize() first.',
-      );
-    }
   }
 
   Future<void> dispose() async {
     if (_isInitialized) {
-      await _db.close();
+      await _db?.close();
     }
   }
 
-  /// Remove legacy Isar database files from the app support directory.
-  Future<void> _cleanupLegacyIsarFiles() async {
-    try {
-      final dir = await getApplicationSupportDirectory();
-      final isarFile = File(p.join(dir.path, 'WhisperDocHistory.isar'));
-      if (isarFile.existsSync()) {
-        isarFile.deleteSync();
-        final lockFile = File(p.join(dir.path, 'WhisperDocHistory.isar.lock'));
-        if (lockFile.existsSync()) lockFile.deleteSync();
-        _logger.info('Cleaned up legacy Isar database files');
-      }
-    } catch (e) {
-      _logger.warning('Failed to clean up legacy Isar files: $e');
+  AppDatabase _requireDb() {
+    final db = _db;
+    if (!_isInitialized || db == null) {
+      throw StateError(
+        'HistoryService not initialized. Call initialize() first.',
+      );
     }
+
+    return db;
+  }
+
+  encrypt.Encrypter _requireEncrypter() {
+    final encrypter = _gcmEncrypter;
+    if (!_isInitialized || encrypter == null) {
+      throw StateError(
+        'HistoryService not initialized. Call initialize() first.',
+      );
+    }
+
+    return encrypter;
   }
 }

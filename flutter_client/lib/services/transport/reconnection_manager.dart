@@ -31,6 +31,7 @@ class ReconnectionManager {
           err.contains('authentication failed') ||
           err.contains('invalid credentials')) {
         _logger.warning('Auto-reconnect aborted: Terminal Auth Failure ($err)');
+
         return;
       }
     }

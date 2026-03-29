@@ -67,8 +67,7 @@ void main() {
     // Groq mode defaults to off (backend mode)
     when(() => mockSettingsService.isGroqMode).thenReturn(false);
     when(() => mockGroqService.hasValidCredentials).thenReturn(false);
-    when(() => mockGroqService.status)
-        .thenReturn(GroqTranscriptionStatus.idle);
+    when(() => mockGroqService.status).thenReturn(GroqTranscriptionStatus.idle);
     when(() => mockGroqService.addListener(any())).thenReturn(null);
     when(() => mockGroqService.removeListener(any())).thenReturn(null);
 

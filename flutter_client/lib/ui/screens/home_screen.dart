@@ -26,8 +26,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const _snackBarWidth = 350.0;
+  static const _snackBarShortSeconds = 1;
+  static const _snackBarAlphaStrong = 0.9;
+  static const _snackBarAlphaMedium = 0.8;
+
   StreamSubscription? _hotkeySubscription;
   StreamSubscription? _errorSubscription;
+  SettingsService? _settings;
   int? _lastModifiers;
   int? _lastVKey;
 
@@ -39,29 +45,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _initHotkeys() {
     final hotkeyService = context.read<HotkeyService>();
-    final settings = context.read<SettingsService>();
     final controller = context.read<RecordingController>();
+    _settings = context.read<SettingsService>();
 
     _errorSubscription = controller.onError.listen((error) {
       if (!mounted) return;
+      final lowerError = error.toLowerCase();
 
       // 1. Prioritize Ban Awareness (Overlay handles this)
       if (context.read<WebSocketService>().status == ConnectionStatus.banned ||
-          error.toLowerCase().contains('ban')) {
+          lowerError.contains('ban')) {
         return;
       }
 
       // 2. Handle Update Errors
-      if (error.toLowerCase().contains('update required')) {
+      if (lowerError.contains('update required')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Update Required. Redirecting...'),
-            backgroundColor: AppTheme.crimsonPrimary.withValues(alpha: 0.9),
+            backgroundColor: AppTheme.crimsonPrimary.withValues(
+              alpha: _snackBarAlphaStrong,
+            ),
             behavior: SnackBarBehavior.floating,
-            width: 350,
-            duration: const Duration(seconds: 1),
+            width: _snackBarWidth,
+            duration: const Duration(seconds: _snackBarShortSeconds),
           ),
         );
+
         return;
       }
 
@@ -81,18 +91,20 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(error),
-            backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+            backgroundColor: Colors.redAccent.withValues(
+              alpha: _snackBarAlphaMedium,
+            ),
             behavior: SnackBarBehavior.floating,
-            width: 350,
-            duration: const Duration(seconds: 1),
+            width: _snackBarWidth,
+            duration: const Duration(seconds: _snackBarShortSeconds),
           ),
         );
       }
     });
 
-    _lastModifiers = settings.hotkeyModifiers;
-    _lastVKey = settings.hotkeyVKey;
-    unawaited(_restartHotkeyService(hotkeyService, settings));
+    _lastModifiers = _settings?.hotkeyModifiers;
+    _lastVKey = _settings?.hotkeyVKey;
+    unawaited(_restartHotkeyService(hotkeyService));
 
     _hotkeySubscription = hotkeyService.onHotkeyPressed.listen((event) {
       final action = controller.isRecording ? 'Stopping' : 'Starting';
@@ -100,40 +112,36 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(controller.toggleRecording());
     });
 
-    settings.addListener(_onSettingsChanged);
+    _settings?.addListener(_onSettingsChanged);
   }
 
   void _onSettingsChanged() {
     final hotkeyService = context.read<HotkeyService>();
-    final settings = context.read<SettingsService>();
 
-    if (_lastModifiers != settings.hotkeyModifiers ||
-        _lastVKey != settings.hotkeyVKey) {
-      _lastModifiers = settings.hotkeyModifiers;
-      _lastVKey = settings.hotkeyVKey;
-      unawaited(_restartHotkeyService(hotkeyService, settings));
+    if (_lastModifiers != _settings?.hotkeyModifiers ||
+        _lastVKey != _settings?.hotkeyVKey) {
+      _lastModifiers = _settings?.hotkeyModifiers;
+      _lastVKey = _settings?.hotkeyVKey;
+      unawaited(_restartHotkeyService(hotkeyService));
     }
   }
 
-  Future<void> _restartHotkeyService(
-    HotkeyService service,
-    SettingsService settings,
-  ) async {
+  Future<void> _restartHotkeyService(HotkeyService service) async {
     try {
       await service.start(
         id: 1,
-        modifiers: settings.hotkeyModifiers,
-        vKey: settings.hotkeyVKey,
+        modifiers: _settings?.hotkeyModifiers ?? 0,
+        vKey: _settings?.hotkeyVKey ?? 0,
       );
     } catch (e) {
       LoggingService().error('Failed to start/restart hotkey service: $e');
     }
   }
 
-  void _toggleIncognitoMode(
+  Future<void> _toggleIncognitoMode(
     BuildContext context,
     RecordingController controller,
-  ) {
+  ) async {
     if (controller.isRecording) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -142,32 +150,32 @@ class _HomeScreenState extends State<HomeScreen> {
             'Finish recording before changing privacy mode',
             style: TextStyle(color: Colors.white),
           ),
-          backgroundColor: Colors.orangeAccent.withValues(alpha: 0.8),
+          backgroundColor: Colors.orangeAccent.withValues(
+            alpha: _snackBarAlphaMedium,
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
+
       return;
     }
 
     if (controller.incognitoMode) {
-      unawaited(controller.disableIncognitoMode());
+      await controller.disableIncognitoMode();
     } else {
-      unawaited(
-        showDialog<bool>(
-          context: context,
-          builder: (ctx) => const IncognitoToggleDialog(),
-        ).then((confirmed) {
-          if (confirmed == true) {
-            unawaited(controller.enableIncognitoMode());
-          }
-        }),
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => const IncognitoToggleDialog(),
       );
+      if (confirmed == true) {
+        await controller.enableIncognitoMode();
+      }
     }
   }
 
   @override
   void dispose() {
-    context.read<SettingsService>().removeListener(_onSettingsChanged);
+    _settings?.removeListener(_onSettingsChanged);
     unawaited(_hotkeySubscription?.cancel());
     unawaited(_errorSubscription?.cancel());
     super.dispose();
@@ -198,9 +206,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder: (context, controller, child) =>
                                   ActionBar(
                                     isIncognitoMode: controller.incognitoMode,
-                                    onIncognitoTap: () => _toggleIncognitoMode(
-                                      context,
-                                      controller,
+                                    onIncognitoTap: () => unawaited(
+                                      _toggleIncognitoMode(context, controller),
                                     ),
                                   ),
                             ),

@@ -4,12 +4,24 @@ import 'package:win32/win32.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 class ClipboardService {
+  // UTF-16 encodes each code unit as 2 bytes; +1 for the null terminator.
+  static const _utf16BytesPerUnit = 2;
+  static const _clipboardRetryCount = 5;
+  static const _clipboardRetryDelayMs = 50;
+
+  // Win32 SendInput: we send exactly 4 keyboard events (CtrlDn, VDn, VUp, CtrlUp).
+  static const _inputEventCount = 4;
+  static const _vDownIndex = 1;
+  static const _vUpIndex = 2;
+  static const _ctrlUpIndex = 3;
+
   static Future<void> copyToClipboard(String text) async {
     if (text.isEmpty) return;
 
     // Use Win32 API directly for reliability
     final units = text.codeUnits;
-    final size = (units.length + 1) * 2; // UTF-16 + null terminator
+    final size =
+        (units.length + 1) * _utf16BytesPerUnit; // UTF-16 + null terminator
 
     final hMem = GlobalAlloc(GMEM_MOVEABLE, size);
     if (hMem == nullptr) return;
@@ -17,6 +29,7 @@ class ClipboardService {
     final pMem = GlobalLock(hMem);
     if (pMem == nullptr) {
       GlobalFree(hMem);
+
       return;
     }
 
@@ -30,7 +43,7 @@ class ClipboardService {
 
     // Retry opening clipboard a few times as it might be locked by another app
     bool success = false;
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < _clipboardRetryCount; i++) {
       if (OpenClipboard(0) != 0) {
         EmptyClipboard();
         // win32 v5.x SetClipboardData expects int (handle address), not Pointer
@@ -39,7 +52,9 @@ class ClipboardService {
         success = true;
         break;
       }
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future.delayed(
+        const Duration(milliseconds: _clipboardRetryDelayMs),
+      );
     }
 
     if (success) {
@@ -67,6 +82,7 @@ class ClipboardService {
         'Skipping paste simulation (WhisperDoc is focused)',
         sendToServer: false,
       );
+
       return;
     }
 
@@ -75,35 +91,45 @@ class ClipboardService {
       sendToServer: false,
     );
 
-    final inputs = calloc<INPUT>(4);
+    final inputs = calloc<INPUT>(_inputEventCount);
     try {
       // Use scan codes to bypass Flutter's virtual key tracking
       // Ctrl scan code: 0x1D, V scan code: 0x2F
       const ctrlScanCode = 0x1D;
       const vScanCode = 0x2F;
 
+      final ctrlDown = inputs + 0;
+      final vDown = inputs + _vDownIndex;
+      final vUp = inputs + _vUpIndex;
+      final ctrlUp = inputs + _ctrlUpIndex;
+
+      final ctrlDownInput = ctrlDown.ref;
+      final vDownInput = vDown.ref;
+      final vUpInput = vUp.ref;
+      final ctrlUpInput = ctrlUp.ref;
+
       // Ctrl Down
-      inputs[0].type = INPUT_KEYBOARD;
-      inputs[0].ki.wScan = ctrlScanCode;
-      inputs[0].ki.dwFlags = KEYEVENTF_SCANCODE;
+      ctrlDownInput.type = INPUT_KEYBOARD;
+      ctrlDownInput.ki.wScan = ctrlScanCode;
+      ctrlDownInput.ki.dwFlags = KEYEVENTF_SCANCODE;
 
       // V Down
-      inputs[1].type = INPUT_KEYBOARD;
-      inputs[1].ki.wScan = vScanCode;
-      inputs[1].ki.dwFlags = KEYEVENTF_SCANCODE;
+      vDownInput.type = INPUT_KEYBOARD;
+      vDownInput.ki.wScan = vScanCode;
+      vDownInput.ki.dwFlags = KEYEVENTF_SCANCODE;
 
       // V Up
-      inputs[2].type = INPUT_KEYBOARD;
-      inputs[2].ki.wScan = vScanCode;
-      inputs[2].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+      vUpInput.type = INPUT_KEYBOARD;
+      vUpInput.ki.wScan = vScanCode;
+      vUpInput.ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
 
       // Ctrl Up
-      inputs[3].type = INPUT_KEYBOARD;
-      inputs[3].ki.wScan = ctrlScanCode;
-      inputs[3].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+      ctrlUpInput.type = INPUT_KEYBOARD;
+      ctrlUpInput.ki.wScan = ctrlScanCode;
+      ctrlUpInput.ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
 
-      // Send all 4 inputs at once for atomicity
-      SendInput(4, inputs, sizeOf<INPUT>());
+      // Send all inputs at once for atomicity
+      SendInput(_inputEventCount, inputs, sizeOf<INPUT>());
 
       LoggingService().info('Paste simulation complete', sendToServer: false);
     } catch (e) {

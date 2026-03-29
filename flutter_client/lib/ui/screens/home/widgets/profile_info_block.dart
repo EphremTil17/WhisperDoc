@@ -1,24 +1,35 @@
 import 'package:flutter/material.dart';
 
 class ProfileInfoBlock extends StatelessWidget {
-  final Map<String, dynamic>? user;
-
   const ProfileInfoBlock({super.key, required this.user});
+
+  static const _avatarRadius = 40.0;
+  static const _placeholderBackgroundAlpha = 0.1;
+  static const _emailAlpha = 0.6;
+  static const _emailFontSize = 14.0;
+
+  final Map<String, dynamic>? user;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (user?['picture'] != null)
+        if (user?['picture'] case final String pictureUrl)
           CircleAvatar(
-            radius: 40,
-            backgroundImage: NetworkImage(user!['picture'] as String),
+            radius: _avatarRadius,
+            backgroundImage: NetworkImage(pictureUrl),
           )
         else
           CircleAvatar(
-            radius: 40,
-            backgroundColor: Colors.white.withValues(alpha: 0.1),
-            child: const Icon(Icons.person, size: 40, color: Colors.white70),
+            radius: _avatarRadius,
+            backgroundColor: Colors.white.withValues(
+              alpha: _placeholderBackgroundAlpha,
+            ),
+            child: const Icon(
+              Icons.person,
+              size: _avatarRadius,
+              color: Colors.white70,
+            ),
           ),
         const SizedBox(height: 16),
         Text(
@@ -33,8 +44,8 @@ class ProfileInfoBlock extends StatelessWidget {
         Text(
           user?['email'] as String? ?? 'Anonymous Session',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 14,
+            color: Colors.white.withValues(alpha: _emailAlpha),
+            fontSize: _emailFontSize,
           ),
         ),
       ],

@@ -9,9 +9,6 @@ import 'groq_http_client.dart';
 import 'groq_rate_limiter.dart';
 import 'wav_encoder.dart';
 
-/// Lifecycle states for the Groq Cloud transcription engine.
-enum GroqTranscriptionStatus { idle, buffering, transcribing, error }
-
 /// Domain-level orchestrator for Groq Cloud speech-to-text.
 ///
 /// Manages a local audio buffer, delegates WAV encoding, enforces rate limits,
@@ -26,9 +23,7 @@ class GroqTranscriptionService extends ChangeNotifier {
   int _totalBytes = 0;
   GroqTranscriptionStatus _status = GroqTranscriptionStatus.idle;
 
-  GroqTranscriptionService(this._settings, {GroqHttpClient? httpClient})
-      : _httpClient = httpClient ?? GroqHttpClient(),
-        _rateLimiter = GroqRateLimiter();
+  // --- Public getters ---
 
   GroqTranscriptionStatus get status => _status;
 
@@ -41,6 +36,14 @@ class GroqTranscriptionService extends ChangeNotifier {
 
   /// Whether the buffer has exceeded the conservative file-size ceiling.
   bool get isBufferOverLimit => _totalBytes >= AppConstants.groqMaxBufferBytes;
+
+  // --- Constructor ---
+
+  GroqTranscriptionService(this._settings, {GroqHttpClient? httpClient})
+    : _httpClient = httpClient ?? GroqHttpClient(),
+      _rateLimiter = GroqRateLimiter();
+
+  // --- Public methods ---
 
   /// Appends a raw PCM chunk to the local buffer.
   ///
@@ -56,6 +59,7 @@ class GroqTranscriptionService extends ChangeNotifier {
         '(~${AppConstants.groqMaxRecordingDuration.inSeconds}s) — '
         'stopping recording',
       );
+
       return false;
     }
 
@@ -66,6 +70,7 @@ class GroqTranscriptionService extends ChangeNotifier {
       _status = GroqTranscriptionStatus.buffering;
       notifyListeners();
     }
+
     return true;
   }
 
@@ -144,16 +149,20 @@ class GroqTranscriptionService extends ChangeNotifier {
       notifyListeners();
       // Feed retry-after from 429 responses into the local limiter so the
       // next recording respects the server-mandated cool-down.
-      if (e.retryAfter != null) {
+      final cooldown = e.retryAfter;
+      if (cooldown != null) {
         _rateLimiter.updateFromHeaders({
-          'retry-after': e.retryAfter!.inSeconds.toString(),
+          'retry-after': cooldown.inSeconds.toString(),
         });
       }
       rethrow;
-    } catch (e) {
+    } catch (e, st) {
       _status = GroqTranscriptionStatus.error;
       notifyListeners();
-      throw GroqError(type: GroqErrorType.unknown, message: e.toString());
+      Error.throwWithStackTrace(
+        GroqError(type: GroqErrorType.unknown, message: e.toString()),
+        st,
+      );
     }
   }
 
@@ -165,6 +174,14 @@ class GroqTranscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  void dispose() {
+    _httpClient.dispose();
+    super.dispose();
+  }
+
+  // --- Private methods ---
+
   Uint8List _concatenateChunks() {
     final result = Uint8List(_totalBytes);
     var offset = 0;
@@ -172,12 +189,10 @@ class GroqTranscriptionService extends ChangeNotifier {
       result.setRange(offset, offset + chunk.length, chunk);
       offset += chunk.length;
     }
+
     return result;
   }
-
-  @override
-  void dispose() {
-    _httpClient.dispose();
-    super.dispose();
-  }
 }
+
+/// Lifecycle states for the Groq Cloud transcription engine.
+enum GroqTranscriptionStatus { idle, buffering, transcribing, error }

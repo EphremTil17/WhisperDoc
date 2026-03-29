@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -15,18 +16,74 @@ class AudioSection extends StatefulWidget {
 }
 
 class _AudioSectionState extends State<AudioSection> {
-  late Future<List<InputDevice>> _devicesFuture;
+  static const _fontSize = 14.0;
+  static const _iconSize = 20.0;
+
+  Future<List<InputDevice>> _devicesFuture = Future<List<InputDevice>>.value(
+    const <InputDevice>[],
+  );
 
   @override
   void initState() {
     super.initState();
-    _refreshDevices();
+    _devicesFuture = _loadDevices();
+  }
+
+  Future<List<InputDevice>> _loadDevices() {
+    return context.read<AudioService>().listInputDevices();
   }
 
   void _refreshDevices() {
-    setState(() {
-      _devicesFuture = context.read<AudioService>().listInputDevices();
-    });
+    _devicesFuture = _loadDevices();
+  }
+
+  void _handleRefreshPressed() {
+    setState(_refreshDevices);
+  }
+
+  ValueChanged<String?> _buildDeviceChangedHandler(
+    SettingsService settings,
+    List<InputDevice> devices,
+  ) {
+    return (id) {
+      final label = id == null
+          ? null
+          : devices.firstWhere((device) => device.id == id).label;
+      unawaited(settings.setMicrophoneSelection(id, label));
+    };
+  }
+
+  DropdownButtonBuilder _buildSelectedItemBuilder(
+    List<InputDevice> devices,
+    bool isRecording,
+  ) {
+    return (context) {
+      return [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Default (System Voice Input)'),
+        ),
+        ...devices.map(
+          (device) => DropdownMenuItem<String?>(
+            value: device.id,
+            child: Text(device.label, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+      ].map((item) {
+        final label = (item.child as Text).data ?? '';
+
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            label,
+            style: GoogleFonts.lexend(
+              color: isRecording ? Colors.white38 : Colors.white,
+              fontSize: _fontSize,
+            ),
+          ),
+        );
+      }).toList();
+    };
   }
 
   @override
@@ -44,7 +101,7 @@ class _AudioSectionState extends State<AudioSection> {
             Text('AUDIO INPUT', style: AppTheme.sectionTitleStyle),
             if (!isRecording)
               IconButton(
-                onPressed: _refreshDevices,
+                onPressed: _handleRefreshPressed,
                 icon: const Icon(
                   Icons.refresh,
                   color: Colors.white38,
@@ -79,56 +136,35 @@ class _AudioSectionState extends State<AudioSection> {
               icon: Icon(
                 Icons.keyboard_arrow_down,
                 color: isRecording ? Colors.white10 : Colors.white24,
-                size: 20,
+                size: _iconSize,
               ),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: const BorderRadius.all(Radius.circular(8)),
               style: GoogleFonts.lexend(
                 color: isRecording ? Colors.white38 : Colors.white,
-                fontSize: 14,
+                fontSize: _fontSize,
               ),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 filled: true,
                 fillColor: Colors.black26,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
+                contentPadding: EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 14,
                 ),
               ),
-              selectedItemBuilder: (context) {
-                return [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Default (System Voice Input)'),
-                  ),
-                  ...devices.map(
-                    (d) => DropdownMenuItem<String?>(
-                      value: d.id,
-                      child: Text(d.label, overflow: TextOverflow.ellipsis),
-                    ),
-                  ),
-                ].map((item) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      (item.child as Text).data!,
-                      style: GoogleFonts.lexend(
-                        color: isRecording ? Colors.white38 : Colors.white,
-                        fontSize: 14,
-                      ),
-                    ),
-                  );
-                }).toList();
-              },
+              selectedItemBuilder: _buildSelectedItemBuilder(
+                devices,
+                isRecording,
+              ),
               items: [
                 DropdownMenuItem<String?>(
                   value: null,
                   child: Text(
                     'Default (System Voice Input)',
-                    style: GoogleFonts.lexend(fontSize: 14),
+                    style: GoogleFonts.lexend(fontSize: _fontSize),
                   ),
                 ),
                 ...devices.map(
@@ -136,19 +172,14 @@ class _AudioSectionState extends State<AudioSection> {
                     value: d.id,
                     child: Text(
                       d.label,
-                      style: GoogleFonts.lexend(fontSize: 14),
+                      style: GoogleFonts.lexend(fontSize: _fontSize),
                     ),
                   ),
                 ),
               ],
               onChanged: isRecording
                   ? null
-                  : (id) async {
-                      final label = id == null
-                          ? null
-                          : devices.firstWhere((d) => d.id == id).label;
-                      await settings.setMicrophoneSelection(id, label);
-                    },
+                  : _buildDeviceChangedHandler(settings, devices),
             );
           },
         ),

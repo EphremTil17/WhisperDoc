@@ -2,6 +2,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 class RefinedIconButton extends StatefulWidget {
+  const RefinedIconButton({
+    super.key,
+    required this.icon,
+    this.onTap,
+    this.iconColor,
+    this.iconSize = _defaultIconSize,
+    this.isPulsing = false,
+    this.pulseColor,
+  });
+
+  static const double _defaultIconSize = 24;
+
   final IconData icon;
   final VoidCallback? onTap;
   final Color? iconColor;
@@ -9,25 +21,28 @@ class RefinedIconButton extends StatefulWidget {
   final bool isPulsing;
   final Color? pulseColor;
 
-  const RefinedIconButton({
-    super.key,
-    required this.icon,
-    this.onTap,
-    this.iconColor,
-    this.iconSize = 24,
-    this.isPulsing = false,
-    this.pulseColor,
-  });
-
   @override
   State<RefinedIconButton> createState() => _RefinedIconButtonState();
 }
 
 class _RefinedIconButtonState extends State<RefinedIconButton>
     with SingleTickerProviderStateMixin {
+  static const double _hoverBackgroundAlpha = 0.2;
+  static const double _pulsingBackgroundAlphaScale = 0.05;
+  static const double _pulsingBackgroundAlphaBase = 0.08;
+  static const double _hoverBorderAlpha = 0.5;
+  static const double _pulsingBorderAlphaScale = 0.35;
+  static const double _pulsingBorderAlphaBase = 0.15;
+  static const double _idleBorderAlpha = 0.15;
+  static const double _pulsingBorderWidthScale = 0.5;
+  static const double _pulsingBorderWidthBase = 1;
+  static const double _shadowAlphaScale = 0.1;
+  static const double _shadowBlurScale = 8;
+  static const double _shadowSpreadScale = 1;
+  static const double _idlePulseValue = 0;
+
   bool _isHovering = false;
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  late final AnimationController _pulseController;
 
   @override
   void initState() {
@@ -35,10 +50,6 @@ class _RefinedIconButtonState extends State<RefinedIconButton>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    );
-
-    _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     if (widget.isPulsing) {
@@ -77,33 +88,53 @@ class _RefinedIconButtonState extends State<RefinedIconButton>
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: AnimatedBuilder(
-          animation: _pulseAnimation,
+          animation: _pulseController,
           builder: (context, child) {
-            final pulseVal = widget.isPulsing ? _pulseAnimation.value : 0.0;
+            final pulseVal = widget.isPulsing
+                ? Curves.easeInOut.transform(_pulseController.value)
+                : _idlePulseValue;
             final glowColor = widget.pulseColor ?? Colors.white;
+            final Color borderColor;
+
+            if (_isHovering) {
+              borderColor = Colors.white.withValues(alpha: _hoverBorderAlpha);
+            } else if (widget.isPulsing) {
+              borderColor = glowColor.withValues(
+                alpha:
+                    (pulseVal * _pulsingBorderAlphaScale) +
+                    _pulsingBorderAlphaBase,
+              );
+            } else {
+              borderColor = Colors.white.withValues(alpha: _idleBorderAlpha);
+            }
 
             return AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: _isHovering
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : glowColor.withValues(alpha: 0.08 + (pulseVal * 0.05)),
-                borderRadius: BorderRadius.circular(8),
+                    ? Colors.white.withValues(alpha: _hoverBackgroundAlpha)
+                    : glowColor.withValues(
+                        alpha:
+                            (pulseVal * _pulsingBackgroundAlphaScale) +
+                            _pulsingBackgroundAlphaBase,
+                      ),
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
                 border: Border.all(
-                  color: _isHovering
-                      ? Colors.white.withValues(alpha: 0.5)
-                      : widget.isPulsing
-                      ? glowColor.withValues(alpha: 0.15 + (pulseVal * 0.35))
-                      : Colors.white.withValues(alpha: 0.15),
-                  width: widget.isPulsing ? 1.0 + (pulseVal * 0.5) : 1.0,
+                  color: borderColor,
+                  width: widget.isPulsing
+                      ? (pulseVal * _pulsingBorderWidthScale) +
+                            _pulsingBorderWidthBase
+                      : _pulsingBorderWidthBase,
                 ),
                 boxShadow: widget.isPulsing
                     ? [
                         BoxShadow(
-                          color: glowColor.withValues(alpha: 0.1 * pulseVal),
-                          blurRadius: 8.0 * pulseVal,
-                          spreadRadius: 1.0 * pulseVal,
+                          color: glowColor.withValues(
+                            alpha: pulseVal * _shadowAlphaScale,
+                          ),
+                          blurRadius: pulseVal * _shadowBlurScale,
+                          spreadRadius: pulseVal * _shadowSpreadScale,
                         ),
                       ]
                     : null,

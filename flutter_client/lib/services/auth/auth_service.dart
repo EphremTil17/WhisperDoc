@@ -7,6 +7,9 @@ import 'session_manager.dart';
 /// Coordinator service for Authentication.
 /// Delegates OIDC protocol details and Session persistence to modular managers.
 class AuthService extends ChangeNotifier {
+  static const _pkceVerifierLength = 64;
+  static const _stateLength = 16;
+
   final LoggingService _logger = LoggingService();
   final OidcManager _oidc = OidcManager();
   final SessionManager _session = SessionManager();
@@ -22,16 +25,6 @@ class AuthService extends ChangeNotifier {
   bool get isAuthenticating => _isAuthenticating;
   String? get idToken => _idToken;
 
-  String _formatPrincipal(Map<String, dynamic>? user) {
-    final sub = (user?['sub'] ?? 'unknown').toString();
-    final email =
-        (user?['email'] ?? user?['preferred_username'])?.toString().trim();
-    if (email != null && email.isNotEmpty) {
-      return 'sub=$sub email=$email';
-    }
-    return 'sub=$sub';
-  }
-
   Future<void> initialize() async {
     if (_isInitialized) {
       return;
@@ -40,32 +33,6 @@ class AuthService extends ChangeNotifier {
     await _loadExistingSession();
     _isInitialized = true;
     _logger.info('AuthService initialized');
-  }
-
-  Future<void> _loadExistingSession() async {
-    try {
-      _idToken = await _session.loadIdToken();
-
-      if (_idToken != null) {
-        if (_session.isExpired(_idToken!)) {
-          _logger.warning(
-            'Stored OIDC session expired. Attempting silent refresh...',
-          );
-          final success = await silentRefresh();
-          if (!success) {
-            _logger.warning('Silent refresh failed. User must sign in again.');
-            await signOut();
-          }
-        } else {
-          _currentUser = _session.extractUser(_idToken!);
-          _logger.info(
-            'Restored OIDC session for ${_formatPrincipal(_currentUser)}',
-          );
-        }
-      }
-    } catch (e) {
-      _logger.error('Failed to load existing session', error: e);
-    }
   }
 
   Future<void> signIn() async {
@@ -79,9 +46,9 @@ class AuthService extends ChangeNotifier {
       _logger.info('Initiating OIDC sign-in flow...');
 
       final discovery = await _oidc.discover();
-      final verifier = _oidc.generateRandomString(64);
+      final verifier = _oidc.generateRandomString(_pkceVerifierLength);
       final challenge = _oidc.generateCodeChallenge(verifier);
-      final state = _oidc.generateRandomString(16);
+      final state = _oidc.generateRandomString(_stateLength);
 
       final authResult = await _oidc.authenticate(
         authorizationEndpoint: discovery['authorization_endpoint'],
@@ -104,14 +71,15 @@ class AuthService extends ChangeNotifier {
         codeVerifier: verifier,
       );
 
-      _idToken = tokens['id_token'];
+      final signInIdToken = tokens['id_token'] as String;
+      _idToken = signInIdToken;
       await _session.saveTokens(
-        idToken: _idToken!,
+        idToken: signInIdToken,
         accessToken: tokens['access_token'],
         refreshToken: tokens['refresh_token'],
       );
 
-      _currentUser = _session.extractUser(_idToken!);
+      _currentUser = _session.extractUser(signInIdToken);
       _logger.info(
         'Sign-in successful for ${_formatPrincipal(_currentUser)} '
         '(Refresh Token: ${tokens['refresh_token'] != null ? 'YES' : 'NO'})',
@@ -127,9 +95,11 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> silentRefresh() async {
-    if (_refreshCompleter != null) {
+    final existingCompleter = _refreshCompleter;
+    if (existingCompleter != null) {
       _logger.info('Silent refresh already in progress, waiting...');
-      return _refreshCompleter!.future;
+
+      return existingCompleter.future;
     }
     _refreshCompleter = Completer<bool>();
 
@@ -142,6 +112,7 @@ class AuthService extends ChangeNotifier {
         );
         await signOut();
         _refreshCompleter?.complete(false);
+
         return false;
       }
 
@@ -151,24 +122,27 @@ class AuthService extends ChangeNotifier {
         refreshToken: refreshToken,
       );
 
-      _idToken = tokens['id_token'];
+      final refreshedIdToken = tokens['id_token'] as String;
+      _idToken = refreshedIdToken;
       await _session.saveTokens(
-        idToken: _idToken!,
+        idToken: refreshedIdToken,
         accessToken: tokens['access_token'],
         refreshToken: tokens['refresh_token'],
       );
 
-      _currentUser = _session.extractUser(_idToken!);
+      _currentUser = _session.extractUser(refreshedIdToken);
       _logger.info(
         'Silent refresh successful for ${_formatPrincipal(_currentUser)}',
       );
       notifyListeners();
       _refreshCompleter?.complete(true);
+
       return true;
     } catch (e) {
       _logger.error('Silent refresh failed. Signing out user.', error: e);
       await signOut();
       _refreshCompleter?.complete(false);
+
       return false;
     } finally {
       _refreshCompleter = null;
@@ -184,13 +158,54 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<String?> getAccessToken() async {
-    if (_idToken == null) {
+    final token = _idToken;
+    if (token == null) {
       return null;
     }
-    if (_session.isExpired(_idToken!)) {
+    if (_session.isExpired(token)) {
       final success = await silentRefresh();
       if (!success) return null;
     }
+
     return _idToken;
+  }
+
+  String _formatPrincipal(Map<String, dynamic>? user) {
+    final sub = (user?['sub'] ?? 'unknown').toString();
+    final email = (user?['email'] ?? user?['preferred_username'])
+        ?.toString()
+        .trim();
+    if (email != null && email.isNotEmpty) {
+      return 'sub=$sub email=$email';
+    }
+
+    return 'sub=$sub';
+  }
+
+  Future<void> _loadExistingSession() async {
+    try {
+      _idToken = await _session.loadIdToken();
+
+      final storedToken = _idToken;
+      if (storedToken != null) {
+        if (_session.isExpired(storedToken)) {
+          _logger.warning(
+            'Stored OIDC session expired. Attempting silent refresh...',
+          );
+          final success = await silentRefresh();
+          if (!success) {
+            _logger.warning('Silent refresh failed. User must sign in again.');
+            await signOut();
+          }
+        } else {
+          _currentUser = _session.extractUser(storedToken);
+          _logger.info(
+            'Restored OIDC session for ${_formatPrincipal(_currentUser)}',
+          );
+        }
+      }
+    } catch (e) {
+      _logger.error('Failed to load existing session', error: e);
+    }
   }
 }

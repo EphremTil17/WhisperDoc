@@ -33,14 +33,16 @@ void main() async {
       title: "WhisperDoc",
     );
 
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-      await windowManager.setResizable(false);
+    await windowManager.waitUntilReadyToShow(windowOptions, () {
+      unawaited(() async {
+        await windowManager.show();
+        await windowManager.focus();
+        await windowManager.setResizable(false);
+      }());
     });
 
     // Initialize all services via Service Locator
-    await setupServices();
+    await ServiceLocator.setup();
   } catch (e) {
     debugPrint('Critical Startup Error: $e');
   }
@@ -49,16 +51,32 @@ void main() async {
     MultiProvider(
       providers: [
         // Expose services to widget tree via Provider (for context.read/watch)
-        ChangeNotifierProvider.value(value: getIt<SettingsService>()),
-        ChangeNotifierProvider.value(value: getIt<WebSocketService>()),
-        ChangeNotifierProvider.value(value: getIt<AudioService>()),
-        ChangeNotifierProvider.value(value: getIt<AuthService>()),
-        ChangeNotifierProvider.value(value: getIt<GroqTranscriptionService>()),
-        ChangeNotifierProvider.value(value: getIt<RecordingController>()),
-        Provider.value(value: getIt<HotkeyService>()),
-        Provider.value(value: getIt<AutomationService>()),
-        ChangeNotifierProvider.value(value: getIt<ProfileController>()),
-        ChangeNotifierProvider.value(value: getIt<UpdateService>()),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<SettingsService>(),
+        ),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<WebSocketService>(),
+        ),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<AudioService>(),
+        ),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<AuthService>(),
+        ),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<GroqTranscriptionService>(),
+        ),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<RecordingController>(),
+        ),
+        Provider.value(value: ServiceLocator.getIt<HotkeyService>()),
+        Provider.value(value: ServiceLocator.getIt<AutomationService>()),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<ProfileController>(),
+        ),
+        ChangeNotifierProvider.value(
+          value: ServiceLocator.getIt<UpdateService>(),
+        ),
       ],
       child: const WhisperDocApp(),
     ),
@@ -89,19 +107,21 @@ class _WhisperDocAppState extends State<WhisperDocApp> with WindowListener {
   @override
   Future<void> onWindowClose() async {
     // Stop hotkey service (kills the isolate)
-    await getIt<HotkeyService>().stop();
+    await ServiceLocator.getIt<HotkeyService>().stop();
 
     // Stop audio recording if active
-    final audioService = getIt<AudioService>();
+    final audioService = ServiceLocator.getIt<AudioService>();
     if (audioService.isRecording) {
       await audioService.stopRecording();
     }
 
     // Close WebSocket connection
-    await getIt<WebSocketService>().disconnect(reason: 'App closure');
+    await ServiceLocator.getIt<WebSocketService>().disconnect(
+      reason: 'App closure',
+    );
 
     // Cleanup native audio memory
-    getIt<AudioCueService>().dispose();
+    ServiceLocator.getIt<AudioCueService>().dispose();
 
     // Allow window to close
     await windowManager.destroy();

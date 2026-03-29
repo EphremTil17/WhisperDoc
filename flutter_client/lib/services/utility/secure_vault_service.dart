@@ -22,6 +22,13 @@ class SecureVaultService {
   static const String _fallbackDeviceIdKey = 'whisperdoc_fallback_device_id';
   static const int _pbkdf2Iterations = 100000;
   static const int _keyLength = 32; // 256-bit key
+  static const int _saltByteLength = 32;
+  static const int _fallbackIdByteLength = 32;
+  static const int _randomByteRange = 256;
+  static const int _blockIndexByteSize = 4;
+
+  bool _isInitialized = false;
+  String? _encryptionKey;
 
   final FlutterSecureStorage _storage;
   final DeviceInfoPlugin _deviceInfo;
@@ -36,9 +43,6 @@ class SecureVaultService {
              wOptions: WindowsOptions(useBackwardCompatibility: false),
            ),
        _deviceInfo = deviceInfo ?? DeviceInfoPlugin();
-
-  bool _isInitialized = false;
-  String? _encryptionKey;
 
   /// Initialize the vault service. Must be called before any operations.
   Future<void> initialize() async {
@@ -87,9 +91,11 @@ class SecureVaultService {
       if (value != null) {
         _logger.info('Credential retrieved from secure vault: $key');
       }
+
       return value;
     } catch (e) {
       _logger.error('Failed to retrieve credential: $key', error: e);
+
       return null;
     }
   }
@@ -110,6 +116,7 @@ class SecureVaultService {
   Future<bool> hasCredential(String key) async {
     _ensureInitialized();
     final value = await _storage.read(key: key);
+
     return value != null;
   }
 
@@ -129,13 +136,23 @@ class SecureVaultService {
   /// Get the derived encryption key for database encryption
   String getEncryptionKey() {
     _ensureInitialized();
-    return _encryptionKey!;
+    final encryptionKey = _encryptionKey;
+    if (encryptionKey == null) {
+      throw StateError('SecureVaultService encryption key is unavailable.');
+    }
+
+    return encryptionKey;
   }
 
   /// Get the derived encryption key as raw bytes for database field-level encryption
   Uint8List getEncryptionKeyBytes() {
     _ensureInitialized();
-    return base64Decode(_encryptionKey!);
+    final encryptionKey = _encryptionKey;
+    if (encryptionKey == null) {
+      throw StateError('SecureVaultService encryption key is unavailable.');
+    }
+
+    return base64Decode(encryptionKey);
   }
 
   // --- Private Helper Methods ---
@@ -157,21 +174,27 @@ class SecureVaultService {
         return deviceId;
       }
       _logger.warning('Device ID was empty, using persisted fallback');
+
       return _getOrCreateFallbackDeviceId();
     } catch (e) {
       _logger.warning('Failed to get device ID, using persisted fallback');
+
       return _getOrCreateFallbackDeviceId();
     }
   }
 
   String _generateSalt() {
     // Generate 32-byte cryptographically secure random salt
-    return _generateRandomBase64(32);
+    return _generateRandomBase64(_saltByteLength);
   }
 
   String _generateRandomBase64(int byteLength) {
     final secureRandom = Random.secure();
-    final random = List<int>.generate(byteLength, (_) => secureRandom.nextInt(256));
+    final random = List<int>.generate(
+      byteLength,
+      (_) => secureRandom.nextInt(_randomByteRange),
+    );
+
     return base64Encode(random);
   }
 
@@ -181,11 +204,12 @@ class SecureVaultService {
       return existing;
     }
 
-    final generated = _generateRandomBase64(32);
+    final generated = _generateRandomBase64(_fallbackIdByteLength);
     await _storage.write(key: _fallbackDeviceIdKey, value: generated);
     _logger.warning(
       'Persisted per-install fallback device identifier for key derivation',
     );
+
     return generated;
   }
 
@@ -223,8 +247,12 @@ class SecureVaultService {
     required List<int> salt,
     required int blockIndex,
   }) {
-    final blockIndexBytes = ByteData(4)..setUint32(0, blockIndex, Endian.big);
-    var u = prf.convert([...salt, ...blockIndexBytes.buffer.asUint8List()]).bytes;
+    final blockIndexBytes = ByteData(_blockIndexByteSize)
+      ..setUint32(0, blockIndex, Endian.big);
+    var u = prf.convert([
+      ...salt,
+      ...blockIndexBytes.buffer.asUint8List(),
+    ]).bytes;
     final output = Uint8List.fromList(u);
 
     for (var i = 1; i < _pbkdf2Iterations; i++) {

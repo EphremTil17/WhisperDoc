@@ -9,22 +9,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'groq_error.dart';
 
-/// Result of a successful Groq transcription request.
-class GroqTranscriptionResult {
-  final String text;
-  final Map<String, String> responseHeaders;
-
-  const GroqTranscriptionResult({
-    required this.text,
-    required this.responseHeaders,
-  });
-}
-
 /// Low-level HTTP client for the Groq Audio Transcriptions API.
 ///
 /// Sends a WAV file as multipart/form-data and returns the transcribed text.
 /// This is the only class in the transcription module that imports `package:http`.
 class GroqHttpClient {
+  static const int _httpOk = 200;
+
   final http.Client _client;
 
   GroqHttpClient({http.Client? client}) : _client = client ?? http.Client();
@@ -46,12 +37,14 @@ class GroqHttpClient {
 
       request.headers['Authorization'] = 'Bearer $apiKey';
 
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        wavBytes,
-        filename: 'audio.wav',
-        contentType: MediaType('audio', 'wav'),
-      ));
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          wavBytes,
+          filename: 'audio.wav',
+          contentType: MediaType('audio', 'wav'),
+        ),
+      );
 
       request.fields['model'] = AppConstants.groqDefaultModel;
       request.fields['response_format'] = 'json';
@@ -70,8 +63,9 @@ class GroqHttpClient {
 
       final response = await http.Response.fromStream(streamed);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == _httpOk) {
         final text = _extractText(response.body);
+
         return GroqTranscriptionResult(
           text: text,
           responseHeaders: response.headers,
@@ -82,8 +76,9 @@ class GroqHttpClient {
 
       // Attach retry-after duration for 429 responses.
       if (error.type == GroqErrorType.rateLimited) {
-        final retrySeconds =
-            int.tryParse(response.headers['retry-after'] ?? '');
+        final retrySeconds = int.tryParse(
+          response.headers['retry-after'] ?? '',
+        );
         throw GroqError(
           type: error.type,
           message: error.message,
@@ -96,28 +91,40 @@ class GroqHttpClient {
       throw error;
     } on GroqError {
       rethrow;
-    } on SocketException catch (e) {
-      throw GroqError.network(e.message);
-    } on TimeoutException {
-      throw GroqError.network('Request timed out');
-    } catch (e) {
-      throw GroqError(
-        type: GroqErrorType.unknown,
-        message: e.toString(),
+    } on SocketException catch (e, st) {
+      Error.throwWithStackTrace(GroqError.network(e.message), st);
+    } on TimeoutException catch (_, st) {
+      Error.throwWithStackTrace(GroqError.network('Request timed out'), st);
+    } catch (e, st) {
+      Error.throwWithStackTrace(
+        GroqError(type: GroqErrorType.unknown, message: e.toString()),
+        st,
       );
     }
   }
+
+  void dispose() => _client.close();
 
   /// Extracts the `text` field from the Groq JSON response.
   /// Response shape: `{"text": "...", "x_groq": {...}}`
   String _extractText(String body) {
     try {
       final json = jsonDecode(body) as Map<String, dynamic>;
+
       return json['text'] as String? ?? '';
     } catch (_) {
       return body;
     }
   }
+}
 
-  void dispose() => _client.close();
+/// Result of a successful Groq transcription request.
+class GroqTranscriptionResult {
+  final String text;
+  final Map<String, String> responseHeaders;
+
+  const GroqTranscriptionResult({
+    required this.text,
+    required this.responseHeaders,
+  });
 }

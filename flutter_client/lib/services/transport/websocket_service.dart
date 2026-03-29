@@ -16,11 +16,14 @@ import 'audio_buffer_manager.dart';
 import 'heartbeat_manager.dart';
 import 'reconnection_manager.dart';
 
-enum ConnectionStatus { disconnected, connecting, connected, banned }
-
 /// Lean orchestrator for WebSocket connectivity.
 /// Delegates specialized logic to sub-managers for buffering, reconnection, and heartbeats.
 class WebSocketService extends ChangeNotifier {
+  static const int _normalCloseCode = 1000;
+  static const int _authForbiddenCode = 403;
+  static const int _policyViolationCode = 1008;
+  static const int _serverIdleCloseCode = 4001;
+
   final SettingsService _settingsService;
   final AuthService _authService;
 
@@ -33,7 +36,7 @@ class WebSocketService extends ChangeNotifier {
   final AudioBufferManager _audioBuffer = AudioBufferManager();
   final ReconnectionManager _reconnection = ReconnectionManager();
   final HeartbeatManager _heartbeat = HeartbeatManager();
-  late final ConfigurationManager _config;
+  final ConfigurationManager _config;
 
   WebSocketChannel? _channel;
   final StreamController<ConnectionStatus> _statusController =
@@ -68,16 +71,30 @@ class WebSocketService extends ChangeNotifier {
   String? get connectionId => _connectionId;
   Stream<ConnectionStatus> get onStatusChanged => _statusController.stream;
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
-  LoggingService get _logger => LoggingService();
-
-  /// Returns true if the app has valid credentials (OIDC or API Key) to attempt a connection.
   bool get hasValidCredentials =>
       _authService.isAuthenticated ||
       (_settingsService.cachedApiKey?.isNotEmpty ?? false);
 
-  WebSocketService(this._settingsService, this._authService) {
-    _config = ConfigurationManager(_authService, _settingsService);
+  @visibleForTesting
+  bool get pendingConfigChangeForTesting => _pendingConfigChange;
 
+  @visibleForTesting
+  ReconnectionManager get reconnectionManagerForTesting => _reconnection;
+
+  /// Exposes the audio buffer so tests can inspect whether it was flushed or cleared.
+  @visibleForTesting
+  AudioBufferManager get audioBufferForTesting => _audioBuffer;
+
+  LoggingService get _logger => LoggingService();
+
+  @visibleForTesting
+  set pendingConfigChangeForTesting(bool value) => _pendingConfigChange = value;
+
+  @visibleForTesting
+  set channelForTesting(WebSocketChannel? channel) => _channel = channel;
+
+  WebSocketService(this._settingsService, this._authService)
+    : _config = ConfigurationManager(_authService, _settingsService) {
     // Wire up configuration changes
     _config.startObserving(
       onReconnectNeeded: () {
@@ -135,7 +152,7 @@ class WebSocketService extends ChangeNotifier {
     _isIntentionalDisconnect = false;
     _lastHandshakeError = null;
     _updateStatus(ConnectionStatus.connecting);
-    notifyListeners(); // Added this line
+    notifyListeners();
     _handshake.reset();
 
     try {
@@ -144,7 +161,7 @@ class WebSocketService extends ChangeNotifier {
 
       _logger.info(
         'Connecting to: $uriString (Auth: ${_authService.isAuthenticated ? "OIDC" : "API_KEY"})',
-      ); // Added this line
+      );
       if (!_authService.isAuthenticated && (_activeApiKey?.isEmpty ?? true)) {
         _lastHandshakeError = 'Authentication required';
         _handshake.transitionTo(HandshakeState.failed);
@@ -169,9 +186,11 @@ class WebSocketService extends ChangeNotifier {
       );
       socket.pingInterval = const Duration(seconds: 30);
       _channel = IOWebSocketChannel(socket);
-      await _channel!.ready;
+      final ch = _channel;
+      if (ch == null) throw Exception('Channel not initialized');
+      await ch.ready;
 
-      _channel!.stream.listen(
+      ch.stream.listen(
         _handleRawMessage,
         onError: _handleSocketError,
         onDone: _handleSocketClose,
@@ -185,6 +204,7 @@ class WebSocketService extends ChangeNotifier {
       // connected. Nothing useful can be checked here while still connecting.
       await _sendClientHello();
       _isConnecting = false;
+
       return true;
     } catch (e) {
       _logger.error('Connection failed', error: e);
@@ -194,6 +214,7 @@ class WebSocketService extends ChangeNotifier {
       }
       _isConnecting = false;
       _handleDisconnect(); // consumes _pendingConfigChange for the failure path
+
       return false;
     }
   }
@@ -202,7 +223,8 @@ class WebSocketService extends ChangeNotifier {
     _isIntentionalDisconnect = true;
     _reconnection.reset();
     _logger.info('Disconnect requested by client | Reason: $reason');
-    if (_channel != null) await _channel!.sink.close(1000, reason);
+    final ch = _channel;
+    if (ch != null) await ch.sink.close(_normalCloseCode, reason);
   }
 
   /// Ensures a connection is active if credentials exist.
@@ -212,6 +234,7 @@ class WebSocketService extends ChangeNotifier {
     if (!hasValidCredentials) return false;
 
     _logger.info('ensureConnected: Triggering background auto-wake...');
+
     return connect();
   }
 
@@ -221,11 +244,13 @@ class WebSocketService extends ChangeNotifier {
       // until the replacement connection is ready rather than leaking it
       // onto the stale socket during shutdown.
       _audioBuffer.add(data);
+
       return;
     }
 
-    if (_handshake.canSendAudio() && _channel != null) {
-      _channel!.sink.add(data);
+    final activeChannel = _channel;
+    if (_handshake.canSendAudio() && activeChannel != null) {
+      activeChannel.sink.add(data);
       _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
     } else if (_handshake.state == HandshakeState.authenticating ||
         _isConnecting) {
@@ -237,6 +262,34 @@ class WebSocketService extends ChangeNotifier {
   void sendEndSignal() => _sendJson({'event': 'end-of-stream'});
   void sendLog(String level, String msg) =>
       _sendJson({'event': 'log', 'level': level, 'message': msg});
+
+  /// Simulates a server-initiated close without a real socket.
+  /// Use only in tests annotated with @visibleForTesting.
+  @visibleForTesting
+  void processCloseForTesting(int? code, String? reason) =>
+      _processClose(code, reason);
+
+  /// Forces the service into a connected state without a real socket.
+  /// Lets tests exercise disconnect/reconnect logic in isolation.
+  @visibleForTesting
+  void forceConnectedForTesting() {
+    _status = ConnectionStatus.connected;
+    _isAuthenticatedSession = true;
+    _isIntentionalDisconnect = false;
+  }
+
+  /// Exercises the _handleRawMessage authenticated branch without a real socket.
+  /// Advances through the authenticating state first so the state machine does
+  /// not log a spurious invalid-transition warning in test output.
+  @visibleForTesting
+  void receiveAuthenticatedForTesting() {
+    _handshake.transitionTo(HandshakeState.authenticating);
+    _handleRawMessage('{"event":"authenticated"}');
+  }
+
+  /// Seeds the audio buffer with a test chunk to exercise the flush/clear paths.
+  @visibleForTesting
+  void bufferAudioForTesting(Uint8List chunk) => _audioBuffer.add(chunk);
 
   // --- Internal Logic ---
 
@@ -258,7 +311,7 @@ class WebSocketService extends ChangeNotifier {
     _handshake.transitionTo(HandshakeState.authenticating);
   }
 
-  void _handleRawMessage(dynamic data) {
+  void _handleRawMessage(Object? data) {
     _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
     if (data is! String) return;
 
@@ -277,7 +330,9 @@ class WebSocketService extends ChangeNotifier {
           // incognito flag are already stale. The buffer will refill after the
           // reconnect completes with fresh settings.
           _audioBuffer.clear();
-          unawaited(disconnect(reason: 'Configuration/Identity update required'));
+          unawaited(
+            disconnect(reason: 'Configuration/Identity update required'),
+          );
         } else {
           // Happy path: flush any audio that was buffered during the handshake.
           // _channel is non-null here by construction — it is assigned in
@@ -287,8 +342,8 @@ class WebSocketService extends ChangeNotifier {
           if (ch != null) _audioBuffer.flush(ch);
         }
       } else if (event == 'error' &&
-          (json['code'] == 403 ||
-              json['code'] == 1008 ||
+          (json['code'] == _authForbiddenCode ||
+              json['code'] == _policyViolationCode ||
               json['message']?.contains('Auth') == true)) {
         _handleAuthError(json['message']);
       } else {
@@ -299,13 +354,13 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
-  void _handleAuthError(dynamic message) {
+  void _handleAuthError(Object? message) {
     final msgStr = message?.toString() ?? 'Auth failed';
+    final lowerMsg = msgStr.toLowerCase();
     _lastHandshakeError = msgStr;
     _handshake.transitionTo(HandshakeState.failed);
 
-    if (msgStr.toLowerCase().contains('ban') ||
-        msgStr.toLowerCase().contains('cooldown')) {
+    if (lowerMsg.contains('ban') || lowerMsg.contains('cooldown')) {
       _banState.parseBanMessage(msgStr);
       _updateStatus(ConnectionStatus.banned);
     }
@@ -314,7 +369,7 @@ class WebSocketService extends ChangeNotifier {
     _handleDisconnect();
   }
 
-  void _handleSocketError(dynamic error) {
+  void _handleSocketError(Object? error) {
     _logger.error('WebSocket transport error', error: error);
     _handleDisconnect();
   }
@@ -329,7 +384,7 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void _processClose(int? code, String? reason) {
-    if (code == 4001) {
+    if (code == _serverIdleCloseCode) {
       // Server evicted an idle authenticated session with no audio activity.
       // Go quietly idle — reconnecting would only produce an immediate re-eviction loop.
       _logger.info(
@@ -337,10 +392,11 @@ class WebSocketService extends ChangeNotifier {
       );
       _isIntentionalDisconnect = true;
       _handleDisconnect();
+
       return;
     }
 
-    if (code == 1008) {
+    if (code == _policyViolationCode) {
       if (_lastHandshakeError == null) {
         _logger.warning(
           'Server rejected connection | Code: 1008 | Reason: ${reason ?? "Policy violation"}',
@@ -349,56 +405,11 @@ class WebSocketService extends ChangeNotifier {
       } else {
         _handleDisconnect();
       }
+
       return;
     }
     _handleDisconnect();
   }
-
-  // --- Test seams ---
-
-  /// Simulates a server-initiated close without a real socket.
-  /// Use only in tests annotated with @visibleForTesting.
-  @visibleForTesting
-  void processCloseForTesting(int? code, String? reason) =>
-      _processClose(code, reason);
-
-  /// Forces the service into a connected state without a real socket.
-  /// Lets tests exercise disconnect/reconnect logic in isolation.
-  @visibleForTesting
-  void forceConnectedForTesting() {
-    _status = ConnectionStatus.connected;
-    _isAuthenticatedSession = true;
-    _isIntentionalDisconnect = false;
-  }
-
-  @visibleForTesting
-  bool get pendingConfigChangeForTesting => _pendingConfigChange;
-
-  @visibleForTesting
-  set pendingConfigChangeForTesting(bool value) => _pendingConfigChange = value;
-
-  @visibleForTesting
-  ReconnectionManager get reconnectionManagerForTesting => _reconnection;
-
-  @visibleForTesting
-  set channelForTesting(WebSocketChannel? channel) => _channel = channel;
-
-  /// Exercises the _handleRawMessage authenticated branch without a real socket.
-  /// Advances through the authenticating state first so the state machine does
-  /// not log a spurious invalid-transition warning in test output.
-  @visibleForTesting
-  void receiveAuthenticatedForTesting() {
-    _handshake.transitionTo(HandshakeState.authenticating);
-    _handleRawMessage('{"event":"authenticated"}');
-  }
-
-  /// Exposes the audio buffer so tests can inspect whether it was flushed or cleared.
-  @visibleForTesting
-  AudioBufferManager get audioBufferForTesting => _audioBuffer;
-
-  /// Seeds the audio buffer with a test chunk to exercise the flush/clear paths.
-  @visibleForTesting
-  void bufferAudioForTesting(Uint8List chunk) => _audioBuffer.add(chunk);
 
   void _handleDisconnect() {
     final bool wasActive = _status == ConnectionStatus.connected;
@@ -432,15 +443,7 @@ class WebSocketService extends ChangeNotifier {
       // If the immediate attempt fails (e.g. bad new credentials, unreachable
       // URI), fall back to the normal backoff timer so the app does not go
       // silently idle with no recovery path.
-      unawaited(connect().then((success) {
-        if (!success && !_banState.isBanned) {
-          _reconnection.schedule(
-            onRetry: () => connect(),
-            lastError: _lastHandshakeError,
-            isBanned: _banState.isBanned,
-          );
-        }
-      }));
+      unawaited(_attemptImmediateReconnect());
     } else if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
       _logger.warning(
         'Unexpected disconnect while active | Scheduling reconnect with backoff',
@@ -455,9 +458,21 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
+  Future<void> _attemptImmediateReconnect() async {
+    final success = await connect();
+    if (!success && !_banState.isBanned) {
+      _reconnection.schedule(
+        onRetry: () => connect(),
+        lastError: _lastHandshakeError,
+        isBanned: _banState.isBanned,
+      );
+    }
+  }
+
   void _sendJson(Map<String, dynamic> json) {
-    if (_channel != null) {
-      _channel!.sink.add(jsonEncode(json));
+    final ch = _channel;
+    if (ch != null) {
+      ch.sink.add(jsonEncode(json));
       _heartbeat.reset(onTimeout: () => disconnect(reason: 'Idle'));
     }
   }
@@ -469,25 +484,27 @@ class WebSocketService extends ChangeNotifier {
         completer.complete(msg);
       }
     });
-    return completer.future
-        .timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            unawaited(sub.cancel());
-            return null;
-          },
-        )
-        .then((val) {
-          if (val != null) {
-            _backendMinVersion = val['min_version']?.toString();
-            _backendSecVersion = val['sec_version']?.toString();
-            _backendServerVersion = val['version']?.toString();
-            _connectionId = val['cid']?.toString();
-            notifyListeners(); // Signal that version requirements are now available
-          }
-          unawaited(sub.cancel());
-          return val;
-        });
+
+    try {
+      final val = await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          return null;
+        },
+      );
+
+      if (val != null) {
+        _backendMinVersion = val['min_version']?.toString();
+        _backendSecVersion = val['sec_version']?.toString();
+        _backendServerVersion = val['version']?.toString();
+        _connectionId = val['cid']?.toString();
+        notifyListeners(); // Signal that version requirements are now available
+      }
+
+      return val;
+    } finally {
+      unawaited(sub.cancel());
+    }
   }
 
   void _updateStatus(ConnectionStatus newStatus) {
@@ -498,3 +515,5 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 }
+
+enum ConnectionStatus { disconnected, connecting, connected, banned }

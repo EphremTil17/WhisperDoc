@@ -1,18 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 
-class UpdateUIDescriptor {
-  final Color glowColor;
-  final bool isPulsing;
-  final String label;
-
-  const UpdateUIDescriptor({
-    required this.glowColor,
-    required this.isPulsing,
-    required this.label,
-  });
-}
-
 class UpdateMapper {
   static UpdateUIDescriptor map(UpdateStatus status) {
     switch (status) {
@@ -36,4 +24,16 @@ class UpdateMapper {
         );
     }
   }
+}
+
+class UpdateUIDescriptor {
+  final Color glowColor;
+  final bool isPulsing;
+  final String label;
+
+  const UpdateUIDescriptor({
+    required this.glowColor,
+    required this.isPulsing,
+    required this.label,
+  });
 }

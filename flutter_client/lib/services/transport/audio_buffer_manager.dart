@@ -9,6 +9,8 @@ class AudioBufferManager {
   int _currentSizeBytes = 0;
   final LoggingService _logger = LoggingService();
 
+  bool get isEmpty => _buffer.isEmpty;
+
   /// Adds a chunk to the buffer if space allows.
   void add(Uint8List chunk) {
     if (_currentSizeBytes + chunk.length <= _maxBufferSize) {
@@ -35,6 +37,4 @@ class AudioBufferManager {
     _buffer.clear();
     _currentSizeBytes = 0;
   }
-
-  bool get isEmpty => _buffer.isEmpty;
 }

@@ -9,7 +9,7 @@ class HandshakePayloadBuilder {
     required bool incognito,
   }) async {
     final info = await PackageInfo.fromPlatform();
-    
+
     return {
       'event': 'hello',
       'client': 'flutter_windows',

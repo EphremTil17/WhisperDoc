@@ -8,8 +8,6 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 
 class HotkeyService {
   static final HotkeyService _instance = HotkeyService._internal();
-  factory HotkeyService() => _instance;
-  HotkeyService._internal();
 
   // Isolate state
   int? _isolateThreadId;
@@ -20,9 +18,12 @@ class HotkeyService {
 
   final StreamController<int> _hotkeyStreamController =
       StreamController<int>.broadcast();
-  Stream<int> get onHotkeyPressed => _hotkeyStreamController.stream;
 
+  Stream<int> get onHotkeyPressed => _hotkeyStreamController.stream;
   bool get isRunning => _isolate != null;
+
+  factory HotkeyService() => _instance;
+  HotkeyService._internal();
 
   /// Starts the hotkey listener with the given configuration.
   /// If already running, it restarts the service (kill & respawn).
@@ -42,12 +43,14 @@ class HotkeyService {
     );
 
     // Create fresh state for this session
-    _receivePort = ReceivePort();
-    _exitCompleter = Completer<void>();
+    final receivePort = ReceivePort();
+    _receivePort = receivePort;
+    final exitCompleter = Completer<void>();
+    _exitCompleter = exitCompleter;
     final startCompleter = Completer<void>();
 
     // Set up listener BEFORE spawning isolate
-    _portSubscription = _receivePort!.listen((message) {
+    _portSubscription = receivePort.listen((message) {
       if (message is int) {
         // This is the Thread ID sent during initialization
         _isolateThreadId = message;
@@ -57,8 +60,8 @@ class HotkeyService {
         _hotkeyStreamController.add(1);
       } else if (message == 'EXIT') {
         // Isolate exited - signal the exitCompleter
-        if (_exitCompleter != null && !_exitCompleter!.isCompleted) {
-          _exitCompleter!.complete();
+        if (!exitCompleter.isCompleted) {
+          exitCompleter.complete();
         }
       } else if (message is String && message.startsWith('ERROR:')) {
         LoggingService().error('Hotkey Isolate: $message');
@@ -66,13 +69,14 @@ class HotkeyService {
     });
 
     // Spawn the isolate
-    _isolate = await Isolate.spawn(
+    final isolate = await Isolate.spawn(
       _isolateEntry,
-      _HotkeyConfig(_receivePort!.sendPort, id, modifiers, vKey),
+      _HotkeyConfig(receivePort.sendPort, id, modifiers, vKey),
     );
+    _isolate = isolate;
 
     // Watch for unexpected crashes
-    _isolate!.addOnExitListener(_receivePort!.sendPort, response: 'EXIT');
+    isolate.addOnExitListener(receivePort.sendPort, response: 'EXIT');
 
     // Wait for thread ID (indicates successful start)
     await startCompleter.future.timeout(
@@ -92,24 +96,25 @@ class HotkeyService {
     if (_isolate == null) return;
 
     // Ensure we have an exit completer to wait on
-    _exitCompleter ??= Completer<void>();
+    final exitCompleter = _exitCompleter ??= Completer<void>();
+    final threadId = _isolateThreadId;
 
-    if (_isolateThreadId != null) {
+    if (threadId != null) {
       // Post WM_QUIT to wake up the blocking GetMessage loop
-      final result = PostThreadMessage(_isolateThreadId!, WM_QUIT, 0, 0);
+      final result = PostThreadMessage(threadId, WM_QUIT, 0, 0);
       if (result == 0) {
         // PostThreadMessage failed, force kill
         _isolate?.kill(priority: Isolate.immediate);
-        if (!_exitCompleter!.isCompleted) _exitCompleter!.complete();
+        if (!exitCompleter.isCompleted) exitCompleter.complete();
       }
     } else {
       // No thread ID, just kill
       _isolate?.kill(priority: Isolate.immediate);
-      if (!_exitCompleter!.isCompleted) _exitCompleter!.complete();
+      if (!exitCompleter.isCompleted) exitCompleter.complete();
     }
 
     // Wait for graceful exit or timeout
-    await _exitCompleter!.future.timeout(
+    await exitCompleter.future.timeout(
       const Duration(milliseconds: 300),
       onTimeout: () {
         _isolate?.kill(priority: Isolate.immediate);
@@ -143,6 +148,7 @@ class HotkeyService {
       if (result == 0) {
         final error = GetLastError();
         config.sendPort.send('ERROR: Failed to register hotkey (Error $error)');
+
         return;
       }
 

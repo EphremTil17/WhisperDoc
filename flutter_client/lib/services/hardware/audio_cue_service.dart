@@ -9,6 +9,10 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// Plays custom chimes from memory using the win32 PlaySound API.
 /// This is the leanest possible approach: No heavy plugins, zero disk I/O at playback.
 class AudioCueService {
+  static const _sndMemory = 0x0004;
+  static const _sndAsync = 0x0001;
+  static const _sndNoDefault = 0x0002;
+
   final LoggingService _logger = LoggingService();
 
   Pointer<Uint8>? _startSoundPtr;
@@ -32,25 +36,12 @@ class AudioCueService {
     }
   }
 
-  Future<Pointer<Uint8>?> _loadAssetToNativeMemory(String assetPath) async {
-    try {
-      final data = await rootBundle.load(assetPath);
-      final bytes = data.buffer.asUint8List();
-
-      // Allocate native memory that persists for the app lifetime
-      final ptr = calloc<Uint8>(bytes.length);
-      ptr.asTypedList(bytes.length).setAll(0, bytes);
-      return ptr;
-    } catch (_) {
-      return null;
-    }
-  }
-
   /// Plays the start chime with near-zero latency.
   void playStartCue() {
-    if (_isInitialized && _startSoundPtr != null) {
+    final startPtr = _startSoundPtr;
+    if (_isInitialized && startPtr != null) {
       // SND_MEMORY | SND_ASYNC | SND_NODEFAULT
-      PlaySound(_startSoundPtr!.cast(), 0, 0x0004 | 0x0001 | 0x0002);
+      PlaySound(startPtr.cast(), 0, _sndMemory | _sndAsync | _sndNoDefault);
     } else {
       // Fallback to a subtle system sound if assets are missing
       PlaySound(
@@ -63,8 +54,9 @@ class AudioCueService {
 
   /// Plays the stop chime with near-zero latency.
   void playStopCue() {
-    if (_isInitialized && _stopSoundPtr != null) {
-      PlaySound(_stopSoundPtr!.cast(), 0, 0x0004 | 0x0001 | 0x0002);
+    final stopPtr = _stopSoundPtr;
+    if (_isInitialized && stopPtr != null) {
+      PlaySound(stopPtr.cast(), 0, _sndMemory | _sndAsync | _sndNoDefault);
     } else {
       PlaySound(
         TEXT('SystemDefault'),
@@ -75,7 +67,24 @@ class AudioCueService {
   }
 
   void dispose() {
-    if (_startSoundPtr != null) calloc.free(_startSoundPtr!);
-    if (_stopSoundPtr != null) calloc.free(_stopSoundPtr!);
+    final startPtr = _startSoundPtr;
+    if (startPtr != null) calloc.free(startPtr);
+    final stopPtr = _stopSoundPtr;
+    if (stopPtr != null) calloc.free(stopPtr);
+  }
+
+  Future<Pointer<Uint8>?> _loadAssetToNativeMemory(String assetPath) async {
+    try {
+      final data = await rootBundle.load(assetPath);
+      final bytes = data.buffer.asUint8List();
+
+      // Allocate native memory that persists for the app lifetime
+      final ptr = calloc<Uint8>(bytes.length);
+      ptr.asTypedList(bytes.length).setAll(0, bytes);
+
+      return ptr;
+    } catch (_) {
+      return null;
+    }
   }
 }

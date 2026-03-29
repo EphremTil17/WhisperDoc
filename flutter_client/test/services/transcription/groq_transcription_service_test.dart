@@ -17,8 +17,9 @@ void main() {
       when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
       when(() => mockSettings.groqLanguage).thenReturn('');
       when(() => mockSettings.groqPrompt).thenReturn('');
-      when(() => mockSettings.getGroqApiKey())
-          .thenAnswer((_) async => 'test-groq-key');
+      when(
+        () => mockSettings.getGroqApiKey(),
+      ).thenAnswer((_) async => 'test-groq-key');
 
       service = GroqTranscriptionService(mockSettings);
     });
@@ -71,11 +72,13 @@ void main() {
     test('finalizeAndTranscribe throws when buffer is empty', () {
       expect(
         () => service.finalizeAndTranscribe(),
-        throwsA(isA<GroqError>().having(
-          (e) => e.type,
-          'type',
-          GroqErrorType.badRequest,
-        )),
+        throwsA(
+          isA<GroqError>().having(
+            (e) => e.type,
+            'type',
+            GroqErrorType.badRequest,
+          ),
+        ),
       );
     });
 

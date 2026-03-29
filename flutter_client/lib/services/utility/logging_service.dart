@@ -2,11 +2,100 @@ import 'dart:async';
 import 'package:logger/logger.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 
+class LoggingService {
+  static final LoggingService _instance = LoggingService._internal();
+
+  final Logger _logger = Logger(printer: _CompactPrinter());
+  WebSocketService? _webSocketService;
+
+  // Log buffer for UI consumption (last 200 entries)
+  final List<LogEntry> _logBuffer = [];
+  static const int _maxBufferSize = 200;
+
+  final StreamController<LogEntry> _logStreamController =
+      StreamController<LogEntry>.broadcast();
+
+  Stream<LogEntry> get onLog => _logStreamController.stream;
+  List<LogEntry> get logs => List.unmodifiable(_logBuffer);
+
+  factory LoggingService() => _instance;
+
+  LoggingService._internal();
+
+  void attachWebSocket(WebSocketService service) {
+    _webSocketService = service;
+  }
+
+  void info(String message, {bool sendToServer = false}) {
+    _logger.i(message);
+    _addToBuffer('INFO', message);
+    if (sendToServer) _sendLogToServer('INFO', message);
+  }
+
+  void warning(String message, {bool sendToServer = false}) {
+    _logger.w(message);
+    _addToBuffer('WARN', message);
+    if (sendToServer) _sendLogToServer('WARNING', message);
+  }
+
+  void error(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool sendToServer = false,
+  }) {
+    _logger.e(message, error: error, stackTrace: stackTrace);
+    _addToBuffer('ERROR', '$message${error != null ? ' - $error' : ''}');
+    if (sendToServer) _sendLogToServer('ERROR', '$message ${error ?? ''}');
+  }
+
+  void debug(String message, {bool sendToServer = false}) {
+    _logger.d(message);
+    _addToBuffer('DEBUG', message);
+    if (sendToServer) _sendLogToServer('DEBUG', message);
+  }
+
+  void dispose() {
+    unawaited(_logStreamController.close());
+  }
+
+  void _addToBuffer(String level, String message) {
+    final entry = LogEntry(
+      timestamp: DateTime.now().toUtc(),
+      level: level,
+      message: message,
+    );
+    _logBuffer.add(entry);
+    if (_logBuffer.length > _maxBufferSize) {
+      _logBuffer.removeAt(0);
+    }
+    _logStreamController.add(entry);
+  }
+
+  void _sendLogToServer(String level, String message) {
+    final ws = _webSocketService;
+    if (ws != null && ws.status == ConnectionStatus.connected) {
+      try {
+        ws.sendLog(level, message);
+      } catch (e) {
+        // ignore: avoid_print - logging fallback intentionally uses stdout
+        print('Failed to send log to server: $e');
+      }
+    }
+  }
+}
+
 /// Log entry for UI display
 class LogEntry {
   final DateTime timestamp;
   final String level;
   final String message;
+
+  static const int _levelColumnWidth = 5;
+  static const int _twoDigitWidth = 2;
+
+  String get formatted =>
+      '${_formatTime(timestamp)} | ${level.padRight(_levelColumnWidth)} | $message';
 
   LogEntry({
     required this.timestamp,
@@ -14,17 +103,16 @@ class LogEntry {
     required this.message,
   });
 
-  String get formatted =>
-      '${_formatTime(timestamp)} | ${level.padRight(5)} | $message';
-
   static String _formatTime(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:'
-      '${dt.minute.toString().padLeft(2, '0')}:'
-      '${dt.second.toString().padLeft(2, '0')}';
+      '${dt.hour.toString().padLeft(_twoDigitWidth, '0')}:'
+      '${dt.minute.toString().padLeft(_twoDigitWidth, '0')}:'
+      '${dt.second.toString().padLeft(_twoDigitWidth, '0')}';
 }
 
 /// Compact single-line printer with ANSI colors matching backend format
 class _CompactPrinter extends LogPrinter {
+  static const int _twoDigitWidth = 2;
+
   // ANSI color codes
   static const _reset = '\x1B[0m';
   static const _gray = '\x1B[90m';
@@ -77,94 +165,11 @@ class _CompactPrinter extends LogPrinter {
   }
 
   String _formatTime(DateTime dt) {
-      final utc = dt.toUtc();
-      return '${utc.year}-${utc.month.toString().padLeft(2, '0')}-${utc.day.toString().padLeft(2, '0')} '
-      '${utc.hour.toString().padLeft(2, '0')}:'
-      '${utc.minute.toString().padLeft(2, '0')}:'
-      '${utc.second.toString().padLeft(2, '0')}';
-  }
-}
+    final utc = dt.toUtc();
 
-class LoggingService {
-  static final LoggingService _instance = LoggingService._internal();
-
-  factory LoggingService() => _instance;
-
-  LoggingService._internal();
-
-  final Logger _logger = Logger(printer: _CompactPrinter());
-
-  WebSocketService? _webSocketService;
-
-  // Log buffer for UI consumption (last 200 entries)
-  final List<LogEntry> _logBuffer = [];
-  static const int _maxBufferSize = 200;
-
-  final StreamController<LogEntry> _logStreamController =
-      StreamController<LogEntry>.broadcast();
-
-  Stream<LogEntry> get onLog => _logStreamController.stream;
-  List<LogEntry> get logs => List.unmodifiable(_logBuffer);
-
-  void attachWebSocket(WebSocketService service) {
-    _webSocketService = service;
-  }
-
-  void _addToBuffer(String level, String message) {
-    final entry = LogEntry(
-      timestamp: DateTime.now().toUtc(),
-      level: level,
-      message: message,
-    );
-    _logBuffer.add(entry);
-    if (_logBuffer.length > _maxBufferSize) {
-      _logBuffer.removeAt(0);
-    }
-    _logStreamController.add(entry);
-  }
-
-  void info(String message, {bool sendToServer = false}) {
-    _logger.i(message);
-    _addToBuffer('INFO', message);
-    if (sendToServer) _sendLogToServer('INFO', message);
-  }
-
-  void warning(String message, {bool sendToServer = false}) {
-    _logger.w(message);
-    _addToBuffer('WARN', message);
-    if (sendToServer) _sendLogToServer('WARNING', message);
-  }
-
-  void error(
-    String message, {
-    dynamic error,
-    StackTrace? stackTrace,
-    bool sendToServer = false,
-  }) {
-    _logger.e(message, error: error, stackTrace: stackTrace);
-    _addToBuffer('ERROR', '$message${error != null ? ' - $error' : ''}');
-    if (sendToServer) _sendLogToServer('ERROR', '$message ${error ?? ''}');
-  }
-
-  void debug(String message, {bool sendToServer = false}) {
-    _logger.d(message);
-    _addToBuffer('DEBUG', message);
-    if (sendToServer) _sendLogToServer('DEBUG', message);
-  }
-
-  void _sendLogToServer(String level, String message) {
-    if (_webSocketService != null &&
-        _webSocketService!.status == ConnectionStatus.connected) {
-      try {
-        _webSocketService!.sendLog(level, message);
-      } catch (e) {
-        // ignore: avoid_print
-        print('Failed to send log to server: $e');
-      }
-    }
-  }
-
-  void dispose() {
-    unawaited(_logStreamController.close());
+    return '${utc.year}-${utc.month.toString().padLeft(_twoDigitWidth, '0')}-${utc.day.toString().padLeft(_twoDigitWidth, '0')} '
+        '${utc.hour.toString().padLeft(_twoDigitWidth, '0')}:'
+        '${utc.minute.toString().padLeft(_twoDigitWidth, '0')}:'
+        '${utc.second.toString().padLeft(_twoDigitWidth, '0')}';
   }
 }
