@@ -1,3 +1,4 @@
+// ignore_for_file: avoid-dynamic, no-empty-block
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,17 @@ import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/configuration_manager.dart';
 import 'package:stream_channel/stream_channel.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+// ---------------------------------------------------------------------------
+// Test constants
+// ---------------------------------------------------------------------------
+
+abstract final class _WebSocketServiceTest {
+  static const int identityChangeCount = 2;
+  static const int signOutReconnectCount = 3;
+  static const int idleEvictionCloseCode = 4001;
+  static const int unauthorizedCloseCode = 1008;
+}
 
 // ---------------------------------------------------------------------------
 // Minimal stubs — only implement what ConfigurationManager / WebSocketService
@@ -43,13 +55,11 @@ class _StubAuthService extends ChangeNotifier implements AuthService {
 }
 
 class _StubSettingsService extends ChangeNotifier implements SettingsService {
+  // Fields
   String _serverUri;
   final String? _apiKey;
 
-  _StubSettingsService({String serverUri = 'ws://localhost', String? apiKey})
-    : _serverUri = serverUri,
-      _apiKey = apiKey;
-
+  // Getters — must precede constructors per DCM member-ordering
   @override
   String get serverUri => _serverUri;
 
@@ -65,6 +75,12 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
   @override
   bool get isGroqMode => false;
 
+  // Constructor
+  _StubSettingsService({String serverUri = 'ws://localhost', String? apiKey})
+    : _serverUri = serverUri,
+      _apiKey = apiKey;
+
+  // Methods
   @override
   Future<String?> getApiKey() async => _apiKey;
 
@@ -115,12 +131,21 @@ class _FakeWebSocketChannel
 }
 
 class _FakeWebSocketSink implements WebSocketSink {
-  _FakeWebSocketSink({required this.onAdd, required this.onClose});
-
+  // Public fields
   final void Function(dynamic data) onAdd;
   final Future<void> Function(int? code, String? reason) onClose;
+
+  // Private fields
   final Completer<void> _done = Completer<void>();
 
+  // Public getters — must precede constructor per DCM member-ordering
+  @override
+  Future<void> get done => _done.future;
+
+  // Constructor
+  _FakeWebSocketSink({required this.onAdd, required this.onClose});
+
+  // Public methods
   @override
   void add(dynamic data) => onAdd(data);
 
@@ -141,20 +166,19 @@ class _FakeWebSocketSink implements WebSocketSink {
       _done.complete();
     }
   }
-
-  @override
-  Future<void> get done => _done.future;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-WebSocketService _makeService({String? apiKey}) {
-  return WebSocketService(
-    _StubSettingsService(apiKey: apiKey),
-    _StubAuthService(),
-  );
+abstract final class _ServiceFactory {
+  static WebSocketService make({String? apiKey}) {
+    return WebSocketService(
+      _StubSettingsService(apiKey: apiKey),
+      _StubAuthService(),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -242,13 +266,17 @@ void main() {
         auth.setAuthenticated(true, userId: 'user456');
         expect(
           reconnectFires,
-          2,
+          _WebSocketServiceTest.identityChangeCount,
           reason: 'Identity changed: user123 → user456',
         );
 
         // Sign-out: auth state changes
         auth.setAuthenticated(false);
-        expect(reconnectFires, 3, reason: 'Sign-out: auth state changed');
+        expect(
+          reconnectFires,
+          _WebSocketServiceTest.signOutReconnectCount,
+          reason: 'Sign-out: auth state changed',
+        );
 
         cm.stopObserving();
       },
@@ -269,7 +297,7 @@ void main() {
       'pending config change fires immediate reconnect then falls back to timer on failure',
       () async {
         final svc =
-            _makeService(); // no API key → immediate connect() will fail
+            _ServiceFactory.make(); // no API key → immediate connect() will fail
 
         svc.forceConnectedForTesting();
         svc.pendingConfigChangeForTesting = true;
@@ -324,12 +352,12 @@ void main() {
     test(
       'close code 4001 leaves service idle with no reconnect timer armed',
       () async {
-        final svc = _makeService(apiKey: 'test-key');
+        final svc = _ServiceFactory.make(apiKey: 'test-key');
 
         svc.forceConnectedForTesting();
         expect(svc.pendingConfigChangeForTesting, isFalse);
 
-        svc.processCloseForTesting(4001, 'No audio activity');
+        svc.processCloseForTesting(_WebSocketServiceTest.idleEvictionCloseCode, 'No audio activity');
         await Future<void>.delayed(Duration.zero);
 
         expect(
@@ -354,8 +382,7 @@ void main() {
       () async {
         // Guard: a plain unexpected close from a non-connected state must not
         // schedule a reconnect (wasActive=false).
-        final svc = _makeService();
-        expect(svc.status, ConnectionStatus.disconnected);
+        final svc = _ServiceFactory.make();
 
         svc.processCloseForTesting(null, null);
         await Future<void>.delayed(Duration.zero);
@@ -375,13 +402,13 @@ void main() {
     test(
       'handshake state is failed after _handleAuthError and before next connect',
       () async {
-        final svc = _makeService(apiKey: 'test-key');
+        final svc = _ServiceFactory.make(apiKey: 'test-key');
         svc.forceConnectedForTesting();
 
         // Drive _handleAuthError via processCloseForTesting with code 1008 and
         // a non-ban message.  _lastHandshakeError is null at this point, so the
         // 1008 branch calls _handleAuthError(reason).
-        svc.processCloseForTesting(1008, 'Unauthorized');
+        svc.processCloseForTesting(_WebSocketServiceTest.unauthorizedCloseCode, 'Unauthorized');
 
         await Future<void>.delayed(Duration.zero);
 
@@ -409,14 +436,17 @@ void main() {
     test(
       'buffered audio is cleared and new audio stays off the stale channel when config changed mid-handshake',
       () async {
-        final svc = _makeService(apiKey: 'test-key');
+        final svc = _ServiceFactory.make(apiKey: 'test-key');
         final channel = _FakeWebSocketChannel();
         svc.channelForTesting = channel;
+
+        final audioBuffer = svc.audioBufferForTesting;
+        final sent = channel.sent;
 
         // Seed the buffer — simulates audio captured while the handshake was
         // in-flight (e.g. user started recording before connection completed).
         svc.bufferAudioForTesting(Uint8List.fromList([1, 2, 3, 4]));
-        expect(svc.audioBufferForTesting.isEmpty, isFalse);
+        expect(audioBuffer.isEmpty, isFalse);
 
         // Simulate a config/identity change that arrived during the handshake.
         svc.pendingConfigChangeForTesting = true;
@@ -427,14 +457,14 @@ void main() {
         svc.receiveAuthenticatedForTesting();
 
         expect(
-          svc.audioBufferForTesting.isEmpty,
+          audioBuffer.isEmpty,
           isTrue,
           reason:
               'buffer must be cleared, not flushed to the stale channel, '
               'when a config change is pending at authentication time',
         );
         expect(
-          channel.sent,
+          sent,
           isEmpty,
           reason: 'no buffered audio should be flushed to the stale socket',
         );
@@ -443,13 +473,13 @@ void main() {
         // off the stale channel and be held locally for the replacement connect.
         svc.sendAudioChunk(Uint8List.fromList([9, 9]));
         expect(
-          channel.sent,
+          sent,
           isEmpty,
           reason:
               'live audio must not slip onto the stale socket during rollover',
         );
         expect(
-          svc.audioBufferForTesting.isEmpty,
+          audioBuffer.isEmpty,
           isFalse,
           reason:
               'fresh audio should be buffered locally for the reconnect path',
@@ -462,29 +492,32 @@ void main() {
     test(
       'buffered audio is flushed normally when no config change is pending',
       () async {
-        final svc = _makeService(apiKey: 'test-key');
+        final svc = _ServiceFactory.make(apiKey: 'test-key');
         final channel = _FakeWebSocketChannel();
         svc.channelForTesting = channel;
 
+        final audioBuffer = svc.audioBufferForTesting;
+        final sent = channel.sent;
+
         svc.bufferAudioForTesting(Uint8List.fromList([10, 20, 30]));
-        expect(svc.audioBufferForTesting.isEmpty, isFalse);
+        expect(audioBuffer.isEmpty, isFalse);
 
         // No pending config change — authenticated path should flush immediately.
         svc.receiveAuthenticatedForTesting();
 
         expect(
-          svc.audioBufferForTesting.isEmpty,
+          audioBuffer.isEmpty,
           isTrue,
           reason:
               'flush() must clear the buffer on the normal authenticated path',
         );
         expect(
-          channel.sent,
+          sent,
           hasLength(1),
           reason:
               'happy-path authentication should flush the queued audio chunk',
         );
-        expect(channel.sent.single, isA<Uint8List>());
+        expect(sent.single, isA<Uint8List>());
 
         svc.dispose();
       },

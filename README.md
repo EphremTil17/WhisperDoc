@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.24.3
+# WhisperDoc - Speech-to-Text System v2.24.6
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -248,7 +248,7 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v2.24.3
+### Flutter Client (Windows) v2.24.6
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
@@ -262,7 +262,7 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 
 📖 **[Flutter Client Documentation](flutter_client/README.md)**
 
-### Python Terminal Client v2.24.3
+### Python Terminal Client v2.24.6
 
 A secure, modular, and production-ready Windows terminal client for high-performance dictation.
 

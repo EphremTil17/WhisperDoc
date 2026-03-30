@@ -44,8 +44,9 @@ void main() {
     test('SECURITY: State Parameter Protection (Self-Validation)', () {
       // The state parameter must be long enough to prevent brute force guessing (CSRF protection)
       const stateLength = 16;
+      const minSecureStateLength = 8;
       expect(
-        stateLength >= 8,
+        stateLength >= minSecureStateLength,
         isTrue,
         reason: 'State must be long enough to provide security',
       );

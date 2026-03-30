@@ -1,29 +1,30 @@
+// ignore_for_file: prefer-match-file-name, avoid-late-keyword
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_client/services/utility/secure_vault_service.dart';
 
-class MockFlutterSecureStorage extends Mock implements FlutterSecureStorage {}
+class _MockFlutterSecureStorage extends Mock implements FlutterSecureStorage {}
 
-class MockDeviceInfoPlugin extends Mock implements DeviceInfoPlugin {}
+class _MockDeviceInfoPlugin extends Mock implements DeviceInfoPlugin {}
 
-class MockWindowsDeviceInfo extends Mock implements WindowsDeviceInfo {}
+class _MockWindowsDeviceInfo extends Mock implements WindowsDeviceInfo {}
 
 void main() {
   late SecureVaultService vault;
-  late MockFlutterSecureStorage mockStorage;
-  late MockDeviceInfoPlugin mockDeviceInfo;
-  late MockWindowsDeviceInfo mockWindowsInfo;
+  late _MockFlutterSecureStorage mockStorage;
+  late _MockDeviceInfoPlugin mockDeviceInfo;
+  late _MockWindowsDeviceInfo mockWindowsInfo;
 
   setUpAll(() {
     registerFallbackValue(const WindowsOptions());
   });
 
   setUp(() {
-    mockStorage = MockFlutterSecureStorage();
-    mockDeviceInfo = MockDeviceInfoPlugin();
-    mockWindowsInfo = MockWindowsDeviceInfo();
+    mockStorage = _MockFlutterSecureStorage();
+    mockDeviceInfo = _MockDeviceInfoPlugin();
+    mockWindowsInfo = _MockWindowsDeviceInfo();
 
     // Setup default mock behavior
     when(
@@ -101,9 +102,10 @@ void main() {
 
       await vault.storeCredential('api_key', 'test-key-123');
 
-      verify(
+      final writeCall = verify(
         () => mockStorage.write(key: 'api_key', value: 'test-key-123'),
-      ).called(1);
+      );
+      expect(writeCall.callCount, equals(1));
     });
 
     test('retrieveCredential returns value from secure storage', () async {

@@ -1,3 +1,4 @@
+// ignore_for_file: prefer-match-file-name, avoid-late-keyword
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -5,15 +6,20 @@ import 'package:flutter_client/services/transcription/groq_transcription_service
 import 'package:flutter_client/services/transcription/groq_error.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 
-class MockSettingsService extends Mock implements SettingsService {}
+class _MockSettingsService extends Mock implements SettingsService {}
 
 void main() {
+  // Named constants for chunk sizes used across tests.
+  const chunkSmall = 100;
+  const chunkLarge = 200;
+  const chunkSmallPlusLarge = 300;
+
   group('GroqTranscriptionService', () {
     late GroqTranscriptionService service;
-    late MockSettingsService mockSettings;
+    late _MockSettingsService mockSettings;
 
     setUp(() {
-      mockSettings = MockSettingsService();
+      mockSettings = _MockSettingsService();
       when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
       when(() => mockSettings.groqLanguage).thenReturn('');
       when(() => mockSettings.groqPrompt).thenReturn('');
@@ -48,21 +54,21 @@ void main() {
     });
 
     test('bufferAudioChunk transitions to buffering', () {
-      service.bufferAudioChunk(Uint8List(100));
+      service.bufferAudioChunk(Uint8List(chunkSmall));
 
       expect(service.status, GroqTranscriptionStatus.buffering);
-      expect(service.bufferSizeBytes, 100);
+      expect(service.bufferSizeBytes, chunkSmall);
     });
 
     test('bufferAudioChunk accumulates multiple chunks', () {
-      service.bufferAudioChunk(Uint8List(100));
-      service.bufferAudioChunk(Uint8List(200));
+      service.bufferAudioChunk(Uint8List(chunkSmall));
+      service.bufferAudioChunk(Uint8List(chunkLarge));
 
-      expect(service.bufferSizeBytes, 300);
+      expect(service.bufferSizeBytes, chunkSmallPlusLarge);
     });
 
     test('clearBuffer resets to idle', () {
-      service.bufferAudioChunk(Uint8List(100));
+      service.bufferAudioChunk(Uint8List(chunkSmall));
       service.clearBuffer();
 
       expect(service.status, GroqTranscriptionStatus.idle);
@@ -83,7 +89,7 @@ void main() {
     });
 
     test('isBufferOverLimit is false under the limit', () {
-      service.bufferAudioChunk(Uint8List(100));
+      service.bufferAudioChunk(Uint8List(chunkSmall));
       expect(service.isBufferOverLimit, isFalse);
     });
   });

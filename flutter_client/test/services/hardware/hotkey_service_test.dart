@@ -1,3 +1,4 @@
+// ignore_for_file: no-empty-block
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
@@ -31,6 +32,9 @@ void main() {
 
   group('HotkeyService Registration', () {
     test('start() accepts valid parameters', () {
+      const testHotkeyId = 1;
+      const testModifiers = 2;
+      const testVKey = 0x45;
       final service = HotkeyService();
 
       // This will assume the native calls work or fail gracefully in a test environment
@@ -39,7 +43,7 @@ void main() {
       // But for API compliance check:
 
       expect(
-        () => service.start(id: 1, modifiers: 2, vKey: 0x45),
+        () => service.start(id: testHotkeyId, modifiers: testModifiers, vKey: testVKey),
         // Isolate.spawn might fail in some test environments or succeed.
         // We mainly want to ensure the method signature is correct and it compiles.
         // Accepting any result here as we are not testing FFI binding behavior

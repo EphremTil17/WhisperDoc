@@ -6,14 +6,23 @@ import 'package:flutter_client/services/transcription/groq_http_client.dart';
 import 'package:flutter_client/services/transcription/groq_error.dart';
 
 void main() {
+  const fakeWavSize = 100;
+  const statusOk = 200;
+  const statusUnauthorized = 401;
+  const statusRateLimited = 429;
+  const statusTooLarge = 413;
+  const statusServerError = 500;
+  const retryAfterSeconds = 30;
+
   group('GroqHttpClient', () {
-    final fakeWav = Uint8List(100);
+    final fakeWav = Uint8List(fakeWavSize);
 
     test('returns transcription text on 200', () async {
       final mockClient = MockClient((request) async {
         expect(request.method, 'POST');
         expect(request.headers['Authorization'], 'Bearer test-key');
-        return http.Response('{"text": "hello world"}', 200);
+
+        return http.Response('{"text": "hello world"}', statusOk);
       });
 
       final client = GroqHttpClient(client: mockClient);
@@ -29,7 +38,8 @@ void main() {
       final mockClient = MockClient((request) async {
         // MultipartRequest fields are in the body, check the request URL
         expect(request.url.path, contains('transcriptions'));
-        return http.Response('{"text": "hola"}', 200);
+
+        return http.Response('{"text": "hola"}', statusOk);
       });
 
       final client = GroqHttpClient(client: mockClient);
@@ -45,7 +55,10 @@ void main() {
 
     test('throws invalidApiKey on 401', () async {
       final mockClient = MockClient((_) async {
-        return http.Response('{"error": {"message": "Invalid API Key"}}', 401);
+        return http.Response(
+          '{"error": {"message": "Invalid API Key"}}',
+          statusUnauthorized,
+        );
       });
 
       final client = GroqHttpClient(client: mockClient);
@@ -66,8 +79,8 @@ void main() {
       final mockClient = MockClient((_) async {
         return http.Response(
           '{"error": {"message": "Rate limit exceeded"}}',
-          429,
-          headers: {'retry-after': '30'},
+          statusRateLimited,
+          headers: {'retry-after': '$retryAfterSeconds'},
         );
       });
 
@@ -78,7 +91,7 @@ void main() {
         fail('Should have thrown');
       } on GroqError catch (e) {
         expect(e.type, GroqErrorType.rateLimited);
-        expect(e.retryAfter, const Duration(seconds: 30));
+        expect(e.retryAfter, const Duration(seconds: retryAfterSeconds));
       }
     });
 
@@ -86,7 +99,7 @@ void main() {
       final mockClient = MockClient((_) async {
         return http.Response(
           '{"error": {"message": "Request too large"}}',
-          413,
+          statusTooLarge,
         );
       });
 
@@ -106,7 +119,7 @@ void main() {
 
     test('throws serverError on 500', () async {
       final mockClient = MockClient((_) async {
-        return http.Response('Internal Server Error', 500);
+        return http.Response('Internal Server Error', statusServerError);
       });
 
       final client = GroqHttpClient(client: mockClient);
@@ -125,7 +138,7 @@ void main() {
 
     test('returns empty string when response text field is missing', () async {
       final mockClient = MockClient((_) async {
-        return http.Response('{"x_groq": {"id": "req_123"}}', 200);
+        return http.Response('{"x_groq": {"id": "req_123"}}', statusOk);
       });
 
       final client = GroqHttpClient(client: mockClient);
@@ -138,7 +151,7 @@ void main() {
       final mockClient = MockClient((_) async {
         return http.Response(
           '{"text": "test"}',
-          200,
+          statusOk,
           headers: {
             'x-ratelimit-remaining-requests': '18',
             'x-ratelimit-remaining-tokens': '5000',

@@ -1,3 +1,4 @@
+// ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
@@ -9,40 +10,39 @@ import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 
-// Mock classes
-class MockAudioService extends Mock implements AudioService {}
+class _MockAudioService extends Mock implements AudioService {}
 
-class MockWebSocketService extends Mock implements WebSocketService {}
+class _MockWebSocketService extends Mock implements WebSocketService {}
 
-class MockAutomationService extends Mock implements AutomationService {}
+class _MockAutomationService extends Mock implements AutomationService {}
 
-class MockHistoryService extends Mock implements HistoryService {}
+class _MockHistoryService extends Mock implements HistoryService {}
 
-class MockSettingsService extends Mock implements SettingsService {}
+class _MockSettingsService extends Mock implements SettingsService {}
 
-class MockAudioCueService extends Mock implements AudioCueService {}
+class _MockAudioCueService extends Mock implements AudioCueService {}
 
-class MockGroqTranscriptionService extends Mock
+class _MockGroqTranscriptionService extends Mock
     implements GroqTranscriptionService {}
 
 void main() {
   late RecordingController controller;
-  late MockAudioService mockAudioService;
-  late MockWebSocketService mockWsService;
-  late MockAutomationService mockAutomationService;
-  late MockHistoryService mockHistoryService;
-  late MockSettingsService mockSettingsService;
-  late MockAudioCueService mockAudioCueService;
-  late MockGroqTranscriptionService mockGroqService;
+  late _MockAudioService mockAudioService;
+  late _MockWebSocketService mockWsService;
+  late _MockAutomationService mockAutomationService;
+  late _MockHistoryService mockHistoryService;
+  late _MockSettingsService mockSettingsService;
+  late _MockAudioCueService mockAudioCueService;
+  late _MockGroqTranscriptionService mockGroqService;
 
   setUp(() {
-    mockAudioService = MockAudioService();
-    mockWsService = MockWebSocketService();
-    mockGroqService = MockGroqTranscriptionService();
-    mockAutomationService = MockAutomationService();
-    mockHistoryService = MockHistoryService();
-    mockSettingsService = MockSettingsService();
-    mockAudioCueService = MockAudioCueService();
+    mockAudioService = _MockAudioService();
+    mockWsService = _MockWebSocketService();
+    mockGroqService = _MockGroqTranscriptionService();
+    mockAutomationService = _MockAutomationService();
+    mockHistoryService = _MockHistoryService();
+    mockSettingsService = _MockSettingsService();
+    mockAudioCueService = _MockAudioCueService();
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
@@ -138,7 +138,8 @@ void main() {
         Duration.zero,
       ); // Give the unawaited ensureConnected time to run if needed
 
-      verify(() => mockWsService.ensureConnected()).called(1);
+      final ensureCall = verify(() => mockWsService.ensureConnected());
+      expect(ensureCall.callCount, equals(1));
       verify(
         () => mockAudioService.startRecording(
           deviceId: any(named: 'deviceId'),
@@ -166,7 +167,8 @@ void main() {
       await controller.startRecording();
       await Future.delayed(Duration.zero);
 
-      verify(() => mockWsService.ensureConnected()).called(1);
+      final ensureCall = verify(() => mockWsService.ensureConnected());
+      expect(ensureCall.callCount, equals(1));
       verify(() => mockAudioCueService.playStartCue()).called(1);
     });
 
@@ -188,7 +190,8 @@ void main() {
 
       // In the new architecture, we ALWAYS call ensureConnected,
       // which itself decides whether to trigger a real connection.
-      verify(() => mockWsService.ensureConnected()).called(1);
+      final ensureCall = verify(() => mockWsService.ensureConnected());
+      expect(ensureCall.callCount, equals(1));
       verifyNever(() => mockWsService.connect());
     });
 
@@ -209,6 +212,9 @@ void main() {
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());
       when(() => mockAudioCueService.playStartCue()).thenReturn(null);
+      when(
+        () => mockAudioService.stopRecording(),
+      ).thenAnswer((_) async {});
 
       await controller.startRecording();
       await Future.delayed(Duration.zero);
@@ -222,9 +228,8 @@ void main() {
       ).called(1);
       verify(() => mockWsService.ensureConnected()).called(1);
       verify(() => mockAudioCueService.playStartCue()).called(1);
-
-      // Since it failed (mocked to false), it should stop
-      // Note: we can't easily verify the stopRecording call inside the then()
+      // Connection failed, so recording should have been stopped
+      expect(controller.isRecording, isFalse);
     });
   });
 
