@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/logic/mappers/connection_ui_map.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
@@ -19,13 +20,7 @@ void main() {
 
       expect(descriptor.icon, Icons.system_update);
       expect(descriptor.isPulsing, true);
-      // Crimson primary equivalent check
-      // The original line checking for a specific hex color is removed as per the instruction.
-      // The instruction to "Use Colors.red for color matching" is interpreted as a general
-      // guideline for future color checks, or if a specific check for red was intended
-      // to replace the removed line, it would be:
-      // expect(descriptor.pulseColor, Colors.red);
-      // However, the provided code edit explicitly removes the line, so we follow that.
+      expect(descriptor.pulseColor, AppTheme.crimsonPrimary);
       expect(descriptor.tooltip, contains('Critical Update'));
     });
 

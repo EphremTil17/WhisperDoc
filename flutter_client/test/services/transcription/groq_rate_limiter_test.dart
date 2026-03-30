@@ -1,7 +1,13 @@
+// ignore_for_file: avoid-late-keyword
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/transcription/groq_rate_limiter.dart';
 
 void main() {
+  // Named constants used across rate-limiter tests.
+  const rpmWindowRequests = 20;
+  const retryAfterSeconds = 30;
+  const retryAfterMinusOne = retryAfterSeconds - 1; // greaterThanOrEqualTo bound
+
   group('GroqRateLimiter', () {
     late GroqRateLimiter limiter;
 
@@ -14,7 +20,7 @@ void main() {
     });
 
     test('tracks requests in RPM window', () {
-      for (var i = 0; i < 20; i++) {
+      for (var i = 0; i < rpmWindowRequests; i++) {
         expect(limiter.canRequest(), isTrue);
         limiter.recordRequest();
       }
@@ -27,10 +33,10 @@ void main() {
     });
 
     test('parses retry-after header and blocks requests', () {
-      limiter.updateFromHeaders({'retry-after': '30'});
+      limiter.updateFromHeaders({'retry-after': '$retryAfterSeconds'});
 
       expect(limiter.canRequest(), isFalse);
-      expect(limiter.retryAfter.inSeconds, greaterThanOrEqualTo(29));
+      expect(limiter.retryAfter.inSeconds, greaterThanOrEqualTo(retryAfterMinusOne));
     });
 
     test('ignores malformed retry-after header', () {

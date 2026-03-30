@@ -55,6 +55,7 @@ void main() {
     });
 
     test('different log levels work correctly', () {
+      const logLevelCount = 4;
       final service = LoggingService();
       final initialCount = service.logs.length;
 
@@ -63,23 +64,27 @@ void main() {
       service.error('Error message');
       service.debug('Debug message');
 
-      expect(service.logs.length, equals(initialCount + 4));
+      expect(service.logs.length, equals(initialCount + logLevelCount));
     });
 
     test('log entries have correct levels', () {
       final service = LoggingService();
 
       service.info('Test info');
-      expect(service.logs.last.level, equals('INFO'));
+      final infoEntry = service.logs.last;
+      expect(infoEntry.level, equals('INFO'));
 
       service.warning('Test warning');
-      expect(service.logs.last.level, equals('WARN'));
+      final warnEntry = service.logs.last;
+      expect(warnEntry.level, equals('WARN'));
 
       service.error('Test error');
-      expect(service.logs.last.level, equals('ERROR'));
+      final errorEntry = service.logs.last;
+      expect(errorEntry.level, equals('ERROR'));
 
       service.debug('Test debug');
-      expect(service.logs.last.level, equals('DEBUG'));
+      final debugEntry = service.logs.last;
+      expect(debugEntry.level, equals('DEBUG'));
     });
   });
 

@@ -1,3 +1,4 @@
+// ignore_for_file: avoid-late-keyword
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 
@@ -38,11 +39,12 @@ void main() {
       expect(machine.canSendAudio(), isFalse);
     });
 
-    test('any state -> banned is valid', () {
+    test('banned is reachable from locked', () {
       machine.transitionTo(HandshakeState.banned);
       expect(machine.state, equals(HandshakeState.banned));
+    });
 
-      machine.reset();
+    test('banned is reachable from authenticating', () {
       machine.transitionTo(HandshakeState.authenticating);
       machine.transitionTo(HandshakeState.banned);
       expect(machine.state, equals(HandshakeState.banned));
