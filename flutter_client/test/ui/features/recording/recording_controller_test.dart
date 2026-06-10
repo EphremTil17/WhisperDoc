@@ -1,6 +1,7 @@
 // ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
@@ -46,6 +47,14 @@ void main() {
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
+    when(
+      () => mockAudioService.inputStatus,
+    ).thenReturn(AudioInputStatus.available);
+    when(
+      () => mockAudioService.evaluateInputStatus(
+        targetDeviceId: any(named: 'targetDeviceId'),
+      ),
+    ).thenAnswer((_) async => AudioInputStatus.available);
     when(() => mockWsService.status).thenReturn(ConnectionStatus.disconnected);
     when(() => mockWsService.hasValidCredentials).thenReturn(true);
     when(() => mockWsService.ensureConnected()).thenAnswer((_) async => true);
@@ -253,6 +262,99 @@ void main() {
       await controller.startRecording();
 
       expect(controller.currentText, isEmpty);
+    });
+  });
+
+  group('Hardware Input Guard', () {
+    test('startRecording blocks for each non-canRecord status', () async {
+      final nonRecordableStatuses = [
+        AudioInputStatus.noDevice,
+        AudioInputStatus.selectedUnavailable,
+        AudioInputStatus.permissionDenied,
+      ];
+
+      for (final status in nonRecordableStatuses) {
+        when(() => mockAudioService.inputStatus).thenReturn(status);
+        String? emittedError;
+        final sub = controller.onError.listen((e) => emittedError = e);
+
+        await controller.startRecording();
+
+        expect(controller.isRecording, isFalse);
+        expect(emittedError, equals(status.bannerMessage));
+        verifyNever(
+          () => mockAudioService.startRecording(
+            deviceId: any(named: 'deviceId'),
+            deviceLabel: any(named: 'deviceLabel'),
+          ),
+        );
+        await sub.cancel();
+      }
+    });
+
+    test('hardware failure surfaces the status banner message', () async {
+      // Model the real interaction: AudioService sets a degraded status before
+      // throwing, and the controller reads that status for its message.
+      var status = AudioInputStatus.available;
+      when(() => mockAudioService.inputStatus).thenAnswer((_) => status);
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) {
+        status = AudioInputStatus.noDevice;
+        throw Exception('No audio recording device');
+      });
+
+      String? emittedError;
+      controller.onError.listen((e) => emittedError = e);
+
+      await controller.startRecording();
+
+      expect(controller.isRecording, isFalse);
+      expect(emittedError, equals(AudioInputStatus.noDevice.bannerMessage));
+    });
+
+    test('non-hardware failure stays generic and does not disable the mic',
+        () async {
+      // Status remains healthy (canRecord) — a transient error must not be
+      // reported as a missing microphone.
+      when(
+        () => mockAudioService.inputStatus,
+      ).thenReturn(AudioInputStatus.available);
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenThrow(StateError('unexpected cue failure'));
+
+      String? emittedError;
+      controller.onError.listen((e) => emittedError = e);
+
+      await controller.startRecording();
+
+      expect(controller.isRecording, isFalse);
+      expect(
+        emittedError,
+        equals('Could not start recording. Please try again.'),
+      );
+    });
+
+    test('refreshHardwareStatus delegates to evaluateInputStatus', () async {
+      when(() => mockSettingsService.microphoneId).thenReturn('mic-123');
+      when(
+        () => mockAudioService.evaluateInputStatus(
+          targetDeviceId: any(named: 'targetDeviceId'),
+        ),
+      ).thenAnswer((_) async => AudioInputStatus.available);
+
+      await controller.refreshHardwareStatus();
+
+      verify(
+        () => mockAudioService.evaluateInputStatus(targetDeviceId: 'mic-123'),
+      ).called(1);
     });
   });
 }

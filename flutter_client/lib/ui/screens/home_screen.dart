@@ -25,7 +25,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _snackBarWidth = 350.0;
   static const _snackBarShortSeconds = 1;
   static const _snackBarAlphaStrong = 0.9;
@@ -40,7 +40,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initHotkeys();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!mounted) return;
+      unawaited(context.read<RecordingController>().refreshHardwareStatus());
+    }
   }
 
   void _initHotkeys() {
@@ -175,6 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _settings?.removeListener(_onSettingsChanged);
     unawaited(_hotkeySubscription?.cancel());
     unawaited(_errorSubscription?.cancel());

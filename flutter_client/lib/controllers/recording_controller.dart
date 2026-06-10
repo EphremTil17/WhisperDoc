@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
+import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
@@ -52,6 +53,7 @@ class RecordingController extends ChangeNotifier {
   bool get incognitoMode => _settingsService.incognitoMode;
   String get currentText => _currentBuffer;
   bool get isRecording => _isRecording;
+  AudioInputStatus get inputStatus => _audioService.inputStatus;
   List<HistoryEntry> get history => List.unmodifiable(_history);
   Stream<String> get onError => _errorController.stream;
 
@@ -73,10 +75,11 @@ class RecordingController extends ChangeNotifier {
     _initListeners();
     // Listen to AudioService state changes
     _audioService.addListener(_onAudioStateChanged);
-    // Sync with settings changes
-    _settingsService.addListener(notifyListeners);
-    // Load initial history from encrypted storage
+    // Sync with settings changes and re-verify hardware
+    _settingsService.addListener(_onSettingsChanged);
+    // Load initial history from encrypted storage and check initial hardware status
     unawaited(_loadHistory());
+    unawaited(refreshHardwareStatus());
   }
 
   /// Helper to get decrypted text for an entry (used by UI)
@@ -117,6 +120,16 @@ class RecordingController extends ChangeNotifier {
   Future<void> startRecording() async {
     // Groq transcription lockout — prevent hotkey/capsule race during upload.
     if (_isTranscribing) return;
+
+    // Hardware input guard — prevent recording start when hardware is unavailable.
+    if (!_audioService.inputStatus.canRecord) {
+      _errorController.add(
+        _audioService.inputStatus.bannerMessage ??
+            'Recording blocked: No microphone connected.',
+      );
+
+      return;
+    }
 
     _currentBuffer = '';
     _showSilenceWarning = false;
@@ -197,8 +210,15 @@ class RecordingController extends ChangeNotifier {
           );
         }
       }());
-    } catch (e) {
-      LoggingService().error('Failed to start recording', error: e);
+    } catch (e, st) {
+      LoggingService().error('Failed to start recording', error: e, stackTrace: st);
+      // AudioService owns hardware truth: if the failure was hardware-related
+      // it has already set a degraded status. Anything else stays a generic,
+      // retryable error and must NOT disable the microphone.
+      _errorController.add(
+        _audioService.inputStatus.bannerMessage ??
+            'Could not start recording. Please try again.',
+      );
       _isRecording = false;
       notifyListeners();
     }
@@ -221,7 +241,7 @@ class RecordingController extends ChangeNotifier {
   void dispose() {
     unawaited(_clearSensitiveData());
     _audioService.removeListener(_onAudioStateChanged);
-    _settingsService.removeListener(notifyListeners);
+    _settingsService.removeListener(_onSettingsChanged);
     unawaited(_audioSubscription?.cancel());
     unawaited(_messageSubscription?.cancel());
     unawaited(_errorController.close());
@@ -232,11 +252,23 @@ class RecordingController extends ChangeNotifier {
     _messageSubscription = _wsService.onMessage.listen(_handleWebSocketMessage);
   }
 
+  void _onSettingsChanged() {
+    notifyListeners();
+    unawaited(refreshHardwareStatus());
+  }
+
+  /// Public pass-through method to trigger hardware status re-evaluation.
+  Future<void> refreshHardwareStatus() async {
+    await _audioService.evaluateInputStatus(
+      targetDeviceId: _settingsService.microphoneId,
+    );
+  }
+
   void _onAudioStateChanged() {
     if (_isRecording != _audioService.isRecording) {
       _isRecording = _audioService.isRecording;
-      notifyListeners();
     }
+    notifyListeners();
   }
 
   Future<void> _loadHistory() async {

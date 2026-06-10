@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
+import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 /// Service to capture raw audio chunks.
@@ -12,7 +13,11 @@ class AudioService extends ChangeNotifier {
   static const int _bytesPerSample = 2;
   static const double _pcm16NormalizationFactor = 32768.0;
 
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioRecorder _audioRecorder;
+
+  AudioService({AudioRecorder? audioRecorder})
+      : _audioRecorder = audioRecorder ?? AudioRecorder();
+
   StreamSubscription<Uint8List>? _recordSubscription;
   final StreamController<Uint8List> _audioStreamController =
       StreamController<Uint8List>.broadcast();
@@ -21,36 +26,75 @@ class AudioService extends ChangeNotifier {
       StreamController<double>.broadcast();
   bool _isRecording = false;
 
-  Stream<double> get amplitudeStream => _amplitudeController.stream;
+  AudioInputStatus _inputStatus = AudioInputStatus.unknown;
 
+  Stream<double> get amplitudeStream => _amplitudeController.stream;
   Stream<Uint8List> get audioStream => _audioStreamController.stream;
   bool get isRecording => _isRecording;
+  AudioInputStatus get inputStatus => _inputStatus;
 
   /// Lists available audio input devices (WASAPI on Windows).
   Future<List<InputDevice>> listInputDevices() =>
       _audioRecorder.listInputDevices();
 
+  /// Proactively evaluates input device status and updates [inputStatus].
+  Future<AudioInputStatus> evaluateInputStatus({String? targetDeviceId}) async {
+    try {
+      final devices = await _audioRecorder.listInputDevices();
+      if (devices.isEmpty) return _setStatus(AudioInputStatus.noDevice);
+      if (targetDeviceId != null &&
+          !devices.any((d) => d.id == targetDeviceId)) {
+        return _setStatus(AudioInputStatus.selectedUnavailable);
+      }
+
+      return _setStatus(AudioInputStatus.available);
+    } catch (e, st) {
+      LoggingService().error(
+        'Input enumeration failed',
+        error: e,
+        stackTrace: st,
+      );
+
+      return _setStatus(AudioInputStatus.noDevice);
+    }
+  }
+
+  AudioInputStatus _setStatus(AudioInputStatus status) {
+    if (_inputStatus != status) {
+      _inputStatus = status;
+      notifyListeners();
+    }
+
+    return _inputStatus;
+  }
+
   Future<void> startRecording({String? deviceId, String? deviceLabel}) async {
     if (_isRecording) return;
 
-    if (await _audioRecorder.hasPermission()) {
-      // Configuration for raw PCM (16-bit)
-      // If deviceId is null, we use the library's native default path (SAFE)
-      final config = deviceId != null
-          ? RecordConfig(
-              encoder: AudioEncoder.pcm16bits,
-              sampleRate: _sampleRate,
-              numChannels: _channelCount,
-              device: InputDevice(id: deviceId, label: deviceLabel ?? ''),
-            )
-          : const RecordConfig(
-              encoder: AudioEncoder.pcm16bits,
-              sampleRate: _sampleRate,
-              numChannels: _channelCount,
-            );
+    if (!await _audioRecorder.hasPermission()) {
+      LoggingService().error('Microphone permission denied');
+      _isRecording = false;
+      _setStatus(AudioInputStatus.permissionDenied);
+      throw Exception('Microphone permission denied');
+    }
 
+    final config = deviceId != null
+        ? RecordConfig(
+            encoder: AudioEncoder.pcm16bits,
+            sampleRate: _sampleRate,
+            numChannels: _channelCount,
+            device: InputDevice(id: deviceId, label: deviceLabel ?? ''),
+          )
+        : const RecordConfig(
+            encoder: AudioEncoder.pcm16bits,
+            sampleRate: _sampleRate,
+            numChannels: _channelCount,
+          );
+
+    try {
       final stream = await _audioRecorder.startStream(config);
       _isRecording = true;
+      _setStatus(AudioInputStatus.available);
       notifyListeners();
 
       LoggingService().info('Audio recording started: 16kHz PCM 16-bit Mono');
@@ -71,11 +115,11 @@ class AudioService extends ChangeNotifier {
           stopRecording();
         },
       );
-    } else {
-      LoggingService().error('Microphone permission denied');
+    } catch (e) {
       _isRecording = false;
+      _setStatus(AudioInputStatus.noDevice);
       notifyListeners();
-      throw Exception('Microphone permission denied');
+      rethrow;
     }
   }
 

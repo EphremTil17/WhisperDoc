@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
@@ -49,8 +51,12 @@ class RecordingView extends StatelessWidget {
         ? groqService.hasValidCredentials
         : wsService.isAuthenticatedSession;
 
-    // Capsule disabled during Groq transcription upload
-    final bool capsuleEnabled = isAuthorized && !controller.isTranscribing;
+    final inputStatus = controller.inputStatus;
+    final hardwareBannerMessage = inputStatus.bannerMessage;
+
+    // Capsule disabled during Groq transcription upload or missing hardware
+    final bool capsuleEnabled =
+        isAuthorized && inputStatus.canRecord && !controller.isTranscribing;
 
     final isFailed =
         !isGroqMode && wsService.handshakeState.state == HandshakeState.failed;
@@ -75,6 +81,25 @@ class RecordingView extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
+            ),
+          )
+        else if (hardwareBannerMessage != null)
+          // Tap to re-check hardware — lets the user recover after connecting a
+          // device without leaving and re-focusing the window.
+          GestureDetector(
+            onTap: () => unawaited(controller.refreshHardwareStatus()),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                '$hardwareBannerMessage (Tap to retry)',
+                style: const TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: _statusFontSize,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           )
         else if (!isAuthorized)
