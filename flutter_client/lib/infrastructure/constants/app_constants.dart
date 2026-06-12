@@ -6,7 +6,7 @@ class AppConstants {
   // === Build Configuration ===
 
   /// The GitHub repository path.
-  static const String githubRepo = 'EphremTil17/whisperdoc_release';
+  static const String githubRepo = 'EphremTil17/WhisperDoc';
 
   /// URL for the latest releases page (User Fallback).
   static const String updateUrl =
