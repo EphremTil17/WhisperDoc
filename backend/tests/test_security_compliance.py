@@ -1,9 +1,9 @@
 import os
 from unittest.mock import patch
 
+import jwt
 import pytest
 from auth.oidc import validate_oidc_token
-from jose import jwt
 from tests.test_jwt_fixtures import (
     generate_mock_jwks,
     generate_test_jwt,
@@ -66,8 +66,12 @@ def test_none_algorithm_rejection():
     }
 
     try:
-        # Token with no signature
-        none_token = jwt.encode(payload, "", algorithm="none")
+        import typing
+
+        # Token with no signature (PyJWT requires key=None for the 'none' alg)
+        none_token = jwt.encode(
+            payload, typing.cast(typing.Any, None), algorithm="none"
+        )
     except Exception:
         # If the library refuses to even encode 'none', it's already secured.
         return
