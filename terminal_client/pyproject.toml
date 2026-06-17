@@ -24,10 +24,20 @@ dependencies = [
 [project.scripts]
 whisperdoc-terminal = "whisper_shell.client:main"
 
+[tool.uv]
+# Floors for transitive dependencies carrying known CVEs:
+# urllib3<-requests, cryptography<-secretstorage (keyring on Linux).
+constraint-dependencies = [
+    "urllib3>=2.7.0",        # GHSA-qccp-gfcp-xxvc, GHSA-mf9v-mfxr-j63j
+    "cryptography>=48.0.1",  # GHSA-537c-gmf6-5ccf (bundled OpenSSL), GHSA-p423-j2cm-9vmq
+    "idna>=3.15",            # GHSA-65pc-fj4g-8rjx (idna.encode ReDoS; incomplete CVE-2024-3651 fix)
+    "pygments>=2.20.0",      # GHSA-qfpq-jrcy-v2v9 (Low)
+]
+
 [dependency-groups]
 dev = [
     "pyright",
-    "pytest",
+    "pytest>=9.0.3",  # GHSA-6w46-j5rx-g56g (insecure /tmp/pytest-of-* perms)
     "pytest-asyncio",
     "pytest-cov",
     "ruff",

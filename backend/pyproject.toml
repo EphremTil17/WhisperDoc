@@ -9,11 +9,11 @@ description = "WhisperDoc backend service with pluggable Whisper and Parakeet AS
 requires-python = ">=3.12"
 dependencies = [
     "cachetools~=7.0.5",
-    "fastapi~=0.135.2",
+    "fastapi~=0.138.2",
     "loguru~=0.7.3",
     "orjson~=3.11.7",
-    "python-jose[cryptography]~=3.5.0",
-    "python-multipart~=0.0.22",
+    "pyjwt[crypto]~=2.10",
+    "python-multipart~=0.0.30",
     "requests~=2.33.0",
     'uvloop~=0.22.1; sys_platform != "win32"',
     "uvicorn~=0.42.0",
@@ -38,9 +38,12 @@ parakeet = [
 dev = [
     "ruff",
     "pyright",
-    "pytest==9.0.2",
+    "pytest==9.0.3",  # GHSA-6w46-j5rx-g56g (insecure /tmp/pytest-of-* perms)
     "pytest-asyncio==1.3.0",
     "pytest-cov>=6.0",
+    # Starlette 1.x TestClient uses httpx2 (httpx is deprecated for it).
+    "httpx2>=2.0.0",
+    "numpy",
 ]
 
 [tool.setuptools]
@@ -51,14 +54,44 @@ include = ["auth*", "engine*", "protocol*", "security*"]
 exclude = ["tests*"]
 
 [tool.uv]
-default-groups = []
-environments = ["sys_platform == 'linux'"]
+default-groups = ["dev"]
+environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
 conflicts = [
     [
         { extra = "whisper" },
         { extra = "parakeet" },
     ],
 ]
+# Floors for transitive dependencies carrying known CVEs. These packages are not
+# imported directly; they arrive via the web stack (starlette<-fastapi,
+# urllib3<-requests, cryptography<-pyjwt/torch) and the parakeet ASR stack
+# (msgpack/pillow/lxml<-nemo, gitpython<-wandb, mako<-alembic, onnx<-nemo).
+# We pin the floor to the first patched release and leave the ceiling to each
+# parent so the resolver still tracks the latest compatible version.
+constraint-dependencies = [
+    "starlette>=1.3.1",      # GHSA-82w8-qh3p-5jfq, GHSA-wqp7-x3pw-xc5r, GHSA-x746-7m8f-x49c, GHSA-86qp-5c8j-p5mr
+    "urllib3>=2.7.0",        # GHSA-qccp-gfcp-xxvc, GHSA-mf9v-mfxr-j63j
+    "cryptography>=48.0.1",  # GHSA-537c-gmf6-5ccf (bundled OpenSSL), GHSA-p423-j2cm-9vmq
+    "msgpack>=1.2.1",        # GHSA-6v7p-g79w-8964
+    "gitpython>=3.1.50",     # GHSA-rpm5-65cw-6hj4 + 4 related GitPython CVEs
+    "mako>=1.3.12",          # GHSA-2h4p-vjrc-8xpq, GHSA-v92g-xgxw-vvmm
+    "pillow>=12.2.0",        # GHSA-pwv6-vv43-88gr, GHSA-whj4-6x5x-4v2j, GHSA-r73j-pqj5-w3x7, GHSA-wjx4-4jcj-g98j, GHSA-5xmw-vc9v-4wf2
+    "lxml>=6.1.0",           # GHSA-vfmq-68hx-4jfw (XXE)
+    "onnx>=1.21.0",          # GHSA-q56x-g2fj-4rj6, GHSA-538c-55jv-c5g9, GHSA-hqmj-h5c6-369m, GHSA-p433-9wv8-28xj, GHSA-cmw6-hcpp-c6jp
+    "aiohttp>=3.14.1",       # 11 moderate CVEs (GHSA-hpj7-wq8m-9hgp ... GHSA-w2fm-2cpv-w7v5); arrives via nemo/fsspec[http]
+    "pygments>=2.20.0",      # GHSA-qfpq-jrcy-v2v9 (Low)
+]
+# Knowingly-unremediated transitive advisories from the parakeet (nemo_toolkit) stack:
+#   - diskcache 5.6.3 (GHSA-w8v5-vhqr-4h9v): unsafe pickle cache. NO upstream fix.
+#     NeMo-internal cache; never imported by our code. Exploit needs write access to
+#     the server's cache dir (local threat). Accepted; scoped to the parakeet extra.
+#   - transformers <5.0.0rc3 (GHSA-69w3-r845-3855): torch.load RCE in Trainer._load_rng_state.
+#     Training-only path; WhisperDoc runs inference and does not load training checkpoints.
+#     The fix is a pre-release major (5.0.0rc3) that nemo_toolkit~=2.7.2 does not allow.
+#     Accepted rather than force an unsupported nemo/transformers pairing.
+#   - torch <= 2.12.0 (CVE-2025-3000): memory corruption via torch.jit.script.
+#     No upstream fix exists. WhisperDoc performs model inference and does not execute
+#     untrusted client scripts via JIT, making it non-exploitable.
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

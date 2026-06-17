@@ -47,7 +47,7 @@ def mock_oidc_env():
 def test_jwt_algorithm_pinning_none(mock_oidc_env):
     """CRITICAL: Verify that 'alg: none' attack is rejected."""
     # Create a token with alg: none
-    from jose import jwt as jose_jwt
+    import jwt as jose_jwt
 
     payload = {
         "iss": "https://auth.test.local/",
@@ -56,8 +56,12 @@ def test_jwt_algorithm_pinning_none(mock_oidc_env):
         "exp": 9999999999,
     }
     try:
-        # Some versions/configs of python-jose refuse to encode 'none'
-        token = jose_jwt.encode(payload, key="", algorithm="none")
+        import typing
+
+        # PyJWT requires key=None to emit an unsigned 'none' token
+        token = jose_jwt.encode(
+            payload, key=typing.cast(typing.Any, None), algorithm="none"
+        )
     except Exception:
         # If the library refuses to generate 'none' tokens, the test passes
         # as the system is already secure against this vector.
@@ -68,7 +72,7 @@ def test_jwt_algorithm_pinning_none(mock_oidc_env):
 
 def test_jwt_algorithm_pinning_hs256(mock_oidc_env):
     """CRITICAL: Verify that symmetric HS256 attack is rejected when RS256 is expected."""
-    from jose import jwt as jose_jwt
+    import jwt as jose_jwt
 
     payload = {
         "iss": "https://auth.test.local/",

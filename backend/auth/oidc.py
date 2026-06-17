@@ -3,14 +3,17 @@ OIDC/JWT Authentication Module
 Handles OpenID Connect provider discovery, JWKS caching, and JWT validation
 """
 
+import json
 import os
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+import jwt
 import requests
 from cachetools import TTLCache
-from jose import jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from jwt.algorithms import RSAAlgorithm
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from logging_config import log
 
 # OIDC Configuration
@@ -229,7 +232,7 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
             log.warning(f"No matching key found for kid: {kid}")
             return None
 
-        # python-jose expects a string or None for the audience parameter.
+        # PyJWT accepts a single string (or list) for the audience parameter.
         # For OIDC ID Tokens, the primary audience is the Client ID.
         # Fallback to OIDC_API_RESOURCE if Client ID is not set.
         target_audience = OIDC_CLIENT_ID or OIDC_API_RESOURCE
@@ -245,14 +248,27 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
             log.warning("OIDC Validation failed: Discovery doc missing 'issuer'.")
             return None
 
-        # jwt.decode validates the issuer claim after verifying the signature,
-        # which is strictly stronger than a pre-signature unverified-claims check.
+        # Build the RSA public key from the JWK. RSAAlgorithm.from_jwk needs only
+        # kty/n/e and returns a cryptography public-key object, so extra JWK fields
+        # (use, key_ops, x5c) cannot perturb verification.
+        public_key = RSAAlgorithm.from_jwk(json.dumps(rsa_key))
+        if not isinstance(public_key, RSAPublicKey):
+            # A JWKS entry advertised for RS256 must be an RSA public key; a
+            # private key or other key type indicates a malformed/hostile JWKS.
+            log.warning(f"JWKS entry for kid {kid} is not an RSA public key")
+            return None
+
+        # jwt.decode verifies the signature first, then the registered claims.
+        # Pinning algorithms=["RS256"] defeats algorithm-confusion (HS256 with the
+        # public key as secret) and 'none' downgrade attacks; the issuer is checked
+        # against the discovery document after signature verification.
         payload = jwt.decode(
             token,
-            rsa_key,
+            public_key,
             algorithms=["RS256"],
             audience=target_audience,
             issuer=expected_issuer_raw,
+            leeway=10,
             options={
                 "verify_signature": True,
                 "verify_exp": True,
@@ -260,8 +276,6 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
                 "verify_iat": True,
                 "verify_aud": True,
                 "verify_iss": True,
-                "verify_at_hash": False,
-                "leeway": 10,
             },
         )
 
@@ -273,11 +287,12 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
     except ExpiredSignatureError:
         log.warning("JWT validation failed: Token expired")
         return None
-    except JWTClaimsError as e:
-        log.warning(f"JWT validation failed: Claims error - {e}")
+    except InvalidTokenError as e:
+        # Covers bad signature, audience/issuer mismatch, nbf/iat problems.
+        log.warning(f"JWT validation failed: {e}")
         return None
     except Exception as e:
-        # Catch all JWT and cryptographic errors as a failed handshake
+        # Key construction (from_jwk) or other unexpected errors: fail closed.
         log.warning(f"JWT validation failed: {e}")
         return None
 

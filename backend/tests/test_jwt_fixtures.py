@@ -2,10 +2,10 @@
 import time
 from typing import cast
 
+import jwt
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jose import jwt
 
 # Generate RSA key pair for test JWT signing
 _test_private_key = None
@@ -98,7 +98,7 @@ def generate_mock_jwks():
     assert public_key_pem is not None
 
     # Convert PEM to JWK format (simplified)
-    # In production, use a library like python-jose or jwcrypto
+    # In production, use a library like jwcrypto or authlib.
     # For testing, we'll use a minimal JWK representation
     from cryptography.hazmat.primitives.serialization import load_pem_public_key
 

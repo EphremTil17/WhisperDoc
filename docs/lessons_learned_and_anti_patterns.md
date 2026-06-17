@@ -25,3 +25,18 @@
 * **The Mistake**: Using double quotes and backticks for inline code block format inside commit messages in PowerShell (e.g., ``- `backend/pyproject.toml` ``). PowerShell interpreted these backticks as escape chars (e.g., `` `b `` became backspace, `` `t `` became tab, `` `f `` became form feed), causing corrupted commit history formatting.
 * **The Root Cause**: In PowerShell, the backtick `` ` `` is the escape character.
 * **The Corrective Rule**: Always wrap multi-line commit messages containing code formatting in literal single quotes (`'`) when committing via PowerShell to prevent string expansion and escape sequence evaluation.
+
+---
+
+## 🔒 Security & Dependency Lifecycle Management
+
+### 1. Cryptographic/JWT Library Hygiene
+* **The Mistake**: Relying on unmaintained legacy wrappers like `python-jose` which drag in unpatched transitive dependencies (e.g. `ecdsa` carrying timing attack CVEs).
+* **The Root Cause**: Failing to audit the transitive tree when choosing a library, leading to unresolvable security flags.
+* **The Corrective Rule**: Prefer clean, standard-focused, and actively maintained libraries (e.g., `PyJWT`) that verify claims and signatures securely with minimal transitive footprint, bypassing legacy wrap-dependency baggage.
+
+### 2. Transitive Dependency Remediation via Floor Constraints
+* **The Mistake**: Blindly overriding parent package ceilings or bumping parent package definitions to remediate a deep transitive CVE, which forces package resolver fights or breaks tight compatibility bounds of heavy ML stacks like `nemo_toolkit`.
+* **The Root Cause**: Attempting to force-upgrade parent versions instead of targeting the specific leaf vulnerability directly.
+* **The Corrective Rule**: Always use `tool.uv.constraint-dependencies` to establish floor constraints (e.g., `cryptography>=48.0.1`) for transitive vulnerabilities. This guarantees a safe minimum floor version is locked while leaving the ceiling unbound, keeping third-party ML pipelines compatible.
+
