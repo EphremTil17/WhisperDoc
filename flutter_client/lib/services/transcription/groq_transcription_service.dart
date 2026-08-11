@@ -122,6 +122,7 @@ class GroqTranscriptionService extends ChangeNotifier {
         );
       }
       final prompt = _settings.groqPrompt;
+      final model = _settings.groqModel;
 
       // POST to Groq.
       // Record the attempt before sending — success or failure, it consumed
@@ -131,6 +132,7 @@ class GroqTranscriptionService extends ChangeNotifier {
       final result = await _httpClient.transcribe(
         wavBytes: wav,
         apiKey: apiKey,
+        model: model.isNotEmpty ? model : null,
         language: language.isNotEmpty ? language : null,
         prompt: prompt.isNotEmpty ? prompt : null,
       );

@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.24.7
+# WhisperDoc Flutter Client v2.24.8
 
 A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
 

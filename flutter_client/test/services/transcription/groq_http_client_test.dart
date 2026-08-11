@@ -53,6 +53,23 @@ void main() {
       expect(result.text, 'hola');
     });
 
+    test('sends custom model when provided', () async {
+      final mockClient = MockClient((request) async {
+        expect(request.url.path, contains('transcriptions'));
+
+        return http.Response('{"text": "accurate result"}', statusOk);
+      });
+
+      final client = GroqHttpClient(client: mockClient);
+      final result = await client.transcribe(
+        wavBytes: fakeWav,
+        apiKey: 'test-key',
+        model: 'whisper-large-v3',
+      );
+
+      expect(result.text, 'accurate result');
+    });
+
     test('throws invalidApiKey on 401', () async {
       final mockClient = MockClient((_) async {
         return http.Response(

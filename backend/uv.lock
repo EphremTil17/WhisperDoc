@@ -4715,7 +4715,7 @@ wheels = [
 
 [[package]]
 name = "whisperdoc-backend"
-version = "2.24.7"
+version = "2.24.8"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-18-whisperdoc-backend-parakeet' and extra == 'extra-18-whisperdoc-backend-whisper')" },

@@ -49,7 +49,6 @@ dcm:
     - avoid-unused-parameters
     - binary-expression-operand-order
     - double-literal-format
-    - member-ordering
     - missing-test-assertion
     - newline-before-return
     - no-boolean-literal-compare

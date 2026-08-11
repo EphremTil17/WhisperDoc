@@ -221,9 +221,7 @@ void main() {
         () => mockAudioService.audioStream,
       ).thenAnswer((_) => const Stream.empty());
       when(() => mockAudioCueService.playStartCue()).thenReturn(null);
-      when(
-        () => mockAudioService.stopRecording(),
-      ).thenAnswer((_) async {});
+      when(() => mockAudioService.stopRecording()).thenAnswer((_) async {});
 
       await controller.startRecording();
       await Future.delayed(Duration.zero);
@@ -316,31 +314,33 @@ void main() {
       expect(emittedError, equals(AudioInputStatus.noDevice.bannerMessage));
     });
 
-    test('non-hardware failure stays generic and does not disable the mic',
-        () async {
-      // Status remains healthy (canRecord) — a transient error must not be
-      // reported as a missing microphone.
-      when(
-        () => mockAudioService.inputStatus,
-      ).thenReturn(AudioInputStatus.available);
-      when(
-        () => mockAudioService.startRecording(
-          deviceId: any(named: 'deviceId'),
-          deviceLabel: any(named: 'deviceLabel'),
-        ),
-      ).thenThrow(StateError('unexpected cue failure'));
+    test(
+      'non-hardware failure stays generic and does not disable the mic',
+      () async {
+        // Status remains healthy (canRecord) — a transient error must not be
+        // reported as a missing microphone.
+        when(
+          () => mockAudioService.inputStatus,
+        ).thenReturn(AudioInputStatus.available);
+        when(
+          () => mockAudioService.startRecording(
+            deviceId: any(named: 'deviceId'),
+            deviceLabel: any(named: 'deviceLabel'),
+          ),
+        ).thenThrow(StateError('unexpected cue failure'));
 
-      String? emittedError;
-      controller.onError.listen((e) => emittedError = e);
+        String? emittedError;
+        controller.onError.listen((e) => emittedError = e);
 
-      await controller.startRecording();
+        await controller.startRecording();
 
-      expect(controller.isRecording, isFalse);
-      expect(
-        emittedError,
-        equals('Could not start recording. Please try again.'),
-      );
-    });
+        expect(controller.isRecording, isFalse);
+        expect(
+          emittedError,
+          equals('Could not start recording. Please try again.'),
+        );
+      },
+    );
 
     test('refreshHardwareStatus delegates to evaluateInputStatus', () async {
       when(() => mockSettingsService.microphoneId).thenReturn('mic-123');
@@ -352,6 +352,7 @@ void main() {
 
       await controller.refreshHardwareStatus();
 
+      expect(controller.isRecording, isFalse);
       verify(
         () => mockAudioService.evaluateInputStatus(targetDeviceId: 'mic-123'),
       ).called(1);

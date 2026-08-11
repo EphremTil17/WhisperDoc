@@ -834,7 +834,7 @@ wheels = [
 
 [[package]]
 name = "whisperdoc-terminal"
-version = "2.24.7"
+version = "2.24.8"
 source = { editable = "." }
 dependencies = [
     { name = "colorama" },

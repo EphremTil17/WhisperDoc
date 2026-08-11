@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
@@ -25,6 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _groqApiKeyController = TextEditingController();
   final TextEditingController _groqLanguageController = TextEditingController();
   final TextEditingController _groqPromptController = TextEditingController();
+  String _selectedGroqModel = AppConstants.groqDefaultModel;
 
   @override
   void initState() {
@@ -35,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _groqApiKeyController.text = settings.cachedGroqApiKey ?? '';
     _groqLanguageController.text = settings.groqLanguage;
     _groqPromptController.text = settings.groqPrompt;
+    _selectedGroqModel = settings.groqModel;
   }
 
   Future<void> _saveSettings() async {
@@ -44,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await settings.setGroqApiKey(_groqApiKeyController.text);
     await settings.setGroqLanguage(_groqLanguageController.text);
     await settings.setGroqPrompt(_groqPromptController.text);
+    await settings.setGroqModel(_selectedGroqModel);
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -51,6 +55,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _handleDoneTap() {
     unawaited(_saveSettings());
+  }
+
+  void _handleGroqModelChanged(String model) {
+    setState(() {
+      _selectedGroqModel = model;
+    });
   }
 
   @override
@@ -104,6 +114,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   groqApiKeyController: _groqApiKeyController,
                   groqLanguageController: _groqLanguageController,
                   groqPromptController: _groqPromptController,
+                  selectedGroqModel: _selectedGroqModel,
+                  onGroqModelChanged: _handleGroqModelChanged,
                 ),
                 const SizedBox(height: 16),
                 const AudioSection(),

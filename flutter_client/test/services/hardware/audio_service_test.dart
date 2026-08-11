@@ -1,4 +1,6 @@
-// ignore_for_file: no-magic-number, prefer-moving-to-variable
+// Test fixtures intentionally use late setup fields and private mock classes.
+// ignore_for_file: no-magic-number, prefer-moving-to-variable, prefer-match-file-name, avoid-late-keyword
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:record/record.dart';
@@ -34,18 +36,20 @@ void main() {
       expect(audioService.inputStatus, equals(AudioInputStatus.noDevice));
     });
 
-    test('returns selectedUnavailable when the target device is missing',
-        () async {
-      when(() => mockRecorder.listInputDevices()).thenAnswer(
-        (_) async => const [InputDevice(id: 'dev-1', label: 'Mic 1')],
-      );
-      final audioService = AudioService(audioRecorder: mockRecorder);
+    test(
+      'returns selectedUnavailable when the target device is missing',
+      () async {
+        when(() => mockRecorder.listInputDevices()).thenAnswer(
+          (_) async => const [InputDevice(id: 'dev-1', label: 'Mic 1')],
+        );
+        final audioService = AudioService(audioRecorder: mockRecorder);
 
-      final status = await audioService.evaluateInputStatus(
-        targetDeviceId: 'dev-2',
-      );
-      expect(status, equals(AudioInputStatus.selectedUnavailable));
-    });
+        final status = await audioService.evaluateInputStatus(
+          targetDeviceId: 'dev-2',
+        );
+        expect(status, equals(AudioInputStatus.selectedUnavailable));
+      },
+    );
 
     test('returns available when the target device is present', () async {
       when(() => mockRecorder.listInputDevices()).thenAnswer(
@@ -59,16 +63,18 @@ void main() {
       expect(status, equals(AudioInputStatus.available));
     });
 
-    test('returns available when devices exist and no target is specified',
-        () async {
-      when(() => mockRecorder.listInputDevices()).thenAnswer(
-        (_) async => const [InputDevice(id: 'dev-1', label: 'Mic 1')],
-      );
-      final audioService = AudioService(audioRecorder: mockRecorder);
+    test(
+      'returns available when devices exist and no target is specified',
+      () async {
+        when(() => mockRecorder.listInputDevices()).thenAnswer(
+          (_) async => const [InputDevice(id: 'dev-1', label: 'Mic 1')],
+        );
+        final audioService = AudioService(audioRecorder: mockRecorder);
 
-      final status = await audioService.evaluateInputStatus();
-      expect(status, equals(AudioInputStatus.available));
-    });
+        final status = await audioService.evaluateInputStatus();
+        expect(status, equals(AudioInputStatus.available));
+      },
+    );
 
     test('treats enumeration failure as noDevice', () async {
       when(() => mockRecorder.listInputDevices()).thenThrow(Exception('IO'));
@@ -98,17 +104,19 @@ void main() {
   });
 
   group('AudioService startRecording status mutation', () {
-    test('sets permissionDenied and throws when permission is refused',
-        () async {
-      when(() => mockRecorder.hasPermission()).thenAnswer((_) async => false);
-      final audioService = AudioService(audioRecorder: mockRecorder);
+    test(
+      'sets permissionDenied and throws when permission is refused',
+      () async {
+        when(() => mockRecorder.hasPermission()).thenAnswer((_) async => false);
+        final audioService = AudioService(audioRecorder: mockRecorder);
 
-      await expectLater(audioService.startRecording(), throwsException);
-      expect(
-        audioService.inputStatus,
-        equals(AudioInputStatus.permissionDenied),
-      );
-    });
+        await expectLater(audioService.startRecording(), throwsException);
+        expect(
+          audioService.inputStatus,
+          equals(AudioInputStatus.permissionDenied),
+        );
+      },
+    );
 
     test('sets noDevice and rethrows when the stream fails to start', () async {
       when(() => mockRecorder.hasPermission()).thenAnswer((_) async => true);

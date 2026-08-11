@@ -14,12 +14,16 @@ class ConnectionSection extends StatelessWidget {
     required this.groqApiKeyController,
     required this.groqLanguageController,
     required this.groqPromptController,
+    required this.selectedGroqModel,
+    required this.onGroqModelChanged,
   });
 
   final TextEditingController uriController;
   final TextEditingController groqApiKeyController;
   final TextEditingController groqLanguageController;
   final TextEditingController groqPromptController;
+  final String selectedGroqModel;
+  final ValueChanged<String> onGroqModelChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +59,8 @@ class ConnectionSection extends StatelessWidget {
             groqApiKeyController: groqApiKeyController,
             groqLanguageController: groqLanguageController,
             groqPromptController: groqPromptController,
+            selectedGroqModel: selectedGroqModel,
+            onGroqModelChanged: onGroqModelChanged,
           )
         else
           ServerUriField(uriController: uriController),

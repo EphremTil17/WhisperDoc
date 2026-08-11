@@ -26,6 +26,7 @@ class GroqHttpClient {
   Future<GroqTranscriptionResult> transcribe({
     required Uint8List wavBytes,
     required String apiKey,
+    String? model,
     String? language,
     String? prompt,
   }) async {
@@ -46,7 +47,7 @@ class GroqHttpClient {
         ),
       );
 
-      request.fields['model'] = AppConstants.groqDefaultModel;
+      request.fields['model'] = model ?? AppConstants.groqDefaultModel;
       request.fields['response_format'] = 'json';
       request.fields['temperature'] = '0';
 

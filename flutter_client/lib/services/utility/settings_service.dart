@@ -25,6 +25,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyTranscriptionMode = 'transcription_mode';
   static const String _keyGroqLanguage = 'groq_language';
   static const String _keyGroqPrompt = 'groq_prompt';
+  static const String _keyGroqModel = 'groq_model';
 
   // Default Values (from AppConstants)
   static const String _defaultServerUri = AppConstants.defaultServerUri;
@@ -39,11 +40,14 @@ class SettingsService extends ChangeNotifier {
   static const String _defaultTranscriptionMode = 'backend';
   static const String _defaultGroqLanguage = '';
   static const String _defaultGroqPrompt = '';
+  static const String _defaultGroqModel = AppConstants.groqDefaultModel;
   static const int _jwtPartCount = 3;
 
   SharedPreferences? _prefs;
   SecureVaultService? _vault;
   bool _isInitialized = false;
+
+  SettingsService({SecureVaultService? vault}) : _vault = vault;
 
   String _serverUri = _defaultServerUri;
   String _globalHotkey = _defaultGlobalHotkey;
@@ -60,6 +64,7 @@ class SettingsService extends ChangeNotifier {
   String? _groqApiKey;
   String _groqLanguage = _defaultGroqLanguage;
   String _groqPrompt = _defaultGroqPrompt;
+  String _groqModel = _defaultGroqModel;
   String _appVersion = '...'; // Dynamic loading fallback
 
   String get appVersion => _appVersion;
@@ -81,6 +86,7 @@ class SettingsService extends ChangeNotifier {
   String? get cachedGroqApiKey => _groqApiKey;
   String get groqLanguage => _groqLanguage;
   String get groqPrompt => _groqPrompt;
+  String get groqModel => _groqModel;
 
   /// Returns the cached API key, fetching from vault if not yet loaded.
   Future<String?> getApiKey() async {
@@ -101,8 +107,8 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> load() async {
     try {
-      // Initialize secure vault first
-      final vault = SecureVaultService();
+      // Initialize secure vault (idempotent; safe for injected or new instances)
+      final vault = _vault ?? SecureVaultService();
       await vault.initialize();
       _vault = vault;
 
@@ -133,6 +139,12 @@ class SettingsService extends ChangeNotifier {
           prefs.getString(_keyTranscriptionMode) ?? _defaultTranscriptionMode;
       _groqApiKey = await vault.retrieveCredential(_vaultGroqApiKey);
       _groqLanguage = prefs.getString(_keyGroqLanguage) ?? _defaultGroqLanguage;
+      final storedGroqModel = prefs.getString(_keyGroqModel);
+      _groqModel =
+          (storedGroqModel != null &&
+                  AppConstants.isValidGroqModel(storedGroqModel))
+              ? storedGroqModel.trim()
+              : _defaultGroqModel;
       _groqPrompt =
           await vault.retrieveCredential(_vaultGroqPrompt) ??
           prefs.getString(_keyGroqPrompt) ??
@@ -340,6 +352,18 @@ class SettingsService extends ChangeNotifier {
     }
     notifyListeners();
     LoggingService().info('Groq prompt updated');
+  }
+
+  Future<void> setGroqModel(String model) async {
+    final prefs = _requirePrefs();
+    final normalizedModel =
+        AppConstants.isValidGroqModel(model) ? model.trim() : _defaultGroqModel;
+    if (_groqModel == normalizedModel) return;
+
+    _groqModel = normalizedModel;
+    await prefs.setString(_keyGroqModel, normalizedModel);
+    notifyListeners();
+    LoggingService().info('Groq model updated to: $normalizedModel');
   }
 
   SharedPreferences _requirePrefs() {

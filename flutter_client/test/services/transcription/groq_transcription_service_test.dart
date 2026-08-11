@@ -6,13 +6,21 @@ import 'package:flutter_client/services/transcription/groq_transcription_service
 import 'package:flutter_client/services/transcription/groq_error.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 
+import 'package:flutter_client/services/transcription/groq_http_client.dart';
+
 class _MockSettingsService extends Mock implements SettingsService {}
+
+class _MockGroqHttpClient extends Mock implements GroqHttpClient {}
 
 void main() {
   // Named constants for chunk sizes used across tests.
   const chunkSmall = 100;
   const chunkLarge = 200;
   const chunkSmallPlusLarge = 300;
+
+  setUpAll(() {
+    registerFallbackValue(Uint8List(0));
+  });
 
   group('GroqTranscriptionService', () {
     late GroqTranscriptionService service;
@@ -23,6 +31,7 @@ void main() {
       when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
       when(() => mockSettings.groqLanguage).thenReturn('');
       when(() => mockSettings.groqPrompt).thenReturn('');
+      when(() => mockSettings.groqModel).thenReturn('whisper-large-v3-turbo');
       when(
         () => mockSettings.getGroqApiKey(),
       ).thenAnswer((_) async => 'test-groq-key');
@@ -91,6 +100,43 @@ void main() {
     test('isBufferOverLimit is false under the limit', () {
       service.bufferAudioChunk(Uint8List(chunkSmall));
       expect(service.isBufferOverLimit, isFalse);
+    });
+
+    test('finalizeAndTranscribe passes model from settings to http client', () async {
+      when(() => mockSettings.groqModel).thenReturn('whisper-large-v3');
+      final mockHttpClient = _MockGroqHttpClient();
+      when(
+        () => mockHttpClient.transcribe(
+          wavBytes: any(named: 'wavBytes'),
+          apiKey: any(named: 'apiKey'),
+          model: 'whisper-large-v3',
+          language: any(named: 'language'),
+          prompt: any(named: 'prompt'),
+        ),
+      ).thenAnswer(
+        (_) async => const GroqTranscriptionResult(
+          text: 'transcribed accurately',
+          responseHeaders: {},
+        ),
+      );
+
+      final customService = GroqTranscriptionService(
+        mockSettings,
+        httpClient: mockHttpClient,
+      );
+      customService.bufferAudioChunk(Uint8List(chunkSmall));
+      final text = await customService.finalizeAndTranscribe();
+
+      expect(text, 'transcribed accurately');
+      verify(
+        () => mockHttpClient.transcribe(
+          wavBytes: any(named: 'wavBytes'),
+          apiKey: 'test-groq-key',
+          model: 'whisper-large-v3',
+          language: null,
+          prompt: null,
+        ),
+      ).called(1);
     });
   });
 }

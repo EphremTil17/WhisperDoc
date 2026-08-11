@@ -80,8 +80,22 @@ class AppConstants {
   static const String groqTranscriptionEndpoint =
       'https://api.groq.com/openai/v1/audio/transcriptions';
 
+  /// Supported Groq ASR models.
+  static const String groqModelLargeV3Turbo = 'whisper-large-v3-turbo';
+  static const String groqModelLargeV3 = 'whisper-large-v3';
+
+  static const List<String> groqSupportedModels = [
+    groqModelLargeV3Turbo,
+    groqModelLargeV3,
+  ];
+
+  static const Map<String, String> groqModelDisplayNames = {
+    groqModelLargeV3Turbo: 'Large v3 Turbo',
+    groqModelLargeV3: 'Large v3',
+  };
+
   /// Default Groq ASR model.
-  static const String groqDefaultModel = 'whisper-large-v3-turbo';
+  static const String groqDefaultModel = groqModelLargeV3Turbo;
 
   /// Conservative buffer ceiling: 24 MB raw PCM, leaving ~1 MB headroom for
   /// the 44-byte WAV header and multipart framing overhead against the 25 MB
@@ -211,4 +225,8 @@ class AppConstants {
   static bool isValidGroqLanguage(String code) =>
       code.isEmpty ||
       groqSupportedLanguages.contains(code.trim().toLowerCase());
+
+  /// Checks whether [model] is a supported Groq ASR model.
+  static bool isValidGroqModel(String model) =>
+      groqSupportedModels.contains(model.trim());
 }
