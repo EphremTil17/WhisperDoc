@@ -64,39 +64,18 @@ class TestWhisperSelection:
 
 
 class TestParakeetSelection:
-    def test_parakeet_creates_parakeet_engine(self, monkeypatch):
-        monkeypatch.setenv("ASR_ENGINE", "parakeet")
-        # ParakeetEngine is imported inside the if-branch; patch at its own module
-        with patch("engine.parakeet_engine.ParakeetEngine") as MockParakeet:
-            mock_instance = MagicMock(spec=BaseEngine)
-            MockParakeet.return_value = mock_instance
-            engine = create_engine()
-        assert engine is mock_instance
-
-    def test_parakeet_uppercase(self, monkeypatch):
-        monkeypatch.setenv("ASR_ENGINE", "PARAKEET")
-        with patch("engine.parakeet_engine.ParakeetEngine") as MockParakeet:
-            mock_instance = MagicMock(spec=BaseEngine)
-            MockParakeet.return_value = mock_instance
-            engine = create_engine()
-        assert engine is mock_instance
-
-
-class TestParakeetCppSelection:
-    @pytest.mark.parametrize("value", ["parakeet_cpp", "PARAKEET_CPP", "parakeet-cpp"])
-    def test_parakeet_cpp_creates_sidecar_engine(self, monkeypatch, value):
+    @pytest.mark.parametrize("value", ["parakeet", "PARAKEET"])
+    def test_parakeet_creates_sidecar_engine(self, monkeypatch, value):
         monkeypatch.setenv("ASR_ENGINE", value)
-        monkeypatch.setenv("PARAKEET_CPP_BASE_URL", "http://native-asr:8080")
-        with patch("engine.parakeet_cpp_engine.ParakeetCppEngine") as MockParakeetCpp:
+        monkeypatch.setenv("PARAKEET_BASE_URL", "http://native-asr:8080")
+        with patch("engine.parakeet_engine.ParakeetEngine") as MockParakeet:
             mock_instance = MagicMock(spec=BaseEngine)
-            MockParakeetCpp.return_value = mock_instance
+            MockParakeet.return_value = mock_instance
             engine = create_engine()
 
         assert engine is mock_instance
-        assert MockParakeetCpp.call_args.kwargs["base_url"] == (
-            "http://native-asr:8080"
-        )
-        assert MockParakeetCpp.call_args.kwargs["max_audio_seconds"] == 30.0
+        assert MockParakeet.call_args.kwargs["base_url"] == "http://native-asr:8080"
+        assert MockParakeet.call_args.kwargs["max_audio_seconds"] == 30.0
 
 
 class TestUnknownEngine:

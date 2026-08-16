@@ -63,30 +63,28 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
    cp backend/.env.template .env
    chmod 600 .env   # Linux/Mac only
 
-   # Choose whisper, parakeet_cpp, or legacy parakeet in .env.
-   # parakeet_cpp also uses BACKEND_DOCKERFILE=Dockerfile.api and
-   # COMPOSE_PROFILES=parakeet-cpp (setup.sh configures these together).
+   # Choose whisper or parakeet in .env.
+   # Parakeet also uses COMPOSE_PROFILES=parakeet; setup.sh configures it.
    ```
 
 2. **Build and Start the Backend** (Docker handles all backend dependencies via native UV)
 
    ```bash
-   # Build and start using BACKEND_DOCKERFILE from .env (default: Whisper).
+   # Build and start using Dockerfile.${ASR_ENGINE} (default: Whisper).
    # The images install from backend/pyproject.toml + backend/uv.lock.
-   # For parakeet_cpp, first provision its digest-verified model:
-   uv run --project backend python backend/tools/provision_parakeet_cpp.py
+   # For parakeet, first provision its digest-verified model:
+   uv run --project backend python backend/tools/provision_parakeet.py
 
    docker compose build whisper-backend
    docker compose up -d whisper-backend
    ```
 
-   The experimental parakeet.cpp path requires these coordinated `.env`
+   The Parakeet path requires these coordinated `.env`
    values (the interactive `setup.sh` writes them together):
 
    ```dotenv
-   ASR_ENGINE=parakeet_cpp
-   BACKEND_DOCKERFILE=Dockerfile.api
-   COMPOSE_PROFILES=parakeet-cpp
+   ASR_ENGINE=parakeet
+   COMPOSE_PROFILES=parakeet
    ```
 
 3. **(Optional) Local Backend Setup** - Linux/WSL recommended
@@ -94,11 +92,9 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
    ```bash
    cd backend
 
-   # Choose exactly one engine extra for the local environment
+   # Whisper includes its local model runtime dependencies:
    uv sync --group dev --extra whisper
-   # or
-   uv sync --group dev --extra parakeet
-   # parakeet.cpp needs only the core API dependencies:
+   # Parakeet's model runtime is isolated in Docker:
    uv sync --group dev
    ```
 
@@ -129,10 +125,10 @@ docker compose exec whisper-backend python -m pytest tests/test_api.py
 ```bash
 cd backend
 
-# Choose one engine extra first, then run the backend quality gates
+# Choose the matching local dependency set, then run the quality gates
 uv sync --group dev --extra whisper
-# or
-uv sync --group dev --extra parakeet
+# or, for Parakeet:
+uv sync --group dev
 
 uv run pyright .
 uv run pytest tests
@@ -163,7 +159,7 @@ If you're actively developing in this repository, install these hooks.
 
 ## 🛡️ Architecture & Security Deep-Dive (Hardened v2.14.0)
 
-- **Backend Core**: Dockerized FastAPI server with a **pluggable ASR engine layer** (faster-whisper, isolated parakeet.cpp, or legacy NVIDIA NeMo) and GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
+- **Backend Core**: Dockerized FastAPI server with a **pluggable ASR engine layer** (faster-whisper or isolated parakeet.cpp) and GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
   WhisperDoc v2.13.0 represents a significant leap in enterprise-grade security, moving beyond simple API keys to a comprehensive **Zero-Trust Identity Federation**.
 
 ### 1. Identity Federation & Cryptographic Hardening
@@ -213,11 +209,11 @@ WhisperDoc is entirely configuration-driven via the `.env` file. These variables
 
 | Variable       | Description                                        | Default          |
 | -------------- | -------------------------------------------------- | ---------------- |
-| `ASR_ENGINE`   | ASR backend (`whisper`, `parakeet_cpp`, or legacy `parakeet`). | `whisper` |
-| `BACKEND_DOCKERFILE` | API image (`Dockerfile.whisper`, `.api`, or `.parakeet`). | `Dockerfile.whisper` |
+| `ASR_ENGINE`   | ASR backend (`whisper` or `parakeet`). | `whisper` |
 | `BACKEND_IMAGE_NAME` | Optional Docker image repository/name override. | `whisperdoc-backend` |
 | `API_PORT`     | Port the backend server will listen on.            | `9989`           |
 | `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`). | `large-v3-turbo` |
+| `PARAKEET_ACCELERATOR` | Native parakeet.cpp device (`CUDA0` for the first NVIDIA GPU). | `CUDA0` |
 | `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).             | `cuda`           |
 | `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).          | `INFO`           |
 
@@ -243,7 +239,7 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 The table below contains published model-level figures and is not directly
 comparable to end-to-end WhisperDoc latency. The local RTX 3060 Ti evaluation,
 including HTTP overhead, VRAM, long-form behavior, and rejected approaches, is
-recorded in [the parakeet.cpp benchmark report](backend/engine/PARAKEET_CPP_BENCHMARK.md).
+recorded in [the parakeet.cpp benchmark report](backend/engine/PARAKEET_BENCHMARK.md).
 
 Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) on standardized evaluation datasets:
 
@@ -258,14 +254,14 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 > **Research to watch**:
 >
-> - [LiteASR](https://github.com/efeslab/LiteASR) (EMNLP 2025) — PCA-based encoder compression that reduces Whisper encoder size by ~33-40% with near-zero WER degradation. Currently requires HuggingFace Transformers inference (no CTranslate2 or NeMo support), but if CTranslate2 adds low-rank layer support, this could meaningfully reduce VRAM for the Whisper engine.
+> - [LiteASR](https://github.com/efeslab/LiteASR) (EMNLP 2025) — PCA-based encoder compression that reduces Whisper encoder size by ~33-40% with near-zero WER degradation. Currently requires HuggingFace Transformers inference, but if CTranslate2 adds low-rank layer support, this could meaningfully reduce VRAM for the Whisper engine.
 > - [CrisperWhisper](https://github.com/nyrahealth/CrisperWhisper) (INTERSPEECH 2024) — Fine-tuned Whisper Large v3 for verbatim transcription (6.66% avg WER vs 7.7% for standard v3) with filler detection (`[UM]`, `[UH]`) and hallucination mitigation. An official [CTranslate2 conversion](https://huggingface.co/nyrahealth/faster_CrisperWhisper) exists for faster-whisper, though word-level timestamp precision degrades outside their custom pipeline. Licensed CC-BY-NC-4.0 (non-commercial only).
 
 ### Infrastructure
 
 - **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
 - **Transcription**: Engine-dependent; the local 9.16-second RTX 3060 Ti test measured 74.6 ms median end-to-end with parakeet.cpp and 319.4 ms with Whisper Turbo. See the linked benchmark report for methodology and limits.
-- **GPU Acceleration**: CUDA-enabled using CTranslate2 (Whisper), parakeet.cpp/ggml in an isolated sidecar, or native PyTorch (legacy NeMo Parakeet).
+- **GPU Acceleration**: CUDA-enabled using CTranslate2 for Whisper or parakeet.cpp/ggml in an isolated sidecar.
 - **Weight Efficiency**: Multi-stage build with aggressive layer pruning of static libraries and bytecode to ensure a minimal runtime environment.
 
 ## Clients

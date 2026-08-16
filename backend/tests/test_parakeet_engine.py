@@ -1,168 +1,176 @@
-"""
-Tests for ParakeetEngine.
+"""Unit tests for the isolated Parakeet sidecar adapter."""
 
-NeMo is not installed in the Whisper image (or on the Windows host).
-conftest.py registers a MagicMock stub for nemo.collections.asr before any
-module is imported. We retrieve that stub via sys.modules here instead of
-registering a second one (setdefault is a no-op after conftest runs).
-"""
+from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock
+import wave
+from unittest.mock import MagicMock, call, patch
+
+import pytest
+import requests
 
 from engine.base_engine import SegmentResult, TranscriptionResult
 from engine.parakeet_engine import ParakeetEngine
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+def _response(payload: object) -> MagicMock:
+    response = MagicMock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    return response
 
 
-def _nemo_asr_stub():
-    """Return the MagicMock that conftest registered for nemo.collections.asr."""
-    return sys.modules["nemo.collections.asr"]
+def _write_wav(path, seconds: float = 1.0) -> None:
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes(b"\x00\x00" * int(16000 * seconds))
 
 
-def _make_hyp(text: str, segments=None):
-    """Build a mock NeMo Hypothesis.
-
-    NeMo stores timestamp data in ``hyp.timestep`` (not ``hyp.timestamp``).
-    When timestamps=True, ``transcribe()`` returns list[list[Hypothesis]].
-    """
-    hyp = MagicMock()
-    hyp.text = text
-    if segments is not None:
-        hyp.timestep = {"segment": segments}
-    else:
-        hyp.timestep = None
-    return hyp
-
-
-def _build_engine(mock_model) -> ParakeetEngine:
-    """Construct a ParakeetEngine whose NeMo from_pretrained returns mock_model.
-
-    mock_model.to() must return mock_model itself so that the .to(device) chain
-    in _load_model does not produce a different MagicMock as self._model.
-    """
-    mock_model.to.return_value = mock_model
-    mock_model.cuda.return_value = mock_model
-    mock_model.half.return_value = mock_model
-    _nemo_asr_stub().models.ASRModel.from_pretrained.return_value = mock_model
-    return ParakeetEngine(model_name="nvidia/parakeet-tdt-0.6b-v3", device="cpu")
+@pytest.fixture
+def mocked_transport():
+    with (
+        patch(
+            "engine.parakeet_engine.requests.get",
+            return_value=_response({"status": "ok"}),
+        ) as get,
+        patch(
+            "engine.parakeet_engine.requests.post",
+            return_value=_response({"text": ""}),
+        ) as post,
+    ):
+        yield get, post
 
 
-# ---------------------------------------------------------------------------
-# Transcription shape
-# ---------------------------------------------------------------------------
+def _engine() -> ParakeetEngine:
+    return ParakeetEngine(
+        "http://parakeet:8080/",
+        startup_timeout_seconds=0.01,
+        warmup_seconds=0.01,
+        max_audio_seconds=2,
+    )
 
 
-class TestTranscribeReturnShape:
-    def test_returns_transcription_result(self):
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("Hello world")]]
-        engine = _build_engine(mock_model)
+def test_constructor_checks_health_and_runs_cuda_warmup(mocked_transport):
+    get, post = mocked_transport
 
-        result = engine.transcribe("/fake/audio.wav")
+    engine = _engine()
 
-        assert isinstance(result, TranscriptionResult)
-
-    def test_text_from_hypothesis(self):
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("Test transcription")]]
-        engine = _build_engine(mock_model)
-
-        result = engine.transcribe("/fake/audio.wav")
-
-        assert result.text == "Test transcription"
-
-    def test_language_is_always_en(self):
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("Hi")]]
-        engine = _build_engine(mock_model)
-
-        result = engine.transcribe("/fake/audio.wav")
-
-        assert result.language == "en"
-
-    def test_processing_time_is_non_negative(self):
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("Hi")]]
-        engine = _build_engine(mock_model)
-
-        result = engine.transcribe("/fake/audio.wav")
-
-        assert result.processing_time >= 0.0
+    assert engine.is_loaded() is True
+    get.assert_called_once()
+    post.assert_called_once()
+    assert get.call_args.kwargs["headers"] == {"Connection": "close"}
+    assert post.call_args.kwargs["headers"] == {"Connection": "close"}
+    assert post.call_args.kwargs["data"] == {"response_format": "json"}
 
 
-class TestSegmentNormalisation:
-    def test_segment_timestamps_extracted(self):
-        segs = [
-            {"start": 0.0, "end": 0.8, "segment": "Hello"},
-            {"start": 0.8, "end": 1.5, "segment": "world"},
-        ]
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("Hello world", segments=segs)]]
-        engine = _build_engine(mock_model)
+def test_transcribe_maps_single_segment_and_duration(mocked_transport, tmp_path):
+    _, post = mocked_transport
+    engine = _engine()
+    post.return_value = _response({"text": "  Hello, world.  "})
+    audio = tmp_path / "speech.wav"
+    _write_wav(audio, 1.25)
 
-        result = engine.transcribe("/fake/audio.wav")
+    result = engine.transcribe(str(audio))
 
-        assert len(result.segments) == 2
-        assert result.segments[0] == SegmentResult(start=0.0, end=0.8, text="Hello")
-        assert result.segments[1] == SegmentResult(start=0.8, end=1.5, text="world")
-
-    def test_fallback_single_segment_when_no_timestamps(self):
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [
-            [_make_hyp("No timestamps here", segments=None)]
-        ]
-        engine = _build_engine(mock_model)
-
-        result = engine.transcribe("/fake/audio.wav")
-
-        assert len(result.segments) == 1
-        assert result.segments[0].text == "No timestamps here"
-        assert result.segments[0].start == 0.0
-        assert result.segments[0].end == 0.0
+    assert isinstance(result, TranscriptionResult)
+    assert result.text == "Hello, world."
+    assert result.language == "en"
+    assert result.processing_time >= 0.0
+    assert result.segments == [SegmentResult(start=0.0, end=1.25, text="Hello, world.")]
+    assert post.call_count == 2  # startup warmup + transcription
 
 
-# ---------------------------------------------------------------------------
-# Lifecycle
-# ---------------------------------------------------------------------------
+def test_transcribe_rejects_audio_above_safe_limit(mocked_transport, tmp_path):
+    _, post = mocked_transport
+    engine = _engine()
+    audio = tmp_path / "too-long.wav"
+    _write_wav(audio, 2.1)
+
+    with pytest.raises(ValueError, match="safe maximum"):
+        engine.transcribe(str(audio))
+
+    post.assert_called_once()  # startup warmup only
 
 
-class TestLifecycle:
-    def test_is_loaded_true_after_init(self):
-        mock_model = MagicMock()
-        engine = _build_engine(mock_model)
-        assert engine.is_loaded() is True
+def test_transcribe_rejects_wrong_wav_contract(mocked_transport, tmp_path):
+    engine = _engine()
+    audio = tmp_path / "stereo.wav"
+    with wave.open(str(audio), "wb") as wav_file:
+        wav_file.setnchannels(2)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes(b"\x00\x00\x00\x00" * 100)
 
-    def test_is_loaded_false_after_unload(self):
-        mock_model = MagicMock()
-        engine = _build_engine(mock_model)
-        engine.unload()
-        assert engine.is_loaded() is False
+    with pytest.raises(ValueError, match="16-kHz, 16-bit, mono"):
+        engine.transcribe(str(audio))
 
-    def test_warmup_is_idempotent_when_loaded(self):
-        mock_model = MagicMock()
-        engine = _build_engine(mock_model)
-        call_count_before = _nemo_asr_stub().models.ASRModel.from_pretrained.call_count
-        engine.warmup()  # Already loaded — should NOT call from_pretrained again
-        assert (
-            _nemo_asr_stub().models.ASRModel.from_pretrained.call_count
-            == call_count_before
+
+def test_invalid_sidecar_payload_marks_engine_unready(mocked_transport, tmp_path):
+    _, post = mocked_transport
+    engine = _engine()
+    post.return_value = _response({"unexpected": "value"})
+    audio = tmp_path / "speech.wav"
+    _write_wav(audio)
+
+    with pytest.raises(RuntimeError, match="invalid transcription payload"):
+        engine.transcribe(str(audio))
+
+    assert engine.is_loaded() is False
+
+
+def test_transport_error_is_masked_and_marks_engine_unready(mocked_transport, tmp_path):
+    _, post = mocked_transport
+    engine = _engine()
+    post.side_effect = requests.ConnectionError("internal address details")
+    audio = tmp_path / "speech.wav"
+    _write_wav(audio)
+
+    with pytest.raises(RuntimeError, match="transcription request failed"):
+        engine.transcribe(str(audio))
+
+    assert engine.is_loaded() is False
+
+
+def test_unload_detaches_and_warmup_restores_readiness(mocked_transport):
+    get, post = mocked_transport
+    engine = _engine()
+
+    engine.unload()
+    assert engine.is_loaded() is False
+    engine.warmup()
+
+    assert engine.is_loaded() is True
+    assert get.call_count == 2
+    assert post.call_count == 2
+
+
+def test_warmup_is_idempotent(mocked_transport):
+    get, post = mocked_transport
+    engine = _engine()
+
+    engine.warmup()
+    engine.warmup()
+
+    assert get.mock_calls == [
+        call(
+            "http://parakeet:8080/health",
+            headers={"Connection": "close"},
+            timeout=(2.0, 30.0),
         )
+    ]
+    assert post.call_count == 1
 
-    def test_transcribe_after_unload_reloads(self):
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = [[_make_hyp("Reloaded")]]
-        engine = _build_engine(mock_model)
 
-        engine.unload()
-        assert engine.is_loaded() is False
-
-        # from_pretrained will be called again on transcribe → _load_model
-        _nemo_asr_stub().models.ASRModel.from_pretrained.return_value = mock_model
-        result = engine.transcribe("/fake/audio.wav")
-
-        assert engine.is_loaded() is True
-        assert result.text == "Reloaded"
+@pytest.mark.parametrize(
+    "url",
+    [
+        "parakeet:8080",
+        "ftp://parakeet/model",
+        "http://user:password@parakeet:8080",
+        "http://parakeet:8080?debug=true",
+    ],
+)
+def test_base_url_validation_rejects_unsafe_or_ambiguous_values(url):
+    with pytest.raises(ValueError, match="PARAKEET_BASE_URL"):
+        ParakeetEngine(url)

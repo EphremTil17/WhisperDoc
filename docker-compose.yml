@@ -1,14 +1,10 @@
 services:
   whisper-backend:
-    # Engine-qualified tags prevent a lightweight sidecar API build from
-    # replacing the local Whisper/NeMo image tag during A/B testing.
+    # Engine-qualified tags keep Whisper and Parakeet API builds independent.
     image: ${BACKEND_IMAGE_NAME:-whisperdoc-backend}:${WHISPER_DOC_VERSION:-latest}-${ASR_ENGINE:-whisper}
     build:
       context: ./backend
-      # Engine names and build images are deliberately separate. The
-      # parakeet_cpp engine uses the lightweight API image plus a native
-      # sidecar rather than looking for a nonexistent Dockerfile.parakeet_cpp.
-      dockerfile: ${BACKEND_DOCKERFILE:-Dockerfile.whisper}
+      dockerfile: Dockerfile.${ASR_ENGINE:-whisper}
       args:
         - API_PORT=${API_PORT:-9989}
         - VERSION=${WHISPER_DOC_VERSION:?No VERSION set. Check .env file.}
@@ -24,19 +20,13 @@ services:
       - MODEL_NAME=${MODEL_NAME:-large-v3-turbo}
       - MODEL_DEVICE=${MODEL_DEVICE:-cuda}
       - MODEL_COMPUTE_TYPE=${MODEL_COMPUTE_TYPE:-float16}
-      - PARAKEET_MODEL_NAME=${PARAKEET_MODEL_NAME:-nvidia/parakeet-tdt-0.6b-v2}
-      - PARAKEET_DEVICE=${PARAKEET_DEVICE:-cuda}
-      - PARAKEET_SUPPRESS_STDIO=${PARAKEET_SUPPRESS_STDIO:-true}
-      - PARAKEET_CPP_BASE_URL=${PARAKEET_CPP_BASE_URL:-http://parakeet-cpp:8080}
-      - PARAKEET_CPP_CONNECT_TIMEOUT_SECONDS=${PARAKEET_CPP_CONNECT_TIMEOUT_SECONDS:-2}
-      - PARAKEET_CPP_REQUEST_TIMEOUT_SECONDS=${PARAKEET_CPP_REQUEST_TIMEOUT_SECONDS:-30}
-      - PARAKEET_CPP_STARTUP_TIMEOUT_SECONDS=${PARAKEET_CPP_STARTUP_TIMEOUT_SECONDS:-120}
-      - PARAKEET_CPP_WARMUP_SECONDS=${PARAKEET_CPP_WARMUP_SECONDS:-10}
-      - PARAKEET_CPP_MAX_AUDIO_SECONDS=${PARAKEET_CPP_MAX_AUDIO_SECONDS:-30}
+      - PARAKEET_BASE_URL=${PARAKEET_BASE_URL:-http://parakeet:8080}
+      - PARAKEET_CONNECT_TIMEOUT_SECONDS=${PARAKEET_CONNECT_TIMEOUT_SECONDS:-2}
+      - PARAKEET_REQUEST_TIMEOUT_SECONDS=${PARAKEET_REQUEST_TIMEOUT_SECONDS:-30}
+      - PARAKEET_STARTUP_TIMEOUT_SECONDS=${PARAKEET_STARTUP_TIMEOUT_SECONDS:-120}
+      - PARAKEET_WARMUP_SECONDS=${PARAKEET_WARMUP_SECONDS:-10}
+      - PARAKEET_MAX_AUDIO_SECONDS=${PARAKEET_MAX_AUDIO_SECONDS:-30}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - MPLCONFIGDIR=/tmp/matplotlib
-      - NUMBA_CACHE_DIR=/tmp/numba_cache
-      - NUMEXPR_MAX_THREADS=16
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - WHISPER_DOC_API_KEY=${WHISPER_DOC_API_KEY:?No API KEY set. Configure WHISPER_DOC_API_KEY in .env.}
@@ -65,29 +55,32 @@ services:
       - ./backend/.env.template
       - .env
     depends_on:
-      parakeet-cpp:
+      parakeet:
         condition: service_healthy
         required: false
 
-  parakeet-cpp:
-    image: ${PARAKEET_CPP_IMAGE:-ghcr.io/mudler/parakeet.cpp-server@sha256:dfbe0fa76a49386b5dd413392b74c89bc68fcac0a445dbb4efec083d7dc1acbf}
+  parakeet:
+    image: ${PARAKEET_IMAGE:-ghcr.io/mudler/parakeet.cpp-server@sha256:dfbe0fa76a49386b5dd413392b74c89bc68fcac0a445dbb4efec083d7dc1acbf}
     profiles:
-      - parakeet-cpp
+      - parakeet
     command:
       - --model
-      - /models/${PARAKEET_CPP_MODEL_FILE:-tdt-0.6b-v2-f16.gguf}
+      - /models/${PARAKEET_MODEL_FILE:-tdt-0.6b-v2-f16.gguf}
       - --host
       - 0.0.0.0
       - --port
       - "8080"
       - --threads
-      - ${PARAKEET_CPP_THREADS:-4}
+      - ${PARAKEET_THREADS:-4}
     environment:
-      - PARAKEET_DEVICE=${PARAKEET_CPP_DEVICE:-CUDA0}
+      # Keep WhisperDoc's public variable distinct from parakeet.cpp's native
+      # variable. Retired deployments used PARAKEET_DEVICE=cuda, which
+      # parakeet.cpp interprets as invalid and silently falls back to CPU.
+      - PARAKEET_DEVICE=${PARAKEET_ACCELERATOR:-CUDA0}
     expose:
       - "8080"
     volumes:
-      - ./model-cache/parakeet-cpp:/models:ro
+      - ./model-cache/parakeet:/models:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
       interval: 2s

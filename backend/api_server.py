@@ -1,94 +1,23 @@
 #!/usr/bin/env python3
 """
 Minimal FastAPI server for speech-to-text transcription
-Uses faster-whisper with GPU acceleration
+Uses the ASR engine selected by configuration
 """
 
 import asyncio
 import importlib
-import logging
 import os
-import subprocess
-import time
-
-# Initialize uvloop for performance before anything else
-try:
-    uvloop = importlib.import_module("uvloop")
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-except ImportError:
-    pass
-
-# ---------------------------------------------------------------------------
-# h11 WebSocket Upgrade Fix: workaround for b" " object corruption after
-# NeMo inference.
-#
-# After the first NeMo model.transcribe() call, the b" " bytes object used
-# in uvicorn's handle_websocket_upgrade() is observed to change from 0x20
-# to 0x00 (null byte).  Two independent code paths (h11_impl and our
-# diagnostic patch) share the same id() for b" ", and both see the
-# corruption — consistent with CPython interning the single-byte literal.
-#
-# The corrupted object breaks the h11→WebSocket handoff: the reconstructed
-# request line becomes b"GET\x00/ws HTTP/1.1\r\n", which the websockets
-# legacy HTTP parser rejects (split on b" " yields 2 parts instead of 3).
-#
-# Workaround: replace the b" " literal with bytes([0x20]) — a fresh heap
-# allocation that does not share the corrupted object.
-#
-# Root cause is unconfirmed: the corruption is temporally correlated with
-# NeMo inference and absent with the Whisper engine, but the specific
-# native component (NeMo, PyTorch, gRPC, CUDA, numba) has not been
-# identified via memory debugging tools.
-#
-# See git_exclude/NEMO_CPYTHON_MEMORY_CORRUPTION.md for full investigation.
-# ---------------------------------------------------------------------------
-try:
-    from uvicorn.protocols.http import h11_impl as _h11mod
-
-    # Pre-allocate the space byte outside the function to avoid per-call
-    # allocation.  bytes([0x20]) creates a NEW object on the heap —
-    # it does NOT resolve to the interned b" " singleton.
-    _SAFE_SPACE = bytes([0x20])
-
-    def _fixed_ws_upgrade(self, event):
-        """Patched handle_websocket_upgrade that is immune to b" " corruption."""
-        self.connections.discard(self)
-        output = [
-            event.method,
-            _SAFE_SPACE,
-            event.target,
-            _SAFE_SPACE + b"HTTP/1.1\r\n",
-        ]
-        for name, value in self.headers:
-            output += [name, b": ", value, b"\r\n"]
-        output.append(b"\r\n")
-        protocol = self.ws_protocol_class(
-            config=self.config,
-            server_state=self.server_state,
-            app_state=self.app_state,
-        )
-        protocol.connection_made(self.transport)
-        protocol.data_received(b"".join(output))
-        self.transport.set_protocol(protocol)
-
-    _h11mod.H11Protocol.handle_websocket_upgrade = _fixed_ws_upgrade
-
-except Exception as exc:
-    # If the patch fails (uvicorn internals changed), fall through —
-    # the original code path still works when NeMo is not loaded.
-    logging.getLogger("uvicorn.error").warning(
-        "WhisperDoc h11 WebSocket upgrade patch was not applied; "
-        "startup continues without the NeMo workaround: %s",
-        exc,
-    )
-
 import shutil
+import subprocess
 import tempfile
+import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, List, Optional
 
 from fastapi import (
+    Depends,
     FastAPI,
     File,
     HTTPException,
@@ -97,10 +26,19 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse
-
-# Import the configured logger
-from logging_config import log
 from pydantic import BaseModel
+
+from auth import get_api_key, verify_api_key, warmup_oidc
+from engine.engine_factory import create_engine
+from logging_config import log
+from protocol.websocket_handler import ConnectionManager
+
+# Initialize uvloop for performance before anything else
+try:
+    uvloop = importlib.import_module("uvloop")
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass
 
 
 # --- Pydantic Models for Log Ingestion ---
@@ -129,13 +67,6 @@ SEC_CLIENT_VERSION = os.getenv("SEC_CLIENT_VERSION", "0.0.0")
 
 # --- Security & Validation Configuration ---
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
-
-from contextlib import asynccontextmanager
-
-from auth import get_api_key, verify_api_key, warmup_oidc
-from engine.engine_factory import create_engine
-from fastapi import Depends
-from protocol.websocket_handler import ConnectionManager
 
 # Global initialized on startup
 manager: Optional[ConnectionManager] = None
@@ -321,8 +252,8 @@ async def transcribe_audio(file: Annotated[UploadFile, File()]):
 
     # Save uploaded file and normalize to 16kHz mono WAV via FFmpeg.
     # This makes the endpoint engine-agnostic: Whisper can ingest any
-    # format, but NeMo (Parakeet) expects WAV.  FFmpeg is present in
-    # both Docker images (static binary copied at build time).
+    # format, while Parakeet expects WAV. FFmpeg is present in both API
+    # images as a static binary.
     temp_path = None
     wav_path = None
     try:

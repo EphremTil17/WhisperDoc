@@ -1,309 +1,221 @@
-"""
-ParakeetEngine: NVIDIA NeMo backend using parakeet-tdt-0.6b-v2.
+"""Parakeet sidecar adapter powered by parakeet.cpp.
 
-English-only TDT (Token and Duration Transducer) model.
-NeMo is imported lazily inside this module — the Whisper service image
-does not need NeMo installed; deferred import in engine_factory.py ensures
-this module is never imported in the Whisper container.
-
-Lifecycle mirrors WhisperEngine: __init__ triggers an initial load so the
-first transcribe() call is not penalised by model download/init latency.
+The native ggml/CUDA runtime lives in a separate container. This adapter keeps
+native model code outside WhisperDoc's Python process while preserving the
+synchronous :class:`BaseEngine` contract used by the WebSocket orchestration
+layer.
 """
 
-import contextlib
-import gc
-import logging
-import os
-import sys
+from __future__ import annotations
+
+import io
 import threading
 import time
-from typing import Any, cast
+import wave
+from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
 
 from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
 from logging_config import log
 
-PARAKEET_SUPPRESS_STDIO = os.getenv("PARAKEET_SUPPRESS_STDIO", "true").lower() == "true"
-
-
-@contextlib.contextmanager
-def _suppress_nemo_noise():
-    """Silence all NeMo output by redirecting stdout AND stderr to /dev/null.
-
-    NeMo's logging is exceptionally aggressive: a custom singleton
-    (nemo.utils.logging) attaches StreamHandlers that write [NeMo I/W/E]
-    lines to stdout, and it re-attaches them on every transcribe() call.
-    Python-level patching (setLevel, handler clearing) cannot keep up.
-
-    This context manager redirects both stdout and stderr at the OS
-    file-descriptor level — the standard pattern for silencing noisy
-    C/Fortran/CUDA libraries.  The redirect is process-wide, so callers
-    must ensure no other threads need stdout/stderr during the block:
-
-      - _load_model() runs at startup (single-threaded)
-      - transcribe() runs inside asyncio.to_thread (event loop yields)
-      - Our own loguru lines are emitted OUTSIDE the `with` block
-    """
-    if not PARAKEET_SUPPRESS_STDIO:
-        yield
-        return
-
-    stdout_fd = sys.stdout.fileno()
-    stderr_fd = sys.stderr.fileno()
-    saved_stdout = os.dup(stdout_fd)
-    saved_stderr = os.dup(stderr_fd)
-    try:
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, stdout_fd)
-        os.dup2(devnull, stderr_fd)
-        os.close(devnull)
-        yield
-    finally:
-        os.dup2(saved_stdout, stdout_fd)
-        os.dup2(saved_stderr, stderr_fd)
-        os.close(saved_stdout)
-        os.close(saved_stderr)
-
-
-def _mute_nemo_loggers() -> None:
-    """Best-effort Python-level muting of NeMo's noisy loggers.
-
-    NeMo's singleton logger (nemo.utils.logging) attaches StreamHandlers to
-    stdout.  We redirect them to a NullHandler so they don't pollute output.
-    NeMo may re-attach handlers on each transcribe() call, but with propagate
-    disabled and the root-level _ThirdPartyNoiseFilter in place, most noise
-    is suppressed without touching file descriptors.
-    """
-    null = logging.NullHandler()
-    for name in ("nemo", "nemo_logger", "nemo.utils.logging", "lhotse", "lhotse.cut"):
-        lg = logging.getLogger(name)
-        lg.handlers = [null]
-        lg.propagate = False
-
 
 class ParakeetEngine(BaseEngine):
-    """
-    ASR engine backed by NVIDIA NeMo parakeet-tdt-0.6b-v2.
-
-    Parakeet is English-only. Full-utterance (batch) mode is used — the
-    model receives the entire audio file and returns a single Hypothesis.
-    Segment timestamps are extracted from hyp.timestep["segment"] when
-    available; if the model does not return timestamps the full utterance
-    is represented as one SegmentResult with start=0, end=0.
-    """
+    """ASR engine backed by the isolated ``parakeet-server`` process."""
 
     def __init__(
-        self, model_name: str = "nvidia/parakeet-tdt-0.6b-v2", device: str = "cuda"
-    ):
-        self._model_name = model_name
-        self._device = device
-        self._model = None
-        self._lock = threading.Lock()
-        log.info(f"ParakeetEngine: initialising model={model_name}, device={device}")
-        log.info(
-            f"ParakeetEngine: fd stdio suppression {'enabled' if PARAKEET_SUPPRESS_STDIO else 'disabled'}"
+        self,
+        base_url: str,
+        *,
+        connect_timeout_seconds: float = 2.0,
+        request_timeout_seconds: float = 30.0,
+        startup_timeout_seconds: float = 120.0,
+        warmup_seconds: float = 10.0,
+        max_audio_seconds: float = 30.0,
+    ) -> None:
+        self._base_url = self._validate_base_url(base_url)
+        self._connect_timeout = self._positive(
+            "connect_timeout_seconds", connect_timeout_seconds
         )
-        self._load_model()
+        self._request_timeout = self._positive(
+            "request_timeout_seconds", request_timeout_seconds
+        )
+        self._startup_timeout = self._positive(
+            "startup_timeout_seconds", startup_timeout_seconds
+        )
+        self._warmup_seconds = self._positive("warmup_seconds", warmup_seconds)
+        self._max_audio_seconds = self._positive("max_audio_seconds", max_audio_seconds)
+        # RLock permits the warmup request's error path to mark readiness false
+        # without deadlocking while warmup() already owns the state lock.
+        self._state_lock = threading.RLock()
+        self._ready = False
 
-    def _load_model(self) -> None:
-        with self._lock:
-            if self._model is not None:
-                return
-            log.info(
-                f"ParakeetEngine: loading {self._model_name} into GPU memory, please wait..."
-            )
-            try:
-                with _suppress_nemo_noise():
-                    import nemo.collections.asr as nemo_asr  # type: ignore[import-untyped]
-
-                    start = time.time()
-                    model = cast(
-                        Any, nemo_asr.models.ASRModel.from_pretrained(self._model_name)
-                    )
-                    # Convert to FP16 on CPU *before* moving to GPU.  This halves the
-                    # PCIe transfer size and avoids a transient FP32+FP16 double-buffer
-                    # on the GPU that would otherwise spike VRAM during the .cuda() call.
-                    model = model.half()
-                    model = cast(
-                        Any,
-                        model.to(self._device)
-                        if self._device != "cuda"
-                        else model.cuda(),
-                    )
-                    model.eval()
-
-                    # Force CUDA kernel JIT compilation with a dummy inference.
-                    # NeMo TDT models compile kernels on the first transcribe() call
-                    # for each input shape, which causes a ~1s delay and a transient
-                    # VRAM spike (~2x steady-state).  Running a short silent WAV here
-                    # moves both the latency and the memory spike to startup, where
-                    # they are expected.  The temporary file is deleted immediately.
-                    self._jit_warmup(model)
-
-                # Reclaim transient VRAM from JIT compilation immediately
-                # so steady-state memory is visible right after startup.
-                gc.collect()
-                try:
-                    import torch  # type: ignore[import-untyped]
-
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                except ImportError:
-                    pass
-
-                self._model = model
-                log.success(
-                    f"ParakeetEngine: model loaded in {time.time() - start:.2f}s"
-                )
-
-                # Mute NeMo's stdout StreamHandlers at the Python level.
-                # NeMo re-attaches these on every transcribe(), but clearing
-                # the nemo_logger's handlers + setting propagate=False limits
-                # most noise.  This is best-effort — some C-level stdout lines
-                # will still appear, but that's preferable to the memory
-                # corruption caused by fd-level suppression during inference.
-                _mute_nemo_loggers()
-
-            except Exception as e:
-                log.error(f"ParakeetEngine: model load failed: {e}")
-                raise
+        log.info(
+            "ParakeetEngine: connecting to isolated sidecar at {}",
+            self._base_url,
+        )
+        self.warmup()
 
     @staticmethod
-    def _jit_warmup(model: Any) -> None:
-        """Run a dummy inference to force CUDA kernel JIT compilation.
+    def _positive(name: str, value: float) -> float:
+        parsed = float(value)
+        if parsed <= 0:
+            raise ValueError(f"{name} must be greater than zero.")
+        return parsed
 
-        NeMo TDT models compile device kernels lazily on the first
-        transcribe() call.  This causes a ~1 s latency spike and a transient
-        VRAM peak (~2x steady-state) that would otherwise hit the first real
-        user request.  A 0.5 s silent WAV is enough to trigger compilation
-        without meaningful overhead.
-        """
-        import tempfile
-        import wave
-
-        log.debug("ParakeetEngine: running JIT warmup inference...")
-        warmup_start = time.time()
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
-                with wave.open(tmp, "wb") as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)  # 16-bit
-                    wf.setframerate(16000)
-                    wf.writeframes(b"\x00\x00" * 8000)  # 0.5 s of silence
-                tmp.flush()
-                model.transcribe([tmp.name], verbose=False)
-            log.debug(
-                f"ParakeetEngine: JIT warmup completed in {time.time() - warmup_start:.2f}s"
+    @staticmethod
+    def _validate_base_url(value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("PARAKEET_BASE_URL must be an absolute HTTP(S) URL.")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError(
+                "PARAKEET_BASE_URL cannot contain credentials, a query, or a fragment."
             )
-        except Exception as e:
-            log.warning(f"ParakeetEngine: JIT warmup failed (non-fatal): {e}")
+        return normalized
+
+    @property
+    def _health_url(self) -> str:
+        return f"{self._base_url}/health"
+
+    @property
+    def _transcription_url(self) -> str:
+        return f"{self._base_url}/v1/audio/transcriptions"
+
+    @property
+    def _timeouts(self) -> tuple[float, float]:
+        return self._connect_timeout, self._request_timeout
+
+    @staticmethod
+    def _connection_headers() -> dict[str, str]:
+        # cpp-httplib's keep-alive path added ~40 ms/request on the benchmark
+        # host. A fresh loopback connection measured ~1 ms and was consistently
+        # faster, so make the intended transport behavior explicit.
+        return {"Connection": "close"}
+
+    def _wait_until_healthy(self) -> None:
+        deadline = time.monotonic() + self._startup_timeout
+        last_error: Exception | None = None
+        while True:
+            try:
+                response = requests.get(
+                    self._health_url,
+                    headers=self._connection_headers(),
+                    timeout=self._timeouts,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if payload == {"status": "ok"}:
+                    return
+                last_error = RuntimeError("sidecar returned an invalid health payload")
+            except (requests.RequestException, ValueError) as error:
+                last_error = error
+
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "Parakeet.cpp sidecar did not become healthy before the startup timeout."
+                ) from last_error
+            time.sleep(0.25)
+
+    @staticmethod
+    def _silent_wav(duration_seconds: float) -> bytes:
+        frame_count = max(1, int(16000 * duration_seconds))
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(16000)
+            wav_file.writeframes(b"\x00\x00" * frame_count)
+        return output.getvalue()
+
+    def _post_wav(self, wav_bytes: bytes, filename: str) -> str:
+        try:
+            response = requests.post(
+                self._transcription_url,
+                files={"file": (filename, wav_bytes, "audio/wav")},
+                data={"response_format": "json"},
+                headers=self._connection_headers(),
+                timeout=self._timeouts,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as error:
+            with self._state_lock:
+                self._ready = False
+            raise RuntimeError("Parakeet.cpp transcription request failed.") from error
+
+        text = payload.get("text") if isinstance(payload, dict) else None
+        if not isinstance(text, str):
+            with self._state_lock:
+                self._ready = False
+            raise RuntimeError(
+                "Parakeet.cpp returned an invalid transcription payload."
+            )
+        return text.strip()
+
+    @staticmethod
+    def _wav_duration(path: Path) -> float:
+        try:
+            with wave.open(str(path), "rb") as wav_file:
+                if (
+                    wav_file.getnchannels() != 1
+                    or wav_file.getsampwidth() != 2
+                    or wav_file.getframerate() != 16000
+                ):
+                    raise ValueError(
+                        "Parakeet.cpp input must be 16-kHz, 16-bit, mono PCM WAV."
+                    )
+                return wav_file.getnframes() / wav_file.getframerate()
+        except (EOFError, wave.Error) as error:
+            raise ValueError("Parakeet.cpp input is not a valid WAV file.") from error
 
     def transcribe(self, audio_path: str) -> TranscriptionResult:
-        """
-        Transcribe a 16kHz/16-bit/mono WAV file using NeMo Parakeet TDT.
+        if not self.is_loaded():
+            self.warmup()
 
-        NeMo's transcribe() accepts a list of file paths and returns a list
-        of Hypothesis objects when timestamps=True, or a list of strings when
-        timestamps=False.
+        path = Path(audio_path)
+        duration = self._wav_duration(path)
+        if duration > self._max_audio_seconds:
+            raise ValueError(
+                f"Parakeet.cpp input is {duration:.1f}s; the configured safe maximum "
+                f"is {self._max_audio_seconds:.1f}s. Split long recordings at silence "
+                "boundaries before transcription."
+            )
 
-        Segment timestamps are extracted from hyp.timestep["segment"]:
-          [{"start": float, "end": float, "segment": str}, ...]
-
-        This method is SYNCHRONOUS. The caller wraps it with asyncio.to_thread.
-        """
-        if self._model is None:
-            self._load_model()
-
-        # NeMo re-attaches stdout StreamHandlers on every transcribe() call.
-        # Re-mute before each inference to suppress the noise (~10μs cost).
-        _mute_nemo_loggers()
-
-        start = time.time()
-
-        # Lock serialises concurrent transcriptions — NeMo's model.transcribe()
-        # is not thread-safe on a single model instance.
-        #
-        # NOTE: _suppress_nemo_noise() is intentionally NOT used here.
-        # After model.transcribe() runs, the b" " bytes object used in
-        # uvicorn's h11 WebSocket upgrade path is observed to be corrupted
-        # (0x20 → 0x00).  The exact cause is unconfirmed, but the corruption
-        # correlates with NeMo inference and is absent with the Whisper engine.
-        # Removing fd-level suppression from this path was tested and did NOT
-        # prevent the corruption — the fix is in api_server.py (h11 patch).
-        # We still remove it here as good hygiene: process-wide os.dup2()
-        # during concurrent threaded inference is hazardous regardless.
-        # NeMo's stdout noise during transcription is cosmetic;
-        # _ThirdPartyNoiseFilter in logging_config.py catches the Python-routed
-        # portion, and any remaining C-level stdout lines are harmless.
-        with self._lock:
-            model = self._model
-            if model is None:
-                raise RuntimeError("Parakeet model is not loaded.")
-            try:
-                hypotheses = model.transcribe(
-                    [audio_path],
-                    timestamps=True,
-                    verbose=False,
-                )
-            except Exception:
-                # Some NeMo builds return strings when timestamps are unsupported
-                hypotheses = model.transcribe([audio_path], verbose=False)
-
-        # NeMo returns list[list[Hypothesis]] when timestamps=True,
-        # or list[str] when timestamps=False.  Unwrap both layers.
-        hyp = hypotheses[0]
-        if isinstance(hyp, list):
-            hyp = hyp[0]
-        processing_time = time.time() - start
-
-        # Normalise to canonical output shape
-        full_text = hyp.text if hasattr(hyp, "text") else str(hyp)
-
-        segments: list[SegmentResult] = []
-        # NeMo Hypothesis stores timestamps in .timestep (not .timestamp)
-        timestep = getattr(hyp, "timestep", None)
-        if timestep and isinstance(timestep, dict) and "segment" in timestep:
-            for seg in timestep["segment"]:
-                segments.append(
-                    SegmentResult(
-                        start=float(seg.get("start", 0.0)),
-                        end=float(seg.get("end", 0.0)),
-                        text=str(seg.get("segment", "")),
-                    )
-                )
-        else:
-            # Fallback: single segment covering the full utterance
-            segments = [SegmentResult(start=0.0, end=0.0, text=full_text)]
-
+        started = time.perf_counter()
+        text = self._post_wav(path.read_bytes(), path.name)
+        processing_time = time.perf_counter() - started
         return TranscriptionResult(
-            text=full_text,
-            segments=segments,
-            language="en",  # Parakeet is English-only
+            text=text,
+            segments=[SegmentResult(start=0.0, end=duration, text=text)],
+            language="en",
             processing_time=processing_time,
         )
 
     def warmup(self) -> None:
-        """Ensure model is resident in VRAM; idempotent."""
-        if self._model is None:
-            self._load_model()
+        with self._state_lock:
+            if self._ready:
+                return
+            self._wait_until_healthy()
+            # A health check proves the process is listening but does not prime
+            # ggml's lazy CUDA graph setup. A representative 10-second silent
+            # decode removed the first real-request spike on the RTX 3060 Ti.
+            self._post_wav(
+                self._silent_wav(self._warmup_seconds), "whisperdoc-warmup.wav"
+            )
+            self._ready = True
+        log.success("ParakeetEngine: sidecar healthy and CUDA path warmed")
 
     def is_loaded(self) -> bool:
-        """True when the NeMo model is resident in memory."""
-        return self._model is not None
+        with self._state_lock:
+            return self._ready
 
     def unload(self) -> None:
-        """Release model from VRAM and reclaim memory."""
-        with self._lock:
-            if self._model is None:
-                return
-            log.info("ParakeetEngine: unloading model...")
-            del self._model
-            self._model = None
-            gc.collect()
-            try:
-                import torch  # type: ignore[import-untyped]  # Parakeet image only
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except ImportError:
-                pass
-            log.success("ParakeetEngine: model unloaded.")
+        # Docker Compose owns the native process and releases its VRAM when the
+        # sidecar stops. WhisperDoc must not mount the Docker socket merely to
+        # make BaseEngine.unload() control another container.
+        with self._state_lock:
+            self._ready = False
+        log.info("ParakeetEngine: detached from externally managed sidecar")

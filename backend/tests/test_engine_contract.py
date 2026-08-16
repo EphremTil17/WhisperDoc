@@ -6,14 +6,15 @@ TranscriptionResult. Uses parametrised fixtures so adding a new engine
 in future only requires adding a fixture here — the contract tests apply
 automatically.
 
-Heavy deps (torch, faster_whisper, nemo) are stubbed by conftest.py before
-this module is imported — no setdefault() calls are needed here.
+Heavy Whisper dependencies are stubbed by conftest.py. Parakeet's HTTP
+transport is mocked at the process boundary.
 """
 
-import sys
+import wave
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
 from engine.parakeet_engine import ParakeetEngine
 from engine.whisper_engine import WhisperEngine
@@ -24,8 +25,8 @@ from engine.whisper_engine import WhisperEngine
 
 
 @pytest.fixture(params=["whisper", "parakeet"])
-def engine(request):
-    """Return a fully initialised engine for each backend."""
+def engine(request, tmp_path):
+    """Return ``(engine, audio_path)`` for each backend."""
     if request.param == "whisper":
         with (
             patch("engine.model_manager.WhisperModel") as MockWhisper,
@@ -44,20 +45,32 @@ def engine(request):
             eng = WhisperEngine(model_name="tiny.en", device="cpu", compute_type="int8")
             # Re-bind the mock so transcribe() still works after the patch context
             eng._model_manager.model = mock_instance
-            yield eng
+            yield eng, "/fake/audio.wav"
 
     elif request.param == "parakeet":
-        nemo_asr_stub = sys.modules["nemo.collections.asr"]
-        hyp = MagicMock()
-        hyp.text = "Hello"
-        hyp.timestep = {"segment": [{"start": 0.0, "end": 1.0, "segment": "Hello"}]}
-        mock_nemo_model = MagicMock()
-        mock_nemo_model.to.return_value = mock_nemo_model
-        mock_nemo_model.cuda.return_value = mock_nemo_model
-        mock_nemo_model.half.return_value = mock_nemo_model
-        mock_nemo_model.transcribe.return_value = [[hyp]]
-        nemo_asr_stub.models.ASRModel.from_pretrained.return_value = mock_nemo_model
-        yield ParakeetEngine(model_name="nvidia/parakeet-tdt-0.6b-v3", device="cpu")
+        health = MagicMock()
+        health.json.return_value = {"status": "ok"}
+        transcript = MagicMock()
+        transcript.json.return_value = {"text": "Hello"}
+        audio_path = tmp_path / "contract.wav"
+        with wave.open(str(audio_path), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(16000)
+            wav_file.writeframes(b"\x00\x00" * 16000)
+
+        with (
+            patch("engine.parakeet_engine.requests.get", return_value=health),
+            patch("engine.parakeet_engine.requests.post", return_value=transcript),
+        ):
+            yield (
+                ParakeetEngine(
+                    base_url="http://parakeet:8080",
+                    startup_timeout_seconds=0.01,
+                    warmup_seconds=0.01,
+                ),
+                str(audio_path),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -67,35 +80,43 @@ def engine(request):
 
 class TestEngineContract:
     def test_is_base_engine_subclass(self, engine):
-        assert isinstance(engine, BaseEngine)
+        engine_impl, _ = engine
+        assert isinstance(engine_impl, BaseEngine)
 
     def test_is_loaded_returns_bool(self, engine):
-        result = engine.is_loaded()
+        engine_impl, _ = engine
+        result = engine_impl.is_loaded()
         assert isinstance(result, bool)
 
     def test_transcribe_returns_transcription_result(self, engine):
-        result = engine.transcribe("/fake/audio.wav")
+        engine_impl, audio_path = engine
+        result = engine_impl.transcribe(audio_path)
         assert isinstance(result, TranscriptionResult)
 
     def test_transcription_result_text_is_string(self, engine):
-        result = engine.transcribe("/fake/audio.wav")
+        engine_impl, audio_path = engine
+        result = engine_impl.transcribe(audio_path)
         assert isinstance(result.text, str)
 
     def test_transcription_result_language_is_string(self, engine):
-        result = engine.transcribe("/fake/audio.wav")
+        engine_impl, audio_path = engine
+        result = engine_impl.transcribe(audio_path)
         assert isinstance(result.language, str)
 
     def test_transcription_result_segments_is_list(self, engine):
-        result = engine.transcribe("/fake/audio.wav")
+        engine_impl, audio_path = engine
+        result = engine_impl.transcribe(audio_path)
         assert isinstance(result.segments, list)
 
     def test_transcription_result_processing_time_is_float(self, engine):
-        result = engine.transcribe("/fake/audio.wav")
+        engine_impl, audio_path = engine
+        result = engine_impl.transcribe(audio_path)
         assert isinstance(result.processing_time, float)
         assert result.processing_time >= 0.0
 
     def test_all_segments_are_segment_results(self, engine):
-        result = engine.transcribe("/fake/audio.wav")
+        engine_impl, audio_path = engine
+        result = engine_impl.transcribe(audio_path)
         for seg in result.segments:
             assert isinstance(seg, SegmentResult)
             assert isinstance(seg.start, float)
@@ -103,9 +124,11 @@ class TestEngineContract:
             assert isinstance(seg.text, str)
 
     def test_warmup_is_idempotent(self, engine):
-        engine.warmup()
-        engine.warmup()  # Second call must not raise
+        engine_impl, _ = engine
+        engine_impl.warmup()
+        engine_impl.warmup()  # Second call must not raise
 
     def test_unload_then_is_loaded_false(self, engine):
-        engine.unload()
-        assert engine.is_loaded() is False
+        engine_impl, _ = engine
+        engine_impl.unload()
+        assert engine_impl.is_loaded() is False

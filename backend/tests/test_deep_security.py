@@ -2,10 +2,11 @@ import os
 from unittest.mock import Mock, patch
 
 import pytest
-from api_server import app
-from auth.oidc import validate_oidc_token
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
+
+from api_server import app
+from auth.oidc import validate_oidc_token
 from tests.test_jwt_fixtures import (
     generate_mock_jwks,
     mock_oidc_discovery,
@@ -15,7 +16,13 @@ from tests.test_jwt_fixtures import (
 @pytest.fixture(autouse=True)
 def setup_api_key():
     """Ensure WHISPER_DOC_API_KEY is set for tests that start TestClient."""
-    with patch.dict(os.environ, {"WHISPER_DOC_API_KEY": "test_secret_key"}):
+    with patch.dict(
+        os.environ,
+        {
+            "WHISPER_DOC_API_KEY": "test_secret_key",
+            "ASR_ENGINE": "whisper",
+        },
+    ):
         yield
 
 

@@ -1,7 +1,7 @@
 """
 Pytest configuration and shared stubs for host-side test execution.
 
-Heavy dependencies (torch, faster_whisper, ctranslate2, nemo) are not
+Heavy dependencies (torch, faster_whisper, ctranslate2) are not
 installed on the Windows host — they live only inside Docker. We stub them
 at the sys.modules level here, before any application code is imported, so
 that the full test suite can be collected and run without a GPU or Docker.
@@ -55,14 +55,3 @@ sys.modules.setdefault("faster_whisper", _fw)
 _ct2 = MagicMock()
 _ct2.get_cuda_device_count.return_value = 0
 sys.modules.setdefault("ctranslate2", _ct2)
-
-# --- NeMo stubs ---
-# _nemo_asr must be reachable BOTH via sys.modules["nemo.collections.asr"] AND
-# via attribute access _nemo.collections.asr, because Python's import machinery
-# can resolve the dotted import either way depending on the runtime path.
-_nemo = MagicMock()
-_nemo_asr = MagicMock()
-_nemo.collections.asr = _nemo_asr  # wire attribute chain to the same stub object
-sys.modules.setdefault("nemo", _nemo)
-sys.modules.setdefault("nemo.collections", _nemo.collections)
-sys.modules.setdefault("nemo.collections.asr", _nemo_asr)

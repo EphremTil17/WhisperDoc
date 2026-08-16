@@ -54,7 +54,7 @@ if ! command -v uv &> /dev/null; then
 fi
 
 ASR_ENGINE=$(grep -oP '(?<=^ASR_ENGINE=)\S+' .env 2>/dev/null || echo "whisper")
-if [[ "$ASR_ENGINE" != "whisper" && "$ASR_ENGINE" != "parakeet" && "$ASR_ENGINE" != "parakeet_cpp" ]]; then
+if [[ "$ASR_ENGINE" != "whisper" && "$ASR_ENGINE" != "parakeet" ]]; then
     echo -e "${YELLOW}[WARN]${NC} Unsupported ASR_ENGINE='$ASR_ENGINE' in .env. Falling back to 'whisper' for local setup."
     ASR_ENGINE="whisper"
 fi
@@ -64,7 +64,7 @@ install_backend_env() {
     echo -e "${CYAN}[UV]${NC} Syncing backend dev environment for: ${engine}"
     (
         cd backend
-        if [[ "$engine" == "parakeet_cpp" ]]; then
+        if [[ "$engine" == "parakeet" ]]; then
             uv sync --group dev
         else
             uv sync --group dev --extra "$engine"
@@ -86,19 +86,15 @@ set_env_key() {
 echo ""
 echo "Which backend engine would you like to prepare?"
 echo -e "  ${CYAN}1)${NC} Whisper backend"
-echo -e "  ${CYAN}2)${NC} Parakeet.cpp CUDA sidecar ${YELLOW}(experimental)${NC}"
-echo -e "  ${CYAN}3)${NC} NVIDIA NeMo Parakeet ${YELLOW}(legacy/rollback)${NC}"
+echo -e "  ${CYAN}2)${NC} Parakeet CUDA backend"
 echo -e "  ${YELLOW}[INFO]${NC} Current .env ASR_ENGINE=${ASR_ENGINE}"
-read -p "Selection (1-3, Enter to keep current): " -n 1 -r
+read -p "Selection (1-2, Enter to keep current): " -n 1 -r
 echo
 case $REPLY in
     1)
         ASR_ENGINE="whisper"
         ;;
     2)
-        ASR_ENGINE="parakeet_cpp"
-        ;;
-    3)
         ASR_ENGINE="parakeet"
         ;;
     *)
@@ -109,24 +105,17 @@ esac
 set_env_key "ASR_ENGINE" "$ASR_ENGINE"
 case "$ASR_ENGINE" in
     whisper)
-        BACKEND_DOCKERFILE="Dockerfile.whisper"
         COMPOSE_PROFILES=""
         ;;
     parakeet)
-        BACKEND_DOCKERFILE="Dockerfile.parakeet"
-        COMPOSE_PROFILES=""
-        ;;
-    parakeet_cpp)
-        BACKEND_DOCKERFILE="Dockerfile.api"
-        COMPOSE_PROFILES="parakeet-cpp"
+        COMPOSE_PROFILES="parakeet"
         ;;
 esac
-set_env_key "BACKEND_DOCKERFILE" "$BACKEND_DOCKERFILE"
 set_env_key "COMPOSE_PROFILES" "$COMPOSE_PROFILES"
 install_backend_env "$ASR_ENGINE"
-if [[ "$ASR_ENGINE" == "parakeet_cpp" ]]; then
-    echo -e "${CYAN}[MODEL]${NC} Provisioning the digest-verified parakeet.cpp model..."
-    uv run --project backend python backend/tools/provision_parakeet_cpp.py
+if [[ "$ASR_ENGINE" == "parakeet" ]]; then
+    echo -e "${CYAN}[MODEL]${NC} Provisioning the digest-verified Parakeet model..."
+    uv run --project backend python backend/tools/provision_parakeet.py
 fi
 echo -e "${GREEN}[OK]${NC} Backend local environment set up with ${CYAN}${ASR_ENGINE}${NC}."
 echo -e "${YELLOW}[NOTE]${NC} Backend setup uses native UV project sync from backend/pyproject.toml."
@@ -171,7 +160,7 @@ echo -e "  This will run: docker compose build whisper-backend && docker compose
 read -p "Proceed? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}[BUILD]${NC} Building image (${BACKEND_DOCKERFILE})..."
+    echo -e "${YELLOW}[BUILD]${NC} Building image (Dockerfile.${ASR_ENGINE})..."
     docker compose build whisper-backend
     echo -e "${YELLOW}[START]${NC} Starting backend service..."
     docker compose up -d whisper-backend

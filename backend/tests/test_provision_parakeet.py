@@ -1,4 +1,4 @@
-"""Tests for digest-verified parakeet.cpp model provisioning."""
+"""Tests for digest-verified Parakeet model provisioning."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tools.provision_parakeet_cpp import provision
+from tools.provision_parakeet import provision
 
 
 def _manifest(path: Path, payload: bytes, *, variant: str = "f16") -> Path:
@@ -36,7 +36,7 @@ def test_provision_downloads_verifies_and_atomically_installs(tmp_path):
     destination = tmp_path / "models"
 
     with patch(
-        "tools.provision_parakeet_cpp.urllib.request.urlopen",
+        "tools.provision_parakeet.urllib.request.urlopen",
         return_value=io.BytesIO(payload),
     ) as urlopen:
         result = provision(manifest_path=manifest, destination=destination)
@@ -53,7 +53,7 @@ def test_provision_reuses_an_existing_verified_model(tmp_path):
     destination.mkdir()
     (destination / "model.gguf").write_bytes(payload)
 
-    with patch("tools.provision_parakeet_cpp.urllib.request.urlopen") as urlopen:
+    with patch("tools.provision_parakeet.urllib.request.urlopen") as urlopen:
         result = provision(manifest_path=manifest, destination=destination)
 
     assert result == destination / "model.gguf"
@@ -70,7 +70,7 @@ def test_provision_rejects_corrupted_download_and_cleans_partial_file(
 
     with (
         patch(
-            "tools.provision_parakeet_cpp.urllib.request.urlopen",
+            "tools.provision_parakeet.urllib.request.urlopen",
             return_value=io.BytesIO(corruption),
         ),
         pytest.raises(ValueError, match="mismatch"),

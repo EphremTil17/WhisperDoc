@@ -1,4 +1,4 @@
-# parakeet.cpp CUDA Evaluation
+# Parakeet.cpp CUDA Evaluation
 
 Date: 2026-08-16  
 Host: WSL2, NVIDIA RTX 3060 Ti 8 GiB, driver 580.97  
@@ -6,7 +6,7 @@ Runtime: `ghcr.io/mudler/parakeet.cpp-server` at digest
 `sha256:dfbe0fa76a49386b5dd413392b74c89bc68fcac0a445dbb4efec083d7dc1acbf`
 
 This report records the local measurements used to design WhisperDoc's
-experimental `ASR_ENGINE=parakeet_cpp` path. These are host-specific results,
+`ASR_ENGINE=parakeet` path. These are host-specific results,
 not general vendor performance claims.
 
 ## Short dictation
@@ -16,7 +16,7 @@ Parakeet candidates produced the exact expected transcript.
 
 | Runtime | Configuration | Median | p95 | Notes |
 | --- | --- | ---: | ---: | --- |
-| NeMo Parakeet | FP16 CUDA | 51.4 ms | 66.2 ms | Existing in-process implementation |
+| Retired in-process baseline | FP16 CUDA | 51.4 ms | 66.2 ms | Measurement retained for comparison |
 | parakeet.cpp CLI | F16 CUDA, 4 threads | 52.3 ms | 59.1 ms | 20 decodes after model load |
 | parakeet.cpp HTTP | F16 CUDA, 4 threads | 63.1 ms | 67.4 ms | Fresh loopback connection per request |
 | parakeet.cpp HTTP | Q8_0 CUDA, 4 threads | 64.1 ms | 69.3 ms | Smaller, but slower on this GPU |
@@ -49,6 +49,12 @@ showed Q8_0 saving approximately 461 MiB, but Q8_0 did not improve latency. F16
 is therefore the default for WhisperDoc's latency-first target; Q8_0 remains an
 explicit provisioning option for tighter VRAM budgets.
 
+The final canonical deployment was also measured with the idle Whisper model
+unloaded: total GPU memory fell from 3,328 MiB to 1,599 MiB when the isolated
+stack stopped, an incremental 1,729 MiB. At that point the native sidecar used
+935 MiB of host RAM and the Python API used 50 MiB. The two VRAM deltas describe
+different co-resident states; the conservative planning figure remains 1.9 GiB.
+
 ## Integrated reliability soak
 
 The isolated Compose stack completed 1,000 authenticated uploads through the
@@ -64,13 +70,15 @@ and zero transcript mismatches.
 
 This passes the experiment's zero-failure and no-monotonic-growth gates. It
 does not prove native code is incapable of failing, but it exercises the
-specific repeated web/native boundary that was unreliable with in-process
-NeMo.
+specific repeated web/native boundary that was unreliable in the retired
+implementation.
 
 An additional WebSocket soak completed 1,000 transcription cycles across 40
 authenticated connections. This forced 39 fresh Uvicorn WebSocket upgrades
 after native inference had already run, directly exercising the failure mode
-that motivated process isolation.
+that motivated process isolation. This architectural soak preceded removal of
+the obsolete transport monkey-patch, so a separate patch-free gate was run on
+the final replacement below.
 
 - Zero request failures and zero transcript mismatches.
 - Full WebSocket cycle latency: 68.2 ms median, 76.5 ms p95.
@@ -79,6 +87,16 @@ that motivated process isolation.
   the observed maximum without monotonic growth.
 - Complete API and native-sidecar logs contained no h11, transcription,
   traceback, CUDA, segmentation, or memory-corruption errors.
+
+After the legacy engine and transport monkey-patch were deleted, the canonical
+deployment completed 30 authenticated HTTP transcriptions and 50 fresh,
+authenticated WebSocket connect/transcribe/disconnect cycles. Fifty cycles is
+the configured per-IP pre-ban limit, so the gate intentionally stopped there.
+
+- HTTP: zero failures, one exact transcript, 78.6 ms median and 88.6 ms p95.
+- WebSocket: zero failures, one exact transcript, 74.3 ms median and 82.0 ms p95.
+- The sidecar reported `CUDA0` and completed CUDA graph warmup; logs contained
+  no fallback, h11, traceback, transcription, or memory-corruption errors.
 
 The final local Docker artifacts were 167 MB for the core-only Python API image
 and 1.79 GB for the CUDA sidecar image, with the 1.404 GB F16 model stored
@@ -93,9 +111,9 @@ Input: 516.853-second TED sample.
   drove total GPU memory to approximately 7.8 GiB. It was terminated.
 - Eighteen fixed 30-second requests completed in 3.318 seconds wall time (3.191
   seconds summed inference time), but naive transcript joining differed from
-  the NeMo baseline by 17 word edits across 1,233 words (1.3788%). Splits cut
+  the retired baseline by 17 word edits across 1,233 words (1.3788%). Splits cut
   words, dropped words, and duplicated boundary text.
-- The NeMo baseline completed this sample in 3.901 seconds and faster-whisper
+- The retired baseline completed this sample in 3.901 seconds and faster-whisper
   in 10.62 seconds.
 
 Consequently, the first adapter rejects audio above 30 seconds by default.
@@ -117,10 +135,8 @@ concurrent load demonstrates a need; adding either now would be premature.
 
 ## Deployment decision
 
-- Keep `ASR_ENGINE=parakeet` as the NeMo rollback path during the experiment.
-- Add `ASR_ENGINE=parakeet_cpp` as an opt-in native CUDA sidecar.
-- Keep the C++ runtime outside CPython/Uvicorn to remove the observed
-  NeMo/PyTorch execution path from the web process.
+- `ASR_ENGINE=parakeet` selects the native CUDA sidecar directly.
+- Keep the C++ runtime outside CPython/Uvicorn.
 - Pin both the sidecar image and GGUF digest. Provision weights before startup;
   never download model code or weights in API startup.
 - Do not run Whisper and Parakeet sidecars together in normal production on an
@@ -129,8 +145,8 @@ concurrent load demonstrates a need; adding either now would be premature.
 
 The sidecar boundary materially improves failure isolation, but it is not a
 claim that native code cannot fail. Both integrated HTTP and authenticated
-WebSocket-cycle soaks passed; promotion beyond experiment status still needs
-an extended real-use observation window before the legacy h11 patch is removed.
+WebSocket-cycle soaks passed, and the obsolete transport monkey-patch was
+removed with the retired runtime.
 
 ## Upstream references
 

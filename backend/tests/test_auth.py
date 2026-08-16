@@ -1,22 +1,29 @@
 import os
 from unittest.mock import MagicMock, Mock, patch
 
-import auth
 import pytest
-
-# Import app after setting env
-from api_server import app
 from fastapi import WebSocketDisconnect
 
 # Setup environment before importing app
 # We use a fixture to patch the environment safely instead of global assignment
 from fastapi.testclient import TestClient
 
+import auth
+
+# Import app after setting env
+from api_server import app
+
 
 @pytest.fixture(autouse=True)
 def setup_auth_env():
     """Ensure a consistent API key for unit tests in this file."""
-    with patch.dict(os.environ, {"WHISPER_DOC_API_KEY": "test_secret_key"}):
+    with patch.dict(
+        os.environ,
+        {
+            "WHISPER_DOC_API_KEY": "test_secret_key",
+            "ASR_ENGINE": "whisper",
+        },
+    ):
         yield
 
 

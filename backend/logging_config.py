@@ -4,43 +4,6 @@ import sys
 
 from loguru import logger
 
-# ---------------------------------------------------------------------------
-# Third-party noise filter (general-purpose)
-# ---------------------------------------------------------------------------
-# Suppresses sub-ERROR stdlib log messages from noisy third-party libraries.
-# The primary NeMo silencing is handled by the fd-level redirect in
-# parakeet_engine._suppress_nemo_noise().  This filter acts as a safety net
-# for any stdlib-routed messages that escape the fd redirect (e.g. during
-# import time before the context manager is active).
-#
-# Installed on the ROOT logger so it survives logging.basicConfig(force=True)
-# calls that NeMo's import chain makes (which replaces handlers but not filters).
-SILENCED_PREFIXES = (
-    "nemo",
-    "nv_one_logger",
-    "lhotse",
-    "pytorch_lightning",
-    "matplotlib",
-)
-
-SILENCED_MESSAGES = ("Initializing Lhotse CutSet",)
-
-
-class _ThirdPartyNoiseFilter(logging.Filter):
-    """Drop sub-ERROR messages from known noisy third-party namespaces."""
-
-    def filter(self, record):
-        if record.name.startswith(SILENCED_PREFIXES):
-            return record.levelno >= logging.ERROR
-        if record.levelno < logging.ERROR:
-            msg = record.getMessage()
-            if any(s in msg for s in SILENCED_MESSAGES):
-                return False
-        return True
-
-
-logging.getLogger().addFilter(_ThirdPartyNoiseFilter())
-
 
 def configure_logging():
     """Configures the Loguru logger for the application."""

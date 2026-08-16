@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision a digest-verified parakeet.cpp GGUF model.
+"""Provision a digest-verified Parakeet GGUF model for parakeet.cpp.
 
 Model downloads are deliberately kept out of application startup. Run this
 tool during deployment, then mount the resulting directory read-only into the
@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, BinaryIO, cast
 
 CHUNK_SIZE = 1024 * 1024
-DEFAULT_MANIFEST = Path(__file__).parents[1] / "engine" / "parakeet_cpp_manifest.json"
-DEFAULT_DESTINATION = Path(__file__).parents[2] / "model-cache" / "parakeet-cpp"
+DEFAULT_MANIFEST = Path(__file__).parents[1] / "engine" / "parakeet_manifest.json"
+DEFAULT_DESTINATION = Path(__file__).parents[2] / "model-cache" / "parakeet"
 
 
 def _load_manifest(path: Path) -> dict[str, Any]:

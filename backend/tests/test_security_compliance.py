@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import jwt
 import pytest
+
 from auth.oidc import validate_oidc_token
 from tests.test_jwt_fixtures import (
     generate_mock_jwks,
@@ -15,7 +16,13 @@ from tests.test_jwt_fixtures import (
 @pytest.fixture(autouse=True)
 def setup_api_key():
     """Ensure WHISPER_DOC_API_KEY is set for tests that start TestClient."""
-    with patch.dict(os.environ, {"WHISPER_DOC_API_KEY": "test_secret_key"}):
+    with patch.dict(
+        os.environ,
+        {
+            "WHISPER_DOC_API_KEY": "test_secret_key",
+            "ASR_ENGINE": "whisper",
+        },
+    ):
         yield
 
 
@@ -125,9 +132,10 @@ def test_handshake_caging_blocks_audio():
     SECURITY: Verifies 'Handshake Caging'.
     The server MUST NOT accept audio data or other events before a successful 'hello'.
     """
-    from api_server import app
     from fastapi import WebSocketDisconnect
     from fastapi.testclient import TestClient
+
+    from api_server import app
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws") as websocket:
@@ -151,9 +159,10 @@ def test_handshake_caging_blocks_invalid_first_event():
     """
     SECURITY: Verifies that the very first event MUST be 'hello'.
     """
-    from api_server import app
     from fastapi import WebSocketDisconnect
     from fastapi.testclient import TestClient
+
+    from api_server import app
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws") as websocket:
