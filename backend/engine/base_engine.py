@@ -43,7 +43,8 @@ class BaseEngine(abc.ABC):
     Lifecycle contract:
       - __init__ triggers an initial load (same as ModelManager behaviour).
       - warmup() is idempotent; safe to call when already loaded.
-      - unload() releases VRAM and triggers OS-level memory reclamation.
+      - unload() releases locally managed model resources. For an isolated
+        sidecar, the process supervisor owns model/VRAM teardown.
       - is_loaded() is used by the hello-packet status field only.
     """
 
@@ -93,10 +94,11 @@ class BaseEngine(abc.ABC):
     @abc.abstractmethod
     def unload(self) -> None:
         """
-        Release model weights from memory and perform VRAM/RAM cleanup.
+        Release locally managed model weights and perform VRAM/RAM cleanup.
 
         Called during server shutdown and by the engine's own idle-timeout
         monitor. After unload(), transcribe() and warmup() must be able to
-        reload the model transparently.
+        restore readiness transparently. Externally supervised engines detach
+        here; their process supervisor performs the actual model teardown.
         """
         ...

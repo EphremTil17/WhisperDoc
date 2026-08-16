@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "selected_variant": "f16",
+  "runtime_image": {
+    "reference": "ghcr.io/mudler/parakeet.cpp-server:latest-cuda",
+    "digest": "sha256:dfbe0fa76a49386b5dd413392b74c89bc68fcac0a445dbb4efec083d7dc1acbf"
+  },
+  "models": {
+    "f16": {
+      "filename": "tdt-0.6b-v2-f16.gguf",
+      "url": "https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/main/tdt-0.6b-v2-f16.gguf",
+      "size_bytes": 1404218656,
+      "sha256": "f8df7f5dc7b9ceb5cd0637a81194aab5d93022ace555ce81c8969c7a694b8f3d"
+    },
+    "q8_0": {
+      "filename": "tdt-0.6b-v2-q8_0.gguf",
+      "url": "https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/main/tdt-0.6b-v2-q8_0.gguf",
+      "size_bytes": 903835936,
+      "sha256": "2027e2e1a4dc60ccdd8558f93b15e7c0db4ef8895b4e82e889f3a6275d8119c6"
+    }
+  }
+}

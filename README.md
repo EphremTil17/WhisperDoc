@@ -63,17 +63,30 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
    cp backend/.env.template .env
    chmod 600 .env   # Linux/Mac only
 
-   # (Optional) Set ASR_ENGINE=whisper or ASR_ENGINE=parakeet in .env
+   # Choose whisper, parakeet_cpp, or legacy parakeet in .env.
+   # parakeet_cpp also uses BACKEND_DOCKERFILE=Dockerfile.api and
+   # COMPOSE_PROFILES=parakeet-cpp (setup.sh configures these together).
    ```
 
 2. **Build and Start the Backend** (Docker handles all backend dependencies via native UV)
 
    ```bash
-   # Build and start — automatically selects the correct Dockerfile
-   # based on the ASR_ENGINE value in your .env (default: whisper).
+   # Build and start using BACKEND_DOCKERFILE from .env (default: Whisper).
    # The images install from backend/pyproject.toml + backend/uv.lock.
+   # For parakeet_cpp, first provision its digest-verified model:
+   uv run --project backend python backend/tools/provision_parakeet_cpp.py
+
    docker compose build whisper-backend
    docker compose up -d whisper-backend
+   ```
+
+   The experimental parakeet.cpp path requires these coordinated `.env`
+   values (the interactive `setup.sh` writes them together):
+
+   ```dotenv
+   ASR_ENGINE=parakeet_cpp
+   BACKEND_DOCKERFILE=Dockerfile.api
+   COMPOSE_PROFILES=parakeet-cpp
    ```
 
 3. **(Optional) Local Backend Setup** - Linux/WSL recommended
@@ -85,6 +98,8 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
    uv sync --group dev --extra whisper
    # or
    uv sync --group dev --extra parakeet
+   # parakeet.cpp needs only the core API dependencies:
+   uv sync --group dev
    ```
 
 4. **(Optional) Local Terminal Client Setup**
@@ -148,7 +163,7 @@ If you're actively developing in this repository, install these hooks.
 
 ## 🛡️ Architecture & Security Deep-Dive (Hardened v2.14.0)
 
-- **Backend Core**: Dockerized FastAPI server with a **pluggable ASR engine layer** (faster-whisper, NVIDIA Parakeet) and GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
+- **Backend Core**: Dockerized FastAPI server with a **pluggable ASR engine layer** (faster-whisper, isolated parakeet.cpp, or legacy NVIDIA NeMo) and GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
   WhisperDoc v2.13.0 represents a significant leap in enterprise-grade security, moving beyond simple API keys to a comprehensive **Zero-Trust Identity Federation**.
 
 ### 1. Identity Federation & Cryptographic Hardening
@@ -198,7 +213,9 @@ WhisperDoc is entirely configuration-driven via the `.env` file. These variables
 
 | Variable       | Description                                        | Default          |
 | -------------- | -------------------------------------------------- | ---------------- |
-| `ASR_ENGINE`   | ASR backend (`whisper` or `parakeet`).             | `whisper`        |
+| `ASR_ENGINE`   | ASR backend (`whisper`, `parakeet_cpp`, or legacy `parakeet`). | `whisper` |
+| `BACKEND_DOCKERFILE` | API image (`Dockerfile.whisper`, `.api`, or `.parakeet`). | `Dockerfile.whisper` |
+| `BACKEND_IMAGE_NAME` | Optional Docker image repository/name override. | `whisperdoc-backend` |
 | `API_PORT`     | Port the backend server will listen on.            | `9989`           |
 | `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`). | `large-v3-turbo` |
 | `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).             | `cuda`           |
@@ -223,6 +240,11 @@ docker compose build whisper-backend && docker compose up -d --force-recreate wh
 
 ### ASR Engine Benchmarks
 
+The table below contains published model-level figures and is not directly
+comparable to end-to-end WhisperDoc latency. The local RTX 3060 Ti evaluation,
+including HTTP overhead, VRAM, long-form behavior, and rejected approaches, is
+recorded in [the parakeet.cpp benchmark report](backend/engine/PARAKEET_CPP_BENCHMARK.md).
+
 Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) on standardized evaluation datasets:
 
 | Engine       | Model                           | WER (%) ↓ | RTFx ↑    | Language     | VRAM (fp16) |
@@ -242,8 +264,8 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 ### Infrastructure
 
 - **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
-- **Transcription**: ~1s for a 10-second audio file on an RTX 3060TI.
-- **GPU Acceleration**: CUDA-enabled for faster processing using the `ctranslate2` engine (Whisper) or native PyTorch (Parakeet).
+- **Transcription**: Engine-dependent; the local 9.16-second RTX 3060 Ti test measured 74.6 ms median end-to-end with parakeet.cpp and 319.4 ms with Whisper Turbo. See the linked benchmark report for methodology and limits.
+- **GPU Acceleration**: CUDA-enabled using CTranslate2 (Whisper), parakeet.cpp/ggml in an isolated sidecar, or native PyTorch (legacy NeMo Parakeet).
 - **Weight Efficiency**: Multi-stage build with aggressive layer pruning of static libraries and bytecode to ensure a minimal runtime environment.
 
 ## Clients

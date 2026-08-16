@@ -21,7 +21,8 @@ def create_engine() -> BaseEngine:
 
     Reads ASR_ENGINE from the environment:
       'whisper'  -> WhisperEngine backed by faster-whisper + ModelManager
-      'parakeet' -> ParakeetEngine backed by NVIDIA NeMo
+      'parakeet'     -> ParakeetEngine backed by NVIDIA NeMo (legacy)
+      'parakeet_cpp' -> ParakeetCppEngine backed by an isolated native sidecar
 
     Raises ValueError on unrecognised engine names to ensure fast failure
     at startup rather than a silent misconfiguration fallback.
@@ -46,7 +47,25 @@ def create_engine() -> BaseEngine:
             device=os.getenv("PARAKEET_DEVICE", "cuda"),
         )
 
+    if engine_name in {"parakeet_cpp", "parakeet-cpp"}:
+        from engine.parakeet_cpp_engine import ParakeetCppEngine
+
+        return ParakeetCppEngine(
+            base_url=os.getenv("PARAKEET_CPP_BASE_URL", "http://parakeet-cpp:8080"),
+            connect_timeout_seconds=float(
+                os.getenv("PARAKEET_CPP_CONNECT_TIMEOUT_SECONDS", "2")
+            ),
+            request_timeout_seconds=float(
+                os.getenv("PARAKEET_CPP_REQUEST_TIMEOUT_SECONDS", "30")
+            ),
+            startup_timeout_seconds=float(
+                os.getenv("PARAKEET_CPP_STARTUP_TIMEOUT_SECONDS", "120")
+            ),
+            warmup_seconds=float(os.getenv("PARAKEET_CPP_WARMUP_SECONDS", "10")),
+            max_audio_seconds=float(os.getenv("PARAKEET_CPP_MAX_AUDIO_SECONDS", "30")),
+        )
+
     raise ValueError(
         f"Unknown ASR_ENGINE: '{engine_name}'. "
-        f"Valid options are: 'whisper', 'parakeet'."
+        "Valid options are: 'whisper', 'parakeet', 'parakeet_cpp'."
     )

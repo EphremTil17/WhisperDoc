@@ -8,6 +8,7 @@ Both concrete engine constructors are patched at the class level.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from engine.base_engine import BaseEngine
 from engine.engine_factory import create_engine
 
@@ -79,6 +80,23 @@ class TestParakeetSelection:
             MockParakeet.return_value = mock_instance
             engine = create_engine()
         assert engine is mock_instance
+
+
+class TestParakeetCppSelection:
+    @pytest.mark.parametrize("value", ["parakeet_cpp", "PARAKEET_CPP", "parakeet-cpp"])
+    def test_parakeet_cpp_creates_sidecar_engine(self, monkeypatch, value):
+        monkeypatch.setenv("ASR_ENGINE", value)
+        monkeypatch.setenv("PARAKEET_CPP_BASE_URL", "http://native-asr:8080")
+        with patch("engine.parakeet_cpp_engine.ParakeetCppEngine") as MockParakeetCpp:
+            mock_instance = MagicMock(spec=BaseEngine)
+            MockParakeetCpp.return_value = mock_instance
+            engine = create_engine()
+
+        assert engine is mock_instance
+        assert MockParakeetCpp.call_args.kwargs["base_url"] == (
+            "http://native-asr:8080"
+        )
+        assert MockParakeetCpp.call_args.kwargs["max_audio_seconds"] == 30.0
 
 
 class TestUnknownEngine:
