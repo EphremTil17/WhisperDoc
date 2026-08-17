@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import wave
 from unittest.mock import MagicMock, call, patch
 
@@ -81,16 +82,44 @@ def test_transcribe_maps_single_segment_and_duration(mocked_transport, tmp_path)
     assert post.call_count == 2  # startup warmup + transcription
 
 
-def test_transcribe_rejects_audio_above_safe_limit(mocked_transport, tmp_path):
+def test_transcribe_chunks_long_audio_and_uses_timestamps_to_remove_overlap(
+    mocked_transport, tmp_path
+):
     _, post = mocked_transport
     engine = _engine()
-    audio = tmp_path / "too-long.wav"
+    post.side_effect = [
+        _response(
+            {
+                "text": "alpha",
+                "words": [{"word": "alpha", "start": 0.2, "end": 0.4, "conf": 1.0}],
+            }
+        ),
+        _response(
+            {
+                "text": "alpha beta",
+                "words": [
+                    {"word": "alpha", "start": 0.05, "end": 0.15, "conf": 1.0},
+                    {"word": "beta", "start": 0.3, "end": 0.5, "conf": 1.0},
+                ],
+            }
+        ),
+    ]
+    audio = tmp_path / "long.wav"
     _write_wav(audio, 2.1)
 
-    with pytest.raises(ValueError, match="safe maximum"):
-        engine.transcribe(str(audio))
+    result = engine.transcribe(str(audio))
 
-    post.assert_called_once()  # startup warmup only
+    assert result.text == "alpha beta"
+    assert [segment.text for segment in result.segments] == ["alpha", "beta"]
+    assert post.call_count == 3  # startup warmup + two bounded chunks
+    for chunk_call in post.call_args_list[1:]:
+        assert chunk_call.kwargs["data"] == {
+            "response_format": "verbose_json",
+            "timestamp_granularities[]": "word",
+        }
+        wav_bytes = chunk_call.kwargs["files"]["file"][1]
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+            assert wav_file.getnframes() / wav_file.getframerate() <= 2.0
 
 
 def test_transcribe_rejects_wrong_wav_contract(mocked_transport, tmp_path):

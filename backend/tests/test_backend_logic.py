@@ -113,3 +113,27 @@ async def test_connection_manager_structured_error():
     assert call_args["event"] == "error"
     assert call_args["code"] == 422
     assert call_args["error_code"] == "NO_AUDIO"
+
+
+@pytest.mark.asyncio
+async def test_failed_transcription_consumes_audio_buffer():
+    """A failed utterance must not be retained and appended to the next one."""
+    mock_engine = MagicMock()
+    mock_engine.transcribe.side_effect = ValueError("bounded chunk failure")
+    manager = ConnectionManager(mock_engine, app_version="1.0.0")
+    mock_ws = AsyncMock()
+    original_buffer = bytearray(b"failed utterance")
+    manager.active_connections[mock_ws] = {
+        "buffer": original_buffer,
+        "id": "1234",
+        "user_id": "test-user",
+        "incognito": False,
+    }
+
+    await manager.transcribe_and_send(mock_ws)
+
+    assert manager.active_connections[mock_ws]["buffer"] == bytearray()
+    assert manager.active_connections[mock_ws]["buffer"] is not original_buffer
+    assert original_buffer == bytearray()
+    call_args = mock_ws.send_json.call_args[0][0]
+    assert call_args["error_code"] == "TRANSCRIPTION_FAILED"

@@ -214,6 +214,7 @@ WhisperDoc is entirely configuration-driven via the `.env` file. These variables
 | `API_PORT`     | Port the backend server will listen on.            | `9989`           |
 | `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`). | `large-v3-turbo` |
 | `PARAKEET_ACCELERATOR` | Native parakeet.cpp device (`CUDA0` for the first NVIDIA GPU). | `CUDA0` |
+| `PARAKEET_MAX_AUDIO_SECONDS` | Maximum duration of each native Parakeet request; longer recordings are split at quiet boundaries with timestamp-aware overlap. | `30` |
 | `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).             | `cuda`           |
 | `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).          | `INFO`           |
 

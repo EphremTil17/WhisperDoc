@@ -9,16 +9,36 @@ layer.
 from __future__ import annotations
 
 import io
+import math
 import threading
 import time
 import wave
+from dataclasses import dataclass
+from numbers import Real
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 
 from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
+from engine.silence_chunker import PCM_SAMPLE_WIDTH_BYTES, plan_silence_aware_chunks
 from logging_config import log
+
+_SAMPLE_RATE = 16000
+_CHUNK_OVERLAP_SECONDS = 0.8
+
+
+@dataclass(frozen=True, slots=True)
+class _TimedWord:
+    text: str
+    start: float
+    end: float
+
+
+@dataclass(frozen=True, slots=True)
+class _SidecarTranscript:
+    text: str
+    words: tuple[_TimedWord, ...]
 
 
 class ParakeetEngine(BaseEngine):
@@ -121,21 +141,100 @@ class ParakeetEngine(BaseEngine):
 
     @staticmethod
     def _silent_wav(duration_seconds: float) -> bytes:
-        frame_count = max(1, int(16000 * duration_seconds))
+        frame_count = max(1, int(_SAMPLE_RATE * duration_seconds))
+        return ParakeetEngine._pcm_wav(
+            b"\x00\x00" * frame_count,
+        )
+
+    @staticmethod
+    def _pcm_wav(pcm: bytes) -> bytes:
         output = io.BytesIO()
         with wave.open(output, "wb") as wav_file:
             wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(16000)
-            wav_file.writeframes(b"\x00\x00" * frame_count)
+            wav_file.setsampwidth(PCM_SAMPLE_WIDTH_BYTES)
+            wav_file.setframerate(_SAMPLE_RATE)
+            wav_file.writeframes(pcm)
         return output.getvalue()
 
-    def _post_wav(self, wav_bytes: bytes, filename: str) -> str:
+    @staticmethod
+    def _parse_transcript_payload(
+        payload: object, *, require_words: bool
+    ) -> _SidecarTranscript:
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a JSON object")
+
+        text = payload.get("text")
+        if not isinstance(text, str):
+            raise ValueError("payload text must be a string")
+
+        if not require_words:
+            return _SidecarTranscript(text=text.strip(), words=())
+
+        raw_words = payload.get("words")
+        if not isinstance(raw_words, list):
+            raise ValueError("verbose payload words must be a list")
+
+        words: list[_TimedWord] = []
+        for raw_word in raw_words:
+            if not isinstance(raw_word, dict):
+                raise ValueError("word entries must be JSON objects")
+            word = raw_word.get("word", raw_word.get("w"))
+            start = raw_word.get("start")
+            end = raw_word.get("end")
+            if (
+                not isinstance(word, str)
+                or not word.strip()
+                or not isinstance(start, Real)
+                or isinstance(start, bool)
+                or not isinstance(end, Real)
+                or isinstance(end, bool)
+            ):
+                raise ValueError(
+                    "word entries must contain text and numeric timestamps"
+                )
+
+            parsed_start = float(start)
+            parsed_end = float(end)
+            if (
+                not math.isfinite(parsed_start)
+                or not math.isfinite(parsed_end)
+                or parsed_start < 0
+                or parsed_end < parsed_start
+            ):
+                raise ValueError("word timestamps must be finite and ordered")
+            words.append(
+                _TimedWord(
+                    text=word.strip(),
+                    start=parsed_start,
+                    end=parsed_end,
+                )
+            )
+
+        if text.strip() and not words:
+            raise ValueError(
+                "non-empty verbose transcript must contain word timestamps"
+            )
+        return _SidecarTranscript(text=text.strip(), words=tuple(words))
+
+    def _post_wav(
+        self,
+        wav_bytes: bytes,
+        filename: str,
+        *,
+        require_words: bool = False,
+    ) -> _SidecarTranscript:
+        form_data = {"response_format": "json"}
+        if require_words:
+            form_data = {
+                "response_format": "verbose_json",
+                "timestamp_granularities[]": "word",
+            }
+
         try:
             response = requests.post(
                 self._transcription_url,
                 files={"file": (filename, wav_bytes, "audio/wav")},
-                data={"response_format": "json"},
+                data=form_data,
                 headers=self._connection_headers(),
                 timeout=self._timeouts,
             )
@@ -146,28 +245,31 @@ class ParakeetEngine(BaseEngine):
                 self._ready = False
             raise RuntimeError("Parakeet.cpp transcription request failed.") from error
 
-        text = payload.get("text") if isinstance(payload, dict) else None
-        if not isinstance(text, str):
+        try:
+            return self._parse_transcript_payload(payload, require_words=require_words)
+        except ValueError as error:
             with self._state_lock:
                 self._ready = False
             raise RuntimeError(
                 "Parakeet.cpp returned an invalid transcription payload."
-            )
-        return text.strip()
+            ) from error
 
     @staticmethod
-    def _wav_duration(path: Path) -> float:
+    def _read_wav(path: Path) -> tuple[bytes, float]:
         try:
             with wave.open(str(path), "rb") as wav_file:
                 if (
                     wav_file.getnchannels() != 1
-                    or wav_file.getsampwidth() != 2
-                    or wav_file.getframerate() != 16000
+                    or wav_file.getsampwidth() != PCM_SAMPLE_WIDTH_BYTES
+                    or wav_file.getframerate() != _SAMPLE_RATE
+                    or wav_file.getcomptype() != "NONE"
                 ):
                     raise ValueError(
                         "Parakeet.cpp input must be 16-kHz, 16-bit, mono PCM WAV."
                     )
-                return wav_file.getnframes() / wav_file.getframerate()
+                frame_count = wav_file.getnframes()
+                pcm = wav_file.readframes(frame_count)
+                return pcm, frame_count / wav_file.getframerate()
         except (EOFError, wave.Error) as error:
             raise ValueError("Parakeet.cpp input is not a valid WAV file.") from error
 
@@ -176,20 +278,83 @@ class ParakeetEngine(BaseEngine):
             self.warmup()
 
         path = Path(audio_path)
-        duration = self._wav_duration(path)
-        if duration > self._max_audio_seconds:
-            raise ValueError(
-                f"Parakeet.cpp input is {duration:.1f}s; the configured safe maximum "
-                f"is {self._max_audio_seconds:.1f}s. Split long recordings at silence "
-                "boundaries before transcription."
+        pcm, duration = self._read_wav(path)
+        windows = plan_silence_aware_chunks(
+            pcm,
+            sample_rate=_SAMPLE_RATE,
+            max_audio_seconds=self._max_audio_seconds,
+            overlap_seconds=min(
+                _CHUNK_OVERLAP_SECONDS,
+                self._max_audio_seconds / 10,
+            ),
+        )
+        is_chunked = len(windows) > 1
+        if is_chunked:
+            silence_cuts = sum(window.cut_at_silence for window in windows[:-1])
+            log.info(
+                "ParakeetEngine: split {:.1f}s input into {} bounded chunks "
+                "({} silence-aware cuts)",
+                duration,
+                len(windows),
+                silence_cuts,
             )
 
         started = time.perf_counter()
-        text = self._post_wav(path.read_bytes(), path.name)
+        segment_results: list[SegmentResult] = []
+        transcript_parts: list[str] = []
+        for index, window in enumerate(windows, start=1):
+            chunk_pcm = pcm[
+                window.audio_start_sample
+                * PCM_SAMPLE_WIDTH_BYTES : window.audio_end_sample
+                * PCM_SAMPLE_WIDTH_BYTES
+            ]
+            transcript = self._post_wav(
+                self._pcm_wav(chunk_pcm),
+                f"whisperdoc-chunk-{index:03d}.wav",
+                require_words=is_chunked,
+            )
+
+            if not is_chunked:
+                transcript_parts.append(transcript.text)
+                segment_results.append(
+                    SegmentResult(start=0.0, end=duration, text=transcript.text)
+                )
+                continue
+
+            audio_start = window.audio_start_sample / _SAMPLE_RATE
+            keep_start = window.keep_start_sample / _SAMPLE_RATE
+            keep_end = window.keep_end_sample / _SAMPLE_RATE
+            is_final_window = (
+                window.keep_end_sample == len(pcm) // PCM_SAMPLE_WIDTH_BYTES
+            )
+            owned_words: list[tuple[_TimedWord, float, float]] = []
+            for word in transcript.words:
+                global_start = audio_start + word.start
+                global_end = audio_start + word.end
+                midpoint = (global_start + global_end) / 2
+                if midpoint < keep_start:
+                    continue
+                if not is_final_window and midpoint >= keep_end:
+                    continue
+                owned_words.append((word, global_start, global_end))
+
+            if not owned_words:
+                continue
+            chunk_text = " ".join(word.text for word, _, _ in owned_words)
+            transcript_parts.append(chunk_text)
+            segment_results.append(
+                SegmentResult(
+                    start=max(keep_start, owned_words[0][1]),
+                    end=min(keep_end, owned_words[-1][2]),
+                    text=chunk_text,
+                )
+            )
+
         processing_time = time.perf_counter() - started
+        text = " ".join(transcript_parts)
         return TranscriptionResult(
             text=text,
-            segments=[SegmentResult(start=0.0, end=duration, text=text)],
+            segments=segment_results,
             language="en",
             processing_time=processing_time,
         )

@@ -116,10 +116,32 @@ Input: 516.853-second TED sample.
 - The retired baseline completed this sample in 3.901 seconds and faster-whisper
   in 10.62 seconds.
 
-Consequently, the first adapter rejects audio above 30 seconds by default.
-Fixed interval chunking is not an acceptable production implementation.
-Long-form support requires silence-aware boundaries plus overlap and transcript
-de-duplication, followed by a new accuracy benchmark.
+Fixed interval chunking is not an acceptable production implementation. The
+production adapter now treats 30 seconds as a per-request bound instead: it
+searches the final six seconds of each logical window for at least 300 ms below
+-35 dBFS, adds 800 ms of acoustic overlap, and requests Parakeet's per-word
+timestamps. Timestamp midpoints assign every overlap word to exactly one
+logical output window, so joining does not depend on fuzzy text matching.
+
+The implemented path was exercised on the same 516.853-second TED sample:
+
+| Silence-aware path | Result |
+| --- | --- |
+| Native requests | 20, all bounded to 30 seconds or less |
+| Selected boundaries | 19/19 detected quiet regions |
+| Engine time | 4.044 seconds (approximately 128x real time) |
+| Assembled output | 1,227 words across 19 non-empty segments |
+
+This is approximately 22% slower than the naive fixed-slice prototype on the
+long sample because overlap adds encoded audio and quiet-boundary selection can
+produce more chunks. A representative 35-second excerpt completed in 267 ms as
+two chunks with one quiet cut and a coherent 76-word transcript. The short
+dictation path remains one request and does not pay chunking overhead.
+
+The offline TDT v2 model exposes timestamps but not native end-of-utterance
+detection. parakeet.cpp's EOU streaming support targets a different 120M
+realtime model, so changing to it would be a model/accuracy decision rather
+than a free runtime flag.
 
 ## Decoder batching
 

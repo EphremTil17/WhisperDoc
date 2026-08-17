@@ -60,16 +60,17 @@ must understand them:
 | Internal behavior | NeMo implementation | parakeet.cpp implementation |
 | --- | --- | --- |
 | Process location | Model and native libraries inside Uvicorn's CPython process | Native model server in an isolated container |
-| Segment mapping | Used model timestamps when available | One segment from `0.0` to the WAV duration |
-| Maximum utterance | No explicit adapter limit | 30 seconds by default; longer input is rejected |
+| Segment mapping | Used model timestamps when available | One segment for short dictation; timestamp-owned bounded segments for long recordings |
+| Maximum utterance | No explicit adapter limit | 30 seconds per native request; longer recordings are split at quiet boundaries |
 | Model lifecycle | Python engine loaded and freed GPU weights | Compose owns the native process and VRAM; API `unload()` detaches |
 | Model installation | Framework/model resolution through NeMo | Explicit, digest-verified provisioning before startup |
 | Startup readiness | Python model object loaded | Sidecar health check plus a 10-second silent CUDA warmup |
 
-The 30-second bound is intentional. Fixed-width chunking was tested and caused
-word loss, duplication, and split words. Silence-aware overlapping chunking
-with transcript de-duplication must meet an accuracy gate before long-form
-Parakeet input is enabled.
+The 30-second native-request bound is intentional. Fixed-width chunking was
+tested and caused word loss, duplication, and split words. The replacement
+planner searches for quiet boundaries, adds bounded acoustic overlap, and uses
+the sidecar's word timestamps to assign each overlap word to exactly one output
+window. No new native VAD dependency is loaded into Uvicorn.
 
 ## Failure that motivated the migration
 
@@ -204,9 +205,13 @@ capacity when only the selected ASR engine is resident.
 | faster-whisper | 10.62 seconds | Completed |
 | parakeet.cpp whole-file F16 | More than two minutes; approximately 7.8 GiB total GPU memory | Terminated and rejected as a production path |
 | parakeet.cpp fixed 30-second slices | 3.318 seconds wall time | 17 edits across 1,233 words, or 1.3788%, from boundary damage |
+| parakeet.cpp silence-aware overlap | 4.044 seconds engine time | 20 bounded requests, 19 quiet cuts, 1,227 assembled words |
 
-This result is why the adapter enforces `PARAKEET_MAX_AUDIO_SECONDS=30` instead
-of hiding naive fixed-window chunking behind the unchanged client protocol.
+`PARAKEET_MAX_AUDIO_SECONDS=30` now bounds each native request rather than the
+entire utterance. On a representative 35-second excerpt, the production path
+used two requests and one quiet cut, completing in 267 ms with 76 assembled
+words. The long TED run is approximately 22% slower than naive fixed slices,
+but it avoids arbitrary boundary cuts and remains approximately 128x real time.
 
 ## Reliability and test evidence
 
@@ -318,11 +323,11 @@ was actually shipped. They are not active configuration or runtime guidance.
 - Compose runs two containers for Parakeet instead of one.
 - Private HTTP isolation adds approximately 22-27 ms over raw in-process
   inference on the short test.
-- Normal output currently contains one full-utterance segment rather than
-  model-derived subsegments.
+- Short output contains one full-utterance segment; long output contains
+  non-overlapping logical segments assembled from model word timestamps.
 - Parakeet remains English-only.
-- Inputs over 30 seconds are rejected until a correct long-form strategy is
-  implemented.
+- Long recordings add one sequential sidecar request per bounded chunk; the
+  516.853-second test measured approximately 22% overhead versus fixed slices.
 - F16 uses approximately 461 MiB more VRAM than Q8_0.
 - Running Whisper and Parakeet simultaneously is not recommended on the 8-GiB
   target GPU; the selected Compose profile should control residency.

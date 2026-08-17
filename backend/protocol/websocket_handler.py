@@ -7,9 +7,10 @@ import wave
 from collections import defaultdict
 from typing import Any, Dict
 
+from fastapi import WebSocket
+
 from auth import validate_token
 from engine.base_engine import BaseEngine
-from fastapi import WebSocket
 from logging_config import log
 from security.governance import (
     HANDSHAKE_TIMEOUT_SECONDS,
@@ -631,6 +632,12 @@ class ConnectionManager:
             )
             return
 
+        # Atomically consume this utterance before any fallible IO or inference.
+        # A replacement buffer lets a subsequent recording start cleanly even
+        # when this transcription fails; retaining the old buffer poisoned the
+        # WebSocket session by appending every retry to rejected audio.
+        data["buffer"] = bytearray()
+
         tmp_path = None
         try:
             user_id = data.get("user_id", "anonymous")
@@ -638,6 +645,7 @@ class ConnectionManager:
             # Write WAV outside the GPU semaphore — this is pure IO and does
             # not need to block other users' transcriptions.
             tmp_path = await asyncio.to_thread(self._write_wav_temp, buffer)
+            buffer.clear()
 
             # IPC GUARD: Per-Identity Concurrency Lock
             # Ensures User A cannot bomb the GPU while User B remains unblocked.
@@ -661,9 +669,6 @@ class ConnectionManager:
                 for s in result.segments
             ]
             full_text = " ".join(seg["text"] for seg in safe_segments)
-
-            # 2. Security: Wipe buffer immediately
-            data["buffer"] = bytearray()
 
             if not is_incognito:
                 log.success(f"[{conn_id}] Transcription complete: {full_text[:50]}...")
@@ -690,6 +695,8 @@ class ConnectionManager:
                 }
             )
         finally:
+            # Clear the detached PCM allocation even if WAV creation failed.
+            buffer.clear()
             if tmp_path and os.path.exists(tmp_path):
                 try:
                     os.unlink(tmp_path)
