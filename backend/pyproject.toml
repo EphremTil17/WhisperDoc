@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "whisperdoc-backend"
-version = "2.24.8"
+version = "2.25.2"
 description = "WhisperDoc backend service with pluggable Whisper and Parakeet ASR engines."
 requires-python = ">=3.12"
 dependencies = [
@@ -72,6 +72,7 @@ torch = [{ index = "pytorch-cpu", extra = "whisper" }]
 
 [tool.pyright]
 include = ["."]
+extraPaths = [".."]
 exclude = [
     ".venv",
     "venv",

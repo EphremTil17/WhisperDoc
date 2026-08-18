@@ -1,5 +1,39 @@
 # WhisperDoc Technical Changelog
 
+## [2.25.2] - 2026-08-17
+### Architecture & Subsystem Isolation
+- **NeMo to Native `parakeet.cpp` Sidecar Migration**: Replaced the in-process Python `nemo_toolkit[asr]` engine with an isolated native C++ `parakeet-server` (ggml/CUDA) container communicating over local HTTP.
+- **CPython Memory Corruption Resolved**: Eliminated the root cause of the CPython `b" "` singleton corruption documented in `NEMO_CPYTHON_MEMORY_CORRUPTION.md`.
+- **Zero-Shim Policy Enforced**: Removed the in-process `_fixed_ws_upgrade` monkey-patch and `_SAFE_SPACE` h11 workaround in `backend/api_server.py`, restoring standard Uvicorn execution.
+- **12 GB Toolchain Purged**: Removed `nemo_toolkit[asr]` and heavy PyTorch dependencies from `backend/pyproject.toml` and `backend/uv.lock`.
+- **Unified Engine Contract & Health Warmup**: Consolidated `ParakeetEngine` to implement `BaseEngine` via HTTP dispatch, with lazy 10-second silent audio warmup to pre-initialize CUDA graphs.
+
+### Audio Pipeline & Chunking
+- **Silence-Aware Long-Form Chunking**: Added `backend/engine/silence_chunker.py` providing pure-Python zero-dependency RMS energy pause detection, splitting recordings exceeding 30 seconds at quiet acoustic boundaries (24s–30s).
+- **Word-Level Midpoint Deduplication**: Slices long audio with word-level timestamps, filtering words across overlapping boundaries without phoneme clipping, word loss, or repetition (128x real-time on 516s benchmark).
+
+### Tooling, Infrastructure & Release
+- **CUDA Graph Diagnostic Filter**: Added `backend/tools/parakeet_log_filter.sh` to strip repetitive ggml CUDA graph warnings from container output.
+- **Cross-Platform Bumper Hardening**: Hardened `scripts/bump_version.py` with newline preservation (`newline=""`), multiline regex fixes, and multi-rule file caching.
+- **Release Packaging**: Compiled obfuscated Windows binary with split symbols and packaged standalone installer `win_x64_release/WhisperDoc_Setup_v2.25.2.exe`.
+
+### Verification & Quality Gates
+- **Comprehensive Test Suite**: Added test suites for silence chunking (`test_silence_chunker.py`), multi-rule newline preservation (`test_version_bumper.py`), and Parakeet multi-chunk timestamp alignment (`test_parakeet_engine.py`), with all 109 backend tests passing.
+
+---
+
+## [2.24.8] - 2026-08-11
+### Direct Transcription & Client Features
+- **Dynamic Groq Model Selector**: Added runtime model selection between `whisper-large-v3-turbo` and `whisper-large-v3` with a responsive dark-glassmorphism dropdown in the Flutter Settings UI.
+- **Enclave & Persistence Hardening**: Hardened `SettingsService` with trimmed model validation and guaranteed unconditional, idempotent `SecureVault.initialize()` calls.
+- **Dynamic HTTP Dispatch**: Updated `GroqHttpClient` to inject the selected model dynamically into multipart transcription requests.
+
+### Tooling & Automation
+- **Automated Version Bumper**: Created declarative `scripts/bump_version.py` utility with atomic multi-file SemVer arithmetic, `--dry-run` simulation, and `uv lock` synchronization.
+- **Test Coverage Expansion**: Added test suites `test_version_bumper.py` and `groq_error_test.dart`.
+
+---
+
 ## [2.24.7] - 2026-06-30
 ### Audio Availability Subsystem Hardening
 - **Rich Status & Sealed Exceptions**: Introduced `AudioInputStatus` enum (`unknown`, `available`, `noDevice`, `selectedUnavailable`, `permissionDenied`) along with extensions defining `canRecord` and `bannerMessage` helpers. Replaced untyped catcher overrides in the controller with a clean sealed hierarchy of typed hardware exceptions (`NoAudioDeviceException`, `MicPermissionDeniedException`).
@@ -183,3 +217,14 @@
 - Integrated a circular log buffer (200-entry capacity) with real-time stream emission for the in-app terminal-grade viewer.
 - Implemented "Incognito Mode" (Ghost Mode) at the controller level to purge sensitive buffers and prevent persistent history logging during private sessions.
 - Standardized the x64-exclusive Windows deployment pipeline via Inno Setup, including PE metadata rebranding for native Task Manager identification.
+[2.25.2]: release_notes/v2.25.2.md
+[2.24.8]: release_notes/v2.24.8.md
+[2.24.7]: release_notes/v2.24.7.md
+[2.24.6]: release_notes/v2.24.6.md
+[2.23.6]: release_notes/v2.23.6.md
+[2.23.1]: release_notes/v2.23.1.md
+[2.22.2]: release_notes/v2.22.2.md
+[2.20.0]: release_notes/v2.20.0.md
+[2.19.0]: release_notes/v2.19.0.md
+[2.13.0]: release_notes/v2.13.0.md
+[1.14.0]: release_notes/v1.14.0.md

@@ -63,6 +63,11 @@ services:
     image: ${PARAKEET_IMAGE:-ghcr.io/mudler/parakeet.cpp-server@sha256:dfbe0fa76a49386b5dd413392b74c89bc68fcac0a445dbb4efec083d7dc1acbf}
     profiles:
       - parakeet
+    # GGML's default callback prints DEBUG-level CUDA graph warmup messages.
+    # Keep native errors visible while filtering only that repeated diagnostic.
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/whisperdoc-parakeet-log-filter
     command:
       - --model
       - /models/${PARAKEET_MODEL_FILE:-tdt-0.6b-v2-f16.gguf}
@@ -81,6 +86,7 @@ services:
       - "8080"
     volumes:
       - ./model-cache/parakeet:/models:ro
+      - ./backend/tools/parakeet_log_filter.sh:/usr/local/bin/whisperdoc-parakeet-log-filter:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
       interval: 2s

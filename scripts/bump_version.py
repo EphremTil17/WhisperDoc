@@ -95,7 +95,7 @@ TARGET_MANIFEST: list[TargetRule] = [
     ),
     TargetRule(
         path="backend/.env.template",
-        pattern=r"(?m)^(WHISPER_DOC_VERSION=).*$",
+        pattern=r"(?m)^(WHISPER_DOC_VERSION=)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Backend .env.template single source of truth version",
     ),
@@ -108,7 +108,7 @@ TARGET_MANIFEST: list[TargetRule] = [
     ),
     TargetRule(
         path="flutter_client/windows/installer/whisperdoc_setup.iss",
-        pattern=r"(?m)^(; Version:\s*).*$",
+        pattern=r"(?m)^(; Version:\s*)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Inno Setup script comment header",
     ),
@@ -126,7 +126,7 @@ TARGET_MANIFEST: list[TargetRule] = [
     ),
     TargetRule(
         path="flutter_client/README.md",
-        pattern=r"(?m)^(# WhisperDoc Flutter Client v).*$",
+        pattern=r"(?m)^(# WhisperDoc Flutter Client v)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Flutter Client README title version",
     ),
@@ -139,7 +139,7 @@ TARGET_MANIFEST: list[TargetRule] = [
     ),
     TargetRule(
         path="terminal_client/.env.template",
-        pattern=r"(?m)^(CLIENT_VERSION=).*$",
+        pattern=r"(?m)^(CLIENT_VERSION=)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Terminal client .env.template version",
     ),
@@ -158,19 +158,19 @@ TARGET_MANIFEST: list[TargetRule] = [
     # --- Root Documentation ---
     TargetRule(
         path="README.md",
-        pattern=r"(?m)^(# WhisperDoc - Speech-to-Text System v).*$",
+        pattern=r"(?m)^(# WhisperDoc - Speech-to-Text System v)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Root README main title version",
     ),
     TargetRule(
         path="README.md",
-        pattern=r"(?m)^(### Flutter Client \(Windows\) v).*$",
+        pattern=r"(?m)^(### Flutter Client \(Windows\) v)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Root README Flutter Client section header",
     ),
     TargetRule(
         path="README.md",
-        pattern=r"(?m)^(### Python Terminal Client v).*$",
+        pattern=r"(?m)^(### Python Terminal Client v)[^\r\n]*",
         replacement_template=r"\g<1>{version}",
         description="Root README Terminal Client section header",
     ),
@@ -182,6 +182,16 @@ def find_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _read_text_preserving_newlines(path: Path) -> str:
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        return stream.read()
+
+
+def _write_text_preserving_newlines(path: Path, content: str) -> None:
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(content)
+
+
 def get_current_version(repo_root: Path) -> str:
     """Read the current single source of truth version from backend/pyproject.toml."""
     pyproject = repo_root / "backend" / "pyproject.toml"
@@ -189,7 +199,7 @@ def get_current_version(repo_root: Path) -> str:
         raise FileNotFoundError(
             f"Missing {pyproject}. Cannot determine current version."
         )
-    content = pyproject.read_text(encoding="utf-8")
+    content = _read_text_preserving_newlines(pyproject)
     match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', content)
     if not match:
         raise ValueError('Could not find `version = "..."` in backend/pyproject.toml')
@@ -205,7 +215,7 @@ def perform_preflight_check(repo_root: Path) -> list[tuple[TargetRule, Path, str
             raise FileNotFoundError(
                 f"Target file not found: {rule.path} ({rule.description})"
             )
-        content = file_path.read_text(encoding="utf-8")
+        content = _read_text_preserving_newlines(file_path)
         if not re.search(rule.pattern, content):
             raise ValueError(
                 f"Pattern mismatch in {rule.path} for: {rule.description}\n"
@@ -226,30 +236,40 @@ def bump_manifest(
     print(
         f"\n🚀 {'[DRY RUN] ' if dry_run else ''}Bumping repository to v{next_version}:\n"
     )
+    updated_contents: dict[Path, str] = {}
     for rule, file_path, original_content in validated:
+        current_content = updated_contents.get(file_path, original_content)
         replacement = rule.replacement_template.format(version=next_version)
-        new_content = re.sub(rule.pattern, replacement, original_content)
+        new_content = re.sub(rule.pattern, replacement, current_content)
 
-        if new_content == original_content:
+        if new_content == current_content:
             print(f"  ⚪ {rule.path}: Already up to date ({rule.description})")
             continue
 
-        if not dry_run:
-            file_path.write_text(new_content, encoding="utf-8")
+        updated_contents[file_path] = new_content
         print(f"  🟢 {rule.path}: Updated ({rule.description})")
+
+    if not dry_run:
+        for file_path, content in updated_contents.items():
+            _write_text_preserving_newlines(file_path, content)
 
 
 def sync_lockfiles(repo_root: Path, dry_run: bool = False) -> None:
     """Run `uv lock` in Python packages to synchronize lockfiles."""
     if not shutil.which("uv"):
-        print("\n⚠️  `uv` command not found on PATH. Skipping lockfile sync.")
-        return
+        if dry_run:
+            print("\n⚠️  `uv` command not found on PATH. Lockfile sync unavailable.")
+            return
+        raise RuntimeError(
+            "`uv` command not found on PATH. Install uv or pass --skip-lock explicitly."
+        )
 
     python_dirs = ["backend", "terminal_client"]
     print(
         f"\n📦 {'[DRY RUN] ' if dry_run else ''}Synchronizing lockfiles with `uv lock`:"
     )
 
+    failures: list[str] = []
     for pkg_dir in python_dirs:
         target_dir = repo_root / pkg_dir
         if not target_dir.exists():
@@ -265,8 +285,14 @@ def sync_lockfiles(repo_root: Path, dry_run: bool = False) -> None:
             )
             if result.returncode != 0:
                 print(f"    ❌ `uv lock` failed in {pkg_dir}:\n{result.stderr}")
+                failures.append(pkg_dir)
             else:
                 print(f"    ✅ {pkg_dir}/uv.lock synchronized.")
+
+    if failures:
+        raise RuntimeError(
+            f"Lockfile synchronization failed for: {', '.join(failures)}."
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -344,7 +370,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if not args.skip_lock:
-        sync_lockfiles(repo_root, dry_run=args.dry_run)
+        try:
+            sync_lockfiles(repo_root, dry_run=args.dry_run)
+        except RuntimeError as e:
+            print(f"\n❌ Lockfile synchronization error: {e}", file=sys.stderr)
+            return 1
 
     print(f"\n✨ Version bump to v{next_version_str} completed successfully!\n")
     return 0

@@ -11,6 +11,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import scripts.bump_version as bump_version  # noqa: E402
 from scripts.bump_version import (  # noqa: E402
     SEMVER_REGEX,
     TARGET_MANIFEST,
@@ -74,3 +75,44 @@ def test_perform_preflight_check_against_workspace():
     for rule, file_path, content in validated:
         assert file_path.exists()
         assert len(content) > 0
+
+
+def test_bump_manifest_accumulates_rules_and_preserves_crlf(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "version.txt"
+    target.write_bytes(b"Product: 1.0.0\r\nClient: 1.0.0\r\n")
+    rules = [
+        bump_version.TargetRule(
+            path="version.txt",
+            pattern=r"(?m)^(Product: )[^\r\n]*",
+            replacement_template=r"\g<1>{version}",
+            description="product version",
+        ),
+        bump_version.TargetRule(
+            path="version.txt",
+            pattern=r"(?m)^(Client: )[^\r\n]*",
+            replacement_template=r"\g<1>{version}",
+            description="client version",
+        ),
+    ]
+    monkeypatch.setattr(bump_version, "TARGET_MANIFEST", rules)
+
+    bump_version.bump_manifest(tmp_path, "2.25.2")
+
+    assert target.read_bytes() == b"Product: 2.25.2\r\nClient: 2.25.2\r\n"
+
+
+def test_sync_lockfiles_reports_uv_failures(tmp_path, monkeypatch):
+    (tmp_path / "backend").mkdir()
+    monkeypatch.setattr(bump_version.shutil, "which", lambda _: "/usr/bin/uv")
+    failed = bump_version.subprocess.CompletedProcess(
+        args=["uv", "lock"],
+        returncode=1,
+        stdout="",
+        stderr="resolution failed",
+    )
+    monkeypatch.setattr(bump_version.subprocess, "run", lambda *args, **kwargs: failed)
+
+    with pytest.raises(RuntimeError, match="backend"):
+        bump_version.sync_lockfiles(tmp_path)

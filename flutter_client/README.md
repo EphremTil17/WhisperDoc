@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.24.8
+# WhisperDoc Flutter Client v2.25.2
 
 A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
 
@@ -98,7 +98,18 @@ lib/
    ```
 4. **Build release**
    ```bash
-   flutter build windows --release --obfuscate --split-debug-info=build/debug-info --dart-define-from-file=env.json
+   # Templatized production build command:
+   flutter build windows --release --build-name=<version> --build-number=<build_number> --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
+
+   # Example for current v2.25.2 release:
+   flutter build windows --release --build-name=2.25.2 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
+   ```
+
+5. **Package Windows Installer**
+   ```powershell
+   # Compile setup executable with Inno Setup and copy to release distribution folder:
+   & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\whisperdoc_setup.iss
+   Copy-Item windows\installer\WhisperDoc_Setup_v2.25.2.exe ..\win_x64_release\
    ```
 
 ## Configuration

@@ -22,7 +22,7 @@ void main() {
       PackageInfo.setMockInitialValues(
         appName: 'WhisperDoc',
         packageName: 'com.whisperdoc',
-        version: '2.24.8',
+        version: '2.25.2',
         buildNumber: '1',
         buildSignature: '',
       );
