@@ -6,7 +6,8 @@ void main() {
   // Named constants used across rate-limiter tests.
   const rpmWindowRequests = 20;
   const retryAfterSeconds = 30;
-  const retryAfterMinusOne = retryAfterSeconds - 1; // greaterThanOrEqualTo bound
+  const retryAfterMinusOne =
+      retryAfterSeconds - 1; // greaterThanOrEqualTo bound
 
   group('GroqRateLimiter', () {
     late GroqRateLimiter limiter;
@@ -36,7 +37,10 @@ void main() {
       limiter.updateFromHeaders({'retry-after': '$retryAfterSeconds'});
 
       expect(limiter.canRequest(), isFalse);
-      expect(limiter.retryAfter.inSeconds, greaterThanOrEqualTo(retryAfterMinusOne));
+      expect(
+        limiter.retryAfter.inSeconds,
+        greaterThanOrEqualTo(retryAfterMinusOne),
+      );
     });
 
     test('ignores malformed retry-after header', () {

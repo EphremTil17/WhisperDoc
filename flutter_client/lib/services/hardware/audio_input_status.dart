@@ -23,12 +23,12 @@ extension AudioInputStatusX on AudioInputStatus {
 
   /// Single source of truth for user-facing status copy.
   String? get bannerMessage => switch (this) {
-        AudioInputStatus.noDevice =>
-          'No microphone detected. Please connect an input device.',
-        AudioInputStatus.selectedUnavailable =>
-          'Your selected microphone is unavailable. Connect it or pick another in Settings.',
-        AudioInputStatus.permissionDenied =>
-          'Microphone access is blocked. Enable it in your system settings.',
-        AudioInputStatus.unknown || AudioInputStatus.available => null,
-      };
+    AudioInputStatus.noDevice =>
+      'No microphone detected. Please connect an input device.',
+    AudioInputStatus.selectedUnavailable =>
+      'Your selected microphone is unavailable. Connect it or pick another in Settings.',
+    AudioInputStatus.permissionDenied =>
+      'Microphone access is blocked. Enable it in your system settings.',
+    AudioInputStatus.unknown || AudioInputStatus.available => null,
+  };
 }

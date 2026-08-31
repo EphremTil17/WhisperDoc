@@ -102,41 +102,44 @@ void main() {
       expect(service.isBufferOverLimit, isFalse);
     });
 
-    test('finalizeAndTranscribe passes model from settings to http client', () async {
-      when(() => mockSettings.groqModel).thenReturn('whisper-large-v3');
-      final mockHttpClient = _MockGroqHttpClient();
-      when(
-        () => mockHttpClient.transcribe(
-          wavBytes: any(named: 'wavBytes'),
-          apiKey: any(named: 'apiKey'),
-          model: 'whisper-large-v3',
-          language: any(named: 'language'),
-          prompt: any(named: 'prompt'),
-        ),
-      ).thenAnswer(
-        (_) async => const GroqTranscriptionResult(
-          text: 'transcribed accurately',
-          responseHeaders: {},
-        ),
-      );
+    test(
+      'finalizeAndTranscribe passes model from settings to http client',
+      () async {
+        when(() => mockSettings.groqModel).thenReturn('whisper-large-v3');
+        final mockHttpClient = _MockGroqHttpClient();
+        when(
+          () => mockHttpClient.transcribe(
+            wavBytes: any(named: 'wavBytes'),
+            apiKey: any(named: 'apiKey'),
+            model: 'whisper-large-v3',
+            language: any(named: 'language'),
+            prompt: any(named: 'prompt'),
+          ),
+        ).thenAnswer(
+          (_) async => const GroqTranscriptionResult(
+            text: 'transcribed accurately',
+            responseHeaders: {},
+          ),
+        );
 
-      final customService = GroqTranscriptionService(
-        mockSettings,
-        httpClient: mockHttpClient,
-      );
-      customService.bufferAudioChunk(Uint8List(chunkSmall));
-      final text = await customService.finalizeAndTranscribe();
+        final customService = GroqTranscriptionService(
+          mockSettings,
+          httpClient: mockHttpClient,
+        );
+        customService.bufferAudioChunk(Uint8List(chunkSmall));
+        final text = await customService.finalizeAndTranscribe();
 
-      expect(text, 'transcribed accurately');
-      verify(
-        () => mockHttpClient.transcribe(
-          wavBytes: any(named: 'wavBytes'),
-          apiKey: 'test-groq-key',
-          model: 'whisper-large-v3',
-          language: null,
-          prompt: null,
-        ),
-      ).called(1);
-    });
+        expect(text, 'transcribed accurately');
+        verify(
+          () => mockHttpClient.transcribe(
+            wavBytes: any(named: 'wavBytes'),
+            apiKey: 'test-groq-key',
+            model: 'whisper-large-v3',
+            language: null,
+            prompt: null,
+          ),
+        ).called(1);
+      },
+    );
   });
 }

@@ -34,7 +34,8 @@ abstract final class _WavEncoderTest {
 
   // --- Test PCM buffer sizes ---
   static const int emptyPcmSize = 0;
-  static const int smallPcmSize = 100; // small non-zero buffer for header-only tests
+  static const int smallPcmSize =
+      100; // small non-zero buffer for header-only tests
   static const int shortClipPcmSize = 3200; // 0.1 s at 16 kHz / 16-bit / mono
   static const int standardPcmSize = 6400; // 0.2 s at 16 kHz / 16-bit / mono
 }
@@ -48,36 +49,61 @@ void main() {
     });
 
     test('output size equals header + PCM data length', () {
-      final pcm = Uint8List(_WavEncoderTest.shortClipPcmSize); // 0.1 s at 16 kHz/16-bit/mono
+      final pcm = Uint8List(
+        _WavEncoderTest.shortClipPcmSize,
+      ); // 0.1 s at 16 kHz/16-bit/mono
       final wav = WavEncoder.encode(pcm);
 
-      expect(wav.length, _WavEncoderTest.wavHeaderSizeBytes + _WavEncoderTest.shortClipPcmSize);
+      expect(
+        wav.length,
+        _WavEncoderTest.wavHeaderSizeBytes + _WavEncoderTest.shortClipPcmSize,
+      );
     });
 
     test('RIFF header is correct', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
-      final riff = String.fromCharCodes(wav.sublist(_WavEncoderTest.riffFourCcOffset, _WavEncoderTest.riffFourCcEnd));
+      final riff = String.fromCharCodes(
+        wav.sublist(
+          _WavEncoderTest.riffFourCcOffset,
+          _WavEncoderTest.riffFourCcEnd,
+        ),
+      );
 
       expect(riff, 'RIFF');
     });
 
     test('WAVE format marker is correct', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
-      final wave = String.fromCharCodes(wav.sublist(_WavEncoderTest.waveFourCcOffset, _WavEncoderTest.waveFourCcEnd));
+      final wave = String.fromCharCodes(
+        wav.sublist(
+          _WavEncoderTest.waveFourCcOffset,
+          _WavEncoderTest.waveFourCcEnd,
+        ),
+      );
 
       expect(wave, 'WAVE');
     });
 
     test('fmt chunk ID is correct', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
-      final fmt = String.fromCharCodes(wav.sublist(_WavEncoderTest.fmtFourCcOffset, _WavEncoderTest.fmtFourCcEnd));
+      final fmt = String.fromCharCodes(
+        wav.sublist(
+          _WavEncoderTest.fmtFourCcOffset,
+          _WavEncoderTest.fmtFourCcEnd,
+        ),
+      );
 
       expect(fmt, 'fmt ');
     });
 
     test('data chunk ID is correct', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
-      final data = String.fromCharCodes(wav.sublist(_WavEncoderTest.dataFourCcOffset, _WavEncoderTest.dataFourCcEnd));
+      final data = String.fromCharCodes(
+        wav.sublist(
+          _WavEncoderTest.dataFourCcOffset,
+          _WavEncoderTest.dataFourCcEnd,
+        ),
+      );
 
       expect(data, 'data');
     });
@@ -86,7 +112,10 @@ void main() {
       final pcmSize = _WavEncoderTest.standardPcmSize;
       final wav = WavEncoder.encode(Uint8List(pcmSize));
       final view = ByteData.sublistView(wav);
-      final chunkSize = view.getUint32(_WavEncoderTest.riffChunkSizeOffset, Endian.little);
+      final chunkSize = view.getUint32(
+        _WavEncoderTest.riffChunkSizeOffset,
+        Endian.little,
+      );
 
       expect(chunkSize, pcmSize + _WavEncoderTest.riffChunkOverhead);
     });
@@ -95,7 +124,10 @@ void main() {
       final pcmSize = _WavEncoderTest.standardPcmSize;
       final wav = WavEncoder.encode(Uint8List(pcmSize));
       final view = ByteData.sublistView(wav);
-      final dataSize = view.getUint32(_WavEncoderTest.dataChunkSizeOffset, Endian.little);
+      final dataSize = view.getUint32(
+        _WavEncoderTest.dataChunkSizeOffset,
+        Endian.little,
+      );
 
       expect(dataSize, pcmSize);
     });
@@ -104,34 +136,49 @@ void main() {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
       final view = ByteData.sublistView(wav);
 
-      expect(view.getUint16(_WavEncoderTest.audioFormatOffset, Endian.little), _WavEncoderTest.pcmAudioFormatCode);
+      expect(
+        view.getUint16(_WavEncoderTest.audioFormatOffset, Endian.little),
+        _WavEncoderTest.pcmAudioFormatCode,
+      );
     });
 
     test('channel count is mono (1)', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
       final view = ByteData.sublistView(wav);
 
-      expect(view.getUint16(_WavEncoderTest.channelCountOffset, Endian.little), _WavEncoderTest.monoChannelCount);
+      expect(
+        view.getUint16(_WavEncoderTest.channelCountOffset, Endian.little),
+        _WavEncoderTest.monoChannelCount,
+      );
     });
 
     test('sample rate is 16000', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
       final view = ByteData.sublistView(wav);
 
-      expect(view.getUint32(_WavEncoderTest.sampleRateOffset, Endian.little), _WavEncoderTest.sampleRateHz);
+      expect(
+        view.getUint32(_WavEncoderTest.sampleRateOffset, Endian.little),
+        _WavEncoderTest.sampleRateHz,
+      );
     });
 
     test('bits per sample is 16', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
       final view = ByteData.sublistView(wav);
 
-      expect(view.getUint16(_WavEncoderTest.bitsPerSampleOffset, Endian.little), _WavEncoderTest.bitsPerSample);
+      expect(
+        view.getUint16(_WavEncoderTest.bitsPerSampleOffset, Endian.little),
+        _WavEncoderTest.bitsPerSample,
+      );
     });
 
     test('byte rate is sampleRate * channels * bytesPerSample', () {
       final wav = WavEncoder.encode(Uint8List(_WavEncoderTest.smallPcmSize));
       final view = ByteData.sublistView(wav);
-      final byteRate = view.getUint32(_WavEncoderTest.byteRateOffset, Endian.little);
+      final byteRate = view.getUint32(
+        _WavEncoderTest.byteRateOffset,
+        Endian.little,
+      );
 
       // 16000 * 1 * 2 = 32000
       expect(byteRate, _WavEncoderTest.byteRate);
@@ -142,7 +189,10 @@ void main() {
       final view = ByteData.sublistView(wav);
 
       // 1 * 2 = 2
-      expect(view.getUint16(_WavEncoderTest.blockAlignOffset, Endian.little), _WavEncoderTest.blockAlign);
+      expect(
+        view.getUint16(_WavEncoderTest.blockAlignOffset, Endian.little),
+        _WavEncoderTest.blockAlign,
+      );
     });
 
     test('PCM data is preserved after header', () {

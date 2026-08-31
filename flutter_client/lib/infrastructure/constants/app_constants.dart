@@ -229,4 +229,45 @@ class AppConstants {
   /// Checks whether [model] is a supported Groq ASR model.
   static bool isValidGroqModel(String model) =>
       groqSupportedModels.contains(model.trim());
+
+  // === Groq LLM Transform Configuration ===
+
+  /// Groq chat completions endpoint (OpenAI-compatible).
+  static const String groqChatCompletionsEndpoint =
+      'https://api.groq.com/openai/v1/chat/completions';
+
+  /// Default rewrite model. Verified active via scripts/benchmark_llm_providers.py (2026-09-05).
+  /// Measured latency: TTFT ~217ms, Generation ~45ms, Total ~261ms on 27B parameters.
+  static const String groqTransformModel = 'qwen/qwen3.8-27b';
+
+  static const double groqTransformTemperature = 0.1;
+
+  /// Timeout scales with input so long dictations are not silently dropped
+  /// to raw. total = base + perWord * wordCount, clamped to [base, max].
+  static const Duration groqTransformTimeoutBase = Duration(milliseconds: 1500);
+  static const Duration groqTransformTimeoutPerWord = Duration(
+    milliseconds: 25,
+  );
+  static const Duration groqTransformTimeoutMax = Duration(seconds: 8);
+
+  /// Output token ceiling scales with input: clamp(2 * estimatedInputTokens, min, max).
+  /// Rough estimate: 1 token per 3 characters.
+  static const int groqTransformMinCompletionTokens = 128;
+  static const int groqTransformMaxCompletionTokens = 4096;
+  static const int groqTransformCharsPerToken = 3;
+
+  /// Output length sanity bounds relative to input character count.
+  /// Results outside this band are treated as hallucination/truncation and rejected.
+  /// Set to 4.5 to accommodate structured technical specifications with markdown and backticks.
+  static const double groqTransformMinLengthRatio = 0.3;
+  static const double groqTransformMaxLengthRatio = 4.5;
+
+  // === Custom Dictation Profiles ===
+
+  /// Maximum character length of the user-authored portion of a custom
+  /// system prompt. The shared preamble is prepended and is not counted.
+  static const int customProfileMaxPromptLength = 2000;
+
+  /// Maximum character length for custom profile display names.
+  static const int customProfileMaxNameLength = 24;
 }

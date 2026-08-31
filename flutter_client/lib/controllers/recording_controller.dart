@@ -10,6 +10,7 @@ import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/services/transcription/groq_transform_service.dart';
 import 'package:flutter_client/services/transcription/groq_error.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/logic/processors/audio_signal_processor.dart';
@@ -21,6 +22,7 @@ class RecordingController extends ChangeNotifier {
   final AudioService _audioService;
   final WebSocketService _wsService;
   final GroqTranscriptionService _groqService;
+  final GroqTransformService _transformService;
   final AutomationService _automationService;
   final HistoryService _historyService;
   final SettingsService _settingsService;
@@ -53,6 +55,9 @@ class RecordingController extends ChangeNotifier {
   bool get incognitoMode => _settingsService.incognitoMode;
   String get currentText => _currentBuffer;
   bool get isRecording => _isRecording;
+
+  /// True while recording or while a Groq transcription/transform is in flight.
+  bool get isSessionActive => _isRecording || _isTranscribing;
   AudioInputStatus get inputStatus => _audioService.inputStatus;
   List<HistoryEntry> get history => List.unmodifiable(_history);
   Stream<String> get onError => _errorController.stream;
@@ -61,6 +66,7 @@ class RecordingController extends ChangeNotifier {
     required AudioService audioService,
     required WebSocketService wsService,
     required GroqTranscriptionService groqService,
+    required GroqTransformService transformService,
     required AutomationService automationService,
     required HistoryService historyService,
     required SettingsService settingsService,
@@ -68,6 +74,7 @@ class RecordingController extends ChangeNotifier {
   }) : _audioService = audioService,
        _wsService = wsService,
        _groqService = groqService,
+       _transformService = transformService,
        _automationService = automationService,
        _historyService = historyService,
        _settingsService = settingsService,
@@ -211,7 +218,11 @@ class RecordingController extends ChangeNotifier {
         }
       }());
     } catch (e, st) {
-      LoggingService().error('Failed to start recording', error: e, stackTrace: st);
+      LoggingService().error(
+        'Failed to start recording',
+        error: e,
+        stackTrace: st,
+      );
       // AudioService owns hardware truth: if the failure was hardware-related
       // it has already set a degraded status. Anything else stays a generic,
       // retryable error and must NOT disable the microphone.
@@ -310,7 +321,7 @@ class RecordingController extends ChangeNotifier {
       final text = await _groqService.finalizeAndTranscribe();
       _currentBuffer = text;
       notifyListeners();
-      unawaited(_finishRecordingSession());
+      await _finishRecordingSession();
     } on GroqError catch (e) {
       _errorController.add(e.userMessage);
       LoggingService().error(
@@ -324,23 +335,44 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> _finishRecordingSession() async {
-    final text = _currentBuffer.trim();
+    var text = _currentBuffer.trim();
+    if (text.isEmpty) return;
 
-    if (text.isNotEmpty) {
-      final timestamp = DateTime.now();
-
-      // Only add to history if not in incognito mode
-      if (!incognitoMode) {
-        await _historyService.saveTranscription(
-          text: text,
-          timestamp: timestamp,
+    final profile = _settingsService.dictationProfile;
+    if (profile.requiresLlm) {
+      final wasTranscribing = _isTranscribing;
+      _isTranscribing = true;
+      notifyListeners();
+      try {
+        text = await _transformService.transform(text, profile);
+        _currentBuffer = text;
+        notifyListeners();
+      } on GroqError catch (e) {
+        _errorController.add(
+          '${profile.label} polish unavailable, pasted raw text. ${e.userMessage}',
         );
-        // Refresh local history view
-        unawaited(_loadHistory());
+        LoggingService().warning(
+          'Transform fallback (${profile.storageKey}): ${e.message}',
+          sendToServer: false,
+        );
+      } finally {
+        if (!wasTranscribing) {
+          _isTranscribing = false;
+          notifyListeners();
+        }
       }
-
-      await _automationService.runAutomation(text);
     }
+
+    final timestamp = DateTime.now();
+
+    // Only add to history if not in incognito mode
+    if (!incognitoMode) {
+      await _historyService.saveTranscription(text: text, timestamp: timestamp);
+      // Refresh local history view
+      unawaited(_loadHistory());
+    }
+
+    await _automationService.runAutomation(text);
   }
 
   /// Explicitly clears all sensitive transcription data from memory and disk.

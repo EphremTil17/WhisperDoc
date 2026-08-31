@@ -9,6 +9,7 @@ import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/services/transcription/groq_transform_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 
@@ -59,6 +60,9 @@ class ServiceLocator {
     getIt.registerSingleton<GroqTranscriptionService>(
       GroqTranscriptionService(getIt<SettingsService>()),
     );
+    getIt.registerSingleton<GroqTransformService>(
+      GroqTransformService(getIt<SettingsService>()),
+    );
 
     // 4. Controllers
     getIt.registerSingleton<RecordingController>(
@@ -66,6 +70,7 @@ class ServiceLocator {
         audioService: getIt<AudioService>(),
         wsService: getIt<WebSocketService>(),
         groqService: getIt<GroqTranscriptionService>(),
+        transformService: getIt<GroqTransformService>(),
         automationService: getIt<AutomationService>(),
         historyService: getIt<HistoryService>(),
         settingsService: getIt<SettingsService>(),

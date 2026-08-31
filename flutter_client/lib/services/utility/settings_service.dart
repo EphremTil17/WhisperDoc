@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/services/utility/secure_vault_service.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+import 'package:flutter_client/logic/models/dictation_profile.dart';
+import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
+import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsService extends ChangeNotifier {
@@ -26,6 +30,8 @@ class SettingsService extends ChangeNotifier {
   static const String _keyGroqLanguage = 'groq_language';
   static const String _keyGroqPrompt = 'groq_prompt';
   static const String _keyGroqModel = 'groq_model';
+  static const String _keyDictationProfile = 'dictation_profile';
+  static const String _keyCustomProfiles = 'custom_profiles_json';
 
   // Default Values (from AppConstants)
   static const String _defaultServerUri = AppConstants.defaultServerUri;
@@ -41,6 +47,7 @@ class SettingsService extends ChangeNotifier {
   static const String _defaultGroqLanguage = '';
   static const String _defaultGroqPrompt = '';
   static const String _defaultGroqModel = AppConstants.groqDefaultModel;
+  static const DictationProfile _defaultDictationProfile = DictationProfile.raw;
   static const int _jwtPartCount = 3;
 
   SharedPreferences? _prefs;
@@ -65,6 +72,8 @@ class SettingsService extends ChangeNotifier {
   String _groqLanguage = _defaultGroqLanguage;
   String _groqPrompt = _defaultGroqPrompt;
   String _groqModel = _defaultGroqModel;
+  DictationProfileSpec _dictationProfile = _defaultDictationProfile;
+  List<CustomProfile> _customProfiles = [];
   String _appVersion = '...'; // Dynamic loading fallback
 
   String get appVersion => _appVersion;
@@ -87,6 +96,8 @@ class SettingsService extends ChangeNotifier {
   String get groqLanguage => _groqLanguage;
   String get groqPrompt => _groqPrompt;
   String get groqModel => _groqModel;
+  DictationProfileSpec get dictationProfile => _dictationProfile;
+  List<CustomProfile> get customProfiles => List.unmodifiable(_customProfiles);
 
   /// Returns the cached API key, fetching from vault if not yet loaded.
   Future<String?> getApiKey() async {
@@ -142,9 +153,9 @@ class SettingsService extends ChangeNotifier {
       final storedGroqModel = prefs.getString(_keyGroqModel);
       _groqModel =
           (storedGroqModel != null &&
-                  AppConstants.isValidGroqModel(storedGroqModel))
-              ? storedGroqModel.trim()
-              : _defaultGroqModel;
+              AppConstants.isValidGroqModel(storedGroqModel))
+          ? storedGroqModel.trim()
+          : _defaultGroqModel;
       _groqPrompt =
           await vault.retrieveCredential(_vaultGroqPrompt) ??
           prefs.getString(_keyGroqPrompt) ??
@@ -155,6 +166,33 @@ class SettingsService extends ChangeNotifier {
         }
         await prefs.remove(_keyGroqPrompt);
       }
+
+      final customJson = prefs.getString(_keyCustomProfiles);
+      if (customJson != null && customJson.isNotEmpty) {
+        try {
+          final list = jsonDecode(customJson) as List<Object?>;
+          final seenSlots = <String>{};
+          final loaded = <CustomProfile>[];
+          for (final item in list) {
+            if (item is Map<String, dynamic>) {
+              final profile = CustomProfile.tryFromJson(item);
+              if (profile != null && seenSlots.add(profile.storageKey)) {
+                loaded.add(profile);
+              }
+            }
+          }
+          _customProfiles = loaded;
+        } catch (e) {
+          LoggingService().warning('Failed to parse custom profiles JSON: $e');
+          _customProfiles = [];
+        }
+      } else {
+        _customProfiles = [];
+      }
+
+      _dictationProfile = isGroqMode
+          ? _resolveProfile(prefs.getString(_keyDictationProfile))
+          : DictationProfile.raw;
 
       // Load version info once
       final info = await PackageInfo.fromPlatform();
@@ -307,6 +345,13 @@ class SettingsService extends ChangeNotifier {
 
     _transcriptionMode = mode;
     await prefs.setString(_keyTranscriptionMode, mode);
+    if (!isGroqMode && _dictationProfile != DictationProfile.raw) {
+      _dictationProfile = DictationProfile.raw;
+      await prefs.setString(
+        _keyDictationProfile,
+        DictationProfile.raw.storageKey,
+      );
+    }
     notifyListeners();
     LoggingService().info('Transcription mode updated to: $mode');
   }
@@ -356,14 +401,112 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> setGroqModel(String model) async {
     final prefs = _requirePrefs();
-    final normalizedModel =
-        AppConstants.isValidGroqModel(model) ? model.trim() : _defaultGroqModel;
+    final normalizedModel = AppConstants.isValidGroqModel(model)
+        ? model.trim()
+        : _defaultGroqModel;
     if (_groqModel == normalizedModel) return;
 
     _groqModel = normalizedModel;
     await prefs.setString(_keyGroqModel, normalizedModel);
     notifyListeners();
     LoggingService().info('Groq model updated to: $normalizedModel');
+  }
+
+  DictationProfileSpec _resolveProfile(String? key) {
+    if (key == null) return DictationProfile.raw;
+    for (final p in DictationProfile.values) {
+      if (p.storageKey == key) return p;
+    }
+    for (final c in _customProfiles) {
+      if (c.storageKey == key) return c;
+    }
+
+    return DictationProfile.raw;
+  }
+
+  /// Returns the first unused slot key from [CustomProfile.slotKeys],
+  /// or null when all 3 slots are occupied.
+  String? nextFreeCustomSlot() {
+    final used = _customProfiles.map((p) => p.storageKey).toSet();
+    for (final slot in CustomProfile.slotKeys) {
+      if (!used.contains(slot)) return slot;
+    }
+
+    return null;
+  }
+
+  /// Upserts a custom profile by its [CustomProfile.storageKey].
+  Future<void> saveCustomProfile(CustomProfile profile) async {
+    final prefs = _requirePrefs();
+    if (!CustomProfile.slotKeys.contains(profile.storageKey)) {
+      throw ArgumentError(
+        'Invalid custom profile slot key: ${profile.storageKey}',
+      );
+    }
+    if (profile.name.trim().isEmpty) {
+      throw ArgumentError('Custom profile name cannot be empty');
+    }
+    if (profile.userPrompt.trim().isEmpty) {
+      throw ArgumentError('Custom profile prompt cannot be empty');
+    }
+    if (profile.userPrompt.length > AppConstants.customProfileMaxPromptLength) {
+      throw ArgumentError('Custom profile prompt exceeds max length');
+    }
+
+    final index = _customProfiles.indexWhere(
+      (p) => p.storageKey == profile.storageKey,
+    );
+    if (index >= 0) {
+      _customProfiles[index] = profile;
+    } else {
+      _customProfiles.add(profile);
+    }
+
+    await prefs.setString(
+      _keyCustomProfiles,
+      jsonEncode(_customProfiles.map((p) => p.toJson()).toList()),
+    );
+
+    _dictationProfile = _resolveProfile(_dictationProfile.storageKey);
+    notifyListeners();
+    LoggingService().info(
+      'Saved custom profile: ${profile.label} (${profile.storageKey})',
+    );
+  }
+
+  /// Deletes a custom profile by its [storageKey] and frees the slot.
+  /// If the deleted profile was active, resets active profile to [DictationProfile.raw].
+  Future<void> deleteCustomProfile(String storageKey) async {
+    final prefs = _requirePrefs();
+    _customProfiles.removeWhere((p) => p.storageKey == storageKey);
+    await prefs.setString(
+      _keyCustomProfiles,
+      jsonEncode(_customProfiles.map((p) => p.toJson()).toList()),
+    );
+
+    if (_dictationProfile.storageKey == storageKey) {
+      _dictationProfile = DictationProfile.raw;
+      await prefs.setString(
+        _keyDictationProfile,
+        DictationProfile.raw.storageKey,
+      );
+    }
+
+    notifyListeners();
+    LoggingService().info('Deleted custom profile: $storageKey');
+  }
+
+  Future<void> setDictationProfile(DictationProfileSpec profile) async {
+    final prefs = _requirePrefs();
+    final resolved = isGroqMode ? profile : DictationProfile.raw;
+    if (_dictationProfile.storageKey == resolved.storageKey) return;
+
+    _dictationProfile = resolved;
+    await prefs.setString(_keyDictationProfile, resolved.storageKey);
+    notifyListeners();
+    LoggingService().info(
+      'Dictation profile updated to: ${resolved.label} (${resolved.storageKey})',
+    );
   }
 
   SharedPreferences _requirePrefs() {

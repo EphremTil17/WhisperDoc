@@ -43,7 +43,11 @@ void main() {
       // But for API compliance check:
 
       expect(
-        () => service.start(id: testHotkeyId, modifiers: testModifiers, vKey: testVKey),
+        () => service.start(
+          id: testHotkeyId,
+          modifiers: testModifiers,
+          vKey: testVKey,
+        ),
         // Isolate.spawn might fail in some test environments or succeed.
         // We mainly want to ensure the method signature is correct and it compiles.
         // Accepting any result here as we are not testing FFI binding behavior

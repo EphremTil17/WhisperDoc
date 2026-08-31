@@ -357,7 +357,10 @@ void main() {
         svc.forceConnectedForTesting();
         expect(svc.pendingConfigChangeForTesting, isFalse);
 
-        svc.processCloseForTesting(_WebSocketServiceTest.idleEvictionCloseCode, 'No audio activity');
+        svc.processCloseForTesting(
+          _WebSocketServiceTest.idleEvictionCloseCode,
+          'No audio activity',
+        );
         await Future<void>.delayed(Duration.zero);
 
         expect(
@@ -408,7 +411,10 @@ void main() {
         // Drive _handleAuthError via processCloseForTesting with code 1008 and
         // a non-ban message.  _lastHandshakeError is null at this point, so the
         // 1008 branch calls _handleAuthError(reason).
-        svc.processCloseForTesting(_WebSocketServiceTest.unauthorizedCloseCode, 'Unauthorized');
+        svc.processCloseForTesting(
+          _WebSocketServiceTest.unauthorizedCloseCode,
+          'Unauthorized',
+        );
 
         await Future<void>.delayed(Duration.zero);
 

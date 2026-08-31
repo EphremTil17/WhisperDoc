@@ -16,7 +16,7 @@ class AudioService extends ChangeNotifier {
   final AudioRecorder _audioRecorder;
 
   AudioService({AudioRecorder? audioRecorder})
-      : _audioRecorder = audioRecorder ?? AudioRecorder();
+    : _audioRecorder = audioRecorder ?? AudioRecorder();
 
   StreamSubscription<Uint8List>? _recordSubscription;
   final StreamController<Uint8List> _audioStreamController =

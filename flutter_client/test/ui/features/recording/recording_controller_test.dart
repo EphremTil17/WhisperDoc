@@ -1,4 +1,5 @@
 // ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
@@ -9,6 +10,9 @@ import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/services/transcription/groq_transform_service.dart';
+import 'package:flutter_client/services/transcription/groq_error.dart';
+import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 
 class _MockAudioService extends Mock implements AudioService {}
@@ -26,7 +30,14 @@ class _MockAudioCueService extends Mock implements AudioCueService {}
 class _MockGroqTranscriptionService extends Mock
     implements GroqTranscriptionService {}
 
+class _MockGroqTransformService extends Mock implements GroqTransformService {}
+
 void main() {
+  setUpAll(() {
+    registerFallbackValue(DictationProfile.raw);
+    registerFallbackValue(DateTime.now());
+  });
+
   late RecordingController controller;
   late _MockAudioService mockAudioService;
   late _MockWebSocketService mockWsService;
@@ -35,15 +46,24 @@ void main() {
   late _MockSettingsService mockSettingsService;
   late _MockAudioCueService mockAudioCueService;
   late _MockGroqTranscriptionService mockGroqService;
+  late _MockGroqTransformService mockTransformService;
+  late StreamController<Map<String, dynamic>> mockWsMessageController;
+  late void Function() audioStateListener;
 
   setUp(() {
     mockAudioService = _MockAudioService();
+    when(() => mockAudioService.addListener(any())).thenAnswer((inv) {
+      audioStateListener = inv.positionalArguments.first as void Function();
+    });
     mockWsService = _MockWebSocketService();
     mockGroqService = _MockGroqTranscriptionService();
+    mockTransformService = _MockGroqTransformService();
     mockAutomationService = _MockAutomationService();
     mockHistoryService = _MockHistoryService();
     mockSettingsService = _MockSettingsService();
     mockAudioCueService = _MockAudioCueService();
+    mockWsMessageController =
+        StreamController<Map<String, dynamic>>.broadcast();
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
@@ -59,7 +79,18 @@ void main() {
     when(() => mockWsService.hasValidCredentials).thenReturn(true);
     when(() => mockWsService.ensureConnected()).thenAnswer((_) async => true);
     when(() => mockWsService.connect()).thenAnswer((_) async => true);
-    when(() => mockWsService.onMessage).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockWsService.onMessage,
+    ).thenAnswer((_) => mockWsMessageController.stream);
+    when(
+      () => mockAutomationService.runAutomation(any()),
+    ).thenAnswer((_) async {});
+    when(
+      () => mockHistoryService.saveTranscription(
+        text: any(named: 'text'),
+        timestamp: any(named: 'timestamp'),
+      ),
+    ).thenAnswer((_) async {});
     when(() => mockHistoryService.getHistory()).thenAnswer((_) async => []);
     when(() => mockHistoryService.clearAll()).thenAnswer((_) async {});
     when(() => mockSettingsService.incognitoMode).thenReturn(false);
@@ -75,6 +106,9 @@ void main() {
     ).thenAnswer((_) => const Stream<double>.empty());
     // Groq mode defaults to off (backend mode)
     when(() => mockSettingsService.isGroqMode).thenReturn(false);
+    when(
+      () => mockSettingsService.dictationProfile,
+    ).thenReturn(DictationProfile.raw);
     when(() => mockGroqService.hasValidCredentials).thenReturn(false);
     when(() => mockGroqService.status).thenReturn(GroqTranscriptionStatus.idle);
     when(() => mockGroqService.addListener(any())).thenReturn(null);
@@ -84,11 +118,16 @@ void main() {
       audioService: mockAudioService,
       wsService: mockWsService,
       groqService: mockGroqService,
+      transformService: mockTransformService,
       automationService: mockAutomationService,
       historyService: mockHistoryService,
       settingsService: mockSettingsService,
       audioCueService: mockAudioCueService,
     );
+  });
+
+  tearDown(() async {
+    await mockWsMessageController.close();
   });
 
   group('Incognito Mode', () {
@@ -356,6 +395,212 @@ void main() {
       verify(
         () => mockAudioService.evaluateInputStatus(targetDeviceId: 'mic-123'),
       ).called(1);
+    });
+  });
+
+  group('Dictation Profile Transformation', () {
+    setUp(() {
+      when(() => mockSettingsService.isGroqMode).thenReturn(true);
+    });
+
+    test(
+      'raw profile bypasses transform service and pastes raw text directly',
+      () async {
+        when(
+          () => mockSettingsService.dictationProfile,
+        ).thenReturn(DictationProfile.raw);
+
+        mockWsMessageController.add({
+          'event': 'transcription',
+          'text': 'Raw unpolished transcription.',
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        verifyNever(() => mockTransformService.transform(any(), any()));
+        verify(
+          () => mockAutomationService.runAutomation(
+            'Raw unpolished transcription.',
+          ),
+        ).called(1);
+        verify(
+          () => mockHistoryService.saveTranscription(
+            text: 'Raw unpolished transcription.',
+            timestamp: any(named: 'timestamp'),
+          ),
+        ).called(1);
+        expect(controller.currentText, 'Raw unpolished transcription.');
+      },
+    );
+
+    test(
+      'clean profile invokes transform service and pastes polished text',
+      () async {
+        when(
+          () => mockSettingsService.dictationProfile,
+        ).thenReturn(DictationProfile.clean);
+        when(
+          () => mockTransformService.transform(
+            'um raw transcription with fillers you know',
+            DictationProfile.clean,
+          ),
+        ).thenAnswer((_) async => 'Clean transcription without fillers.');
+
+        mockWsMessageController.add({
+          'event': 'transcription',
+          'text': 'um raw transcription with fillers you know',
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        verify(
+          () => mockTransformService.transform(
+            'um raw transcription with fillers you know',
+            DictationProfile.clean,
+          ),
+        ).called(1);
+        verify(
+          () => mockAutomationService.runAutomation(
+            'Clean transcription without fillers.',
+          ),
+        ).called(1);
+        verify(
+          () => mockHistoryService.saveTranscription(
+            text: 'Clean transcription without fillers.',
+            timestamp: any(named: 'timestamp'),
+          ),
+        ).called(1);
+        expect(controller.currentText, 'Clean transcription without fillers.');
+        expect(controller.isTranscribing, isFalse);
+      },
+    );
+
+    test(
+      'GroqError in transform fails open to raw text and emits error stream',
+      () async {
+        when(
+          () => mockSettingsService.dictationProfile,
+        ).thenReturn(DictationProfile.clean);
+        when(() => mockTransformService.transform(any(), any())).thenThrow(
+          const GroqError(
+            type: GroqErrorType.rateLimited,
+            message: 'Rate limit hit',
+          ),
+        );
+
+        String? emittedError;
+        final sub = controller.onError.listen((e) => emittedError = e);
+
+        mockWsMessageController.add({
+          'event': 'transcription',
+          'text': 'Raw text fallback.',
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Fails open: pastes raw text
+        verify(
+          () => mockAutomationService.runAutomation('Raw text fallback.'),
+        ).called(1);
+        verify(
+          () => mockHistoryService.saveTranscription(
+            text: 'Raw text fallback.',
+            timestamp: any(named: 'timestamp'),
+          ),
+        ).called(1);
+
+        expect(emittedError, isNotNull);
+        expect(
+          emittedError,
+          contains('Clean polish unavailable, pasted raw text'),
+        );
+        expect(controller.isTranscribing, isFalse);
+
+        await sub.cancel();
+      },
+    );
+
+    test(
+      'isTranscribing lockout prevents startRecording during transform',
+      () async {
+        when(
+          () => mockSettingsService.dictationProfile,
+        ).thenReturn(DictationProfile.clean);
+
+        final completer = Completer<String>();
+        when(
+          () => mockTransformService.transform(any(), any()),
+        ).thenAnswer((_) => completer.future);
+
+        mockWsMessageController.add({
+          'event': 'transcription',
+          'text': 'Transcript in progress.',
+        });
+
+        // Pump microtasks so finishRecordingSession starts and sets isTranscribing = true
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(controller.isTranscribing, isTrue);
+
+        // Attempt to start recording during the in-flight transform
+        await controller.startRecording();
+
+        // AudioService.startRecording must NOT be called due to the lockout
+        verifyNever(
+          () => mockAudioService.startRecording(
+            deviceId: any(named: 'deviceId'),
+            deviceLabel: any(named: 'deviceLabel'),
+          ),
+        );
+
+        // Complete the transform
+        completer.complete('Finished transformed text.');
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(controller.isTranscribing, isFalse);
+        verify(
+          () =>
+              mockAutomationService.runAutomation('Finished transformed text.'),
+        ).called(1);
+      },
+    );
+
+    test('isSessionActive reflects recording state transition', () {
+      expect(controller.isSessionActive, isFalse);
+
+      // Start recording via audio state notification
+      when(() => mockAudioService.isRecording).thenReturn(true);
+      audioStateListener();
+      expect(controller.isRecording, isTrue);
+      expect(controller.isSessionActive, isTrue);
+
+      // Stop recording via audio state notification
+      when(() => mockAudioService.isRecording).thenReturn(false);
+      audioStateListener();
+      expect(controller.isRecording, isFalse);
+    });
+
+    test('isSessionActive reflects transcribing lifecycle', () async {
+      final completer = Completer<String>();
+      when(
+        () => mockSettingsService.dictationProfile,
+      ).thenReturn(DictationProfile.clean);
+      when(
+        () => mockTransformService.transform(any(), any()),
+      ).thenAnswer((_) => completer.future);
+
+      mockWsMessageController.add({
+        'event': 'transcription',
+        'text': 'Processing transcript',
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(controller.isTranscribing, isTrue);
+      expect(controller.isSessionActive, isTrue);
+
+      completer.complete('Done');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(controller.isTranscribing, isFalse);
     });
   });
 }
