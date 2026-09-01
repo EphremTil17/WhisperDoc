@@ -62,8 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final lowerError = error.toLowerCase();
 
       // 1. Prioritize Ban Awareness (Overlay handles this)
-      if (context.read<WebSocketService>().status == ConnectionStatus.banned ||
-          lowerError.contains('ban')) {
+      if (context.read<WebSocketService>().status == ConnectionStatus.banned) {
         return;
       }
 

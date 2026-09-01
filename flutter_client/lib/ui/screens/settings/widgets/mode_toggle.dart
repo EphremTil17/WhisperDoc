@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
-import 'package:flutter_client/ui/screens/settings/widgets/mode_toggle_chip.dart';
+import 'package:flutter_client/ui/shared/widgets/mode_toggle_chip.dart';
 
 class ModeToggle extends StatelessWidget {
   const ModeToggle({

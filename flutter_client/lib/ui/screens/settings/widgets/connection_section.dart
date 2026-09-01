@@ -30,7 +30,7 @@ class ConnectionSection extends StatelessWidget {
     final settings = context.watch<SettingsService>();
     final controller = context.watch<RecordingController>();
     final isGroqMode = settings.isGroqMode;
-    final sessionActive = controller.isRecording || controller.isTranscribing;
+    final sessionActive = controller.isSessionActive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

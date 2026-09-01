@@ -71,11 +71,14 @@ class RecordingView extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         if (controller.isTranscribing)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              'Transcribing via Groq Cloud...',
-              style: TextStyle(
+              (settings.dictationProfile.requiresLlm &&
+                      controller.currentText.isNotEmpty)
+                  ? 'Polishing (${settings.dictationProfile.label})...'
+                  : 'Transcribing via Groq Cloud...',
+              style: const TextStyle(
                 color: Colors.blueAccent,
                 fontSize: _statusFontSize,
                 fontWeight: FontWeight.w500,
