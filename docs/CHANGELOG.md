@@ -1,5 +1,17 @@
 # WhisperDoc Technical Changelog
 
+## [3.0.0] - 2026-09-05
+### Client-Edge Dictation Profiles & LLM Transformation Subsystem
+- **Zero-Backend Transformation Engine**: Added `GroqTransformService` and `GroqChatClient` executing client-side post-processing rewrites via Groq's high-speed `qwen/qwen3.8-27b` (~260ms latency, zero reasoning tokens).
+- **Polymorphic Profile Architecture**: Introduced `DictationProfileSpec` interface implemented by both built-in `DictationProfile` enum (**Raw**, **Clean**, **Pro**, **Casual**, **Tech**) and dynamic `CustomProfile` models.
+- **Custom Profile Management & In-Menu Editor**: Implemented up to 3 user-defined custom profiles (`custom1..3`) with sequential default naming (`Custom 1..3`), user renaming, 2,000 character prompt cap, automatic safety preamble composition, and an in-menu modal prompt editor (`ProfileEditorDialog` using `GlassDialog`).
+- **Truncation Detection & Guarding**: Added `finishReason` parsing to `GroqChatClient` and hard rejection for `finish_reason == 'length'` in `GroqTransformService` to prevent partial sentence pasting.
+- **Uniform Recording Session Lockout**: Replaced per-widget locking with centralized `_LockableControl` in `ActionBar` dimming (0.35 opacity) and blocking pointer events on all six secondary controls during `RecordingController.isSessionActive`, while keeping the silence warning button and primary recording controls 100% interactive.
+- **Fail-Open Zero-Delay SLA**: Built-in instant fallback to raw transcription on timeouts, rate limits, empty prompts, truncation, or network errors to ensure user typing is never stalled.
+- **Adaptive Timeout & Token Scaling**: Implemented input-scaled timeout scaling $\text{clamp}(1500\text{ms} + 25\text{ms} \times \text{wordCount}, 1.5\text{s}, 8\text{s})$ and completion token sizing.
+- **Guard Normalization**: Added `TransformOutputGuard` stripping `<think>` tags, code fences, and normalizing curly/em-dash typography to ASCII equivalents before `TextSanitizer`.
+- **UI Glassmorphism Integration**: Added `ProfileActionButton` popup vertical overlay menu, removed superseded `ProfileSelectorChips`, and updated `ActionBar` Incognito tooltip to `"Incognito (Local Only)"` when cloud paths are active.
+
 ## [2.25.2] - 2026-08-17
 ### Architecture & Subsystem Isolation
 - **NeMo to Native `parakeet.cpp` Sidecar Migration**: Replaced the in-process Python `nemo_toolkit[asr]` engine with an isolated native C++ `parakeet-server` (ggml/CUDA) container communicating over local HTTP.

@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v2.25.2
+# WhisperDoc Flutter Client v3.0.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
 
@@ -26,19 +26,21 @@ The client follows a **Smart Modular Architecture** designed for high scalabilit
 
 ```
 lib/
-├── controllers/      # State orchestration (RecordingController)
+├── controllers/      # State orchestration (RecordingController, ProfileController)
 ├── infrastructure/   # System foundations (DI, Theme, Constants)
 ├── logic/            # Pure domain logic (Processors, Mappers, Models)
+│   ├── models/       # DictationProfileSpec, DictationProfile, CustomProfile, HistoryEntry
+│   └── processors/   # TransformOutputGuard, TextSanitizer, AudioSignalProcessor
 ├── services/         # Functional domain specialized services
 │   ├── auth/         # OIDC & Session management
 │   ├── hardware/     # Audio capture & Hotkey listeners
-│   ├── transcription/# Groq Cloud direct transcription engine
+│   ├── transcription/# Groq Cloud STT and LLM post-processing transformation
 │   ├── transport/    # WebSocket orchestration & Handshake
 │   └── utility/      # Logging, Secure Vault, Settings
 ├── ui/               # Presentation layer
-│   ├── features/     # Feature modules (recording, settings)
-│   ├── screens/      # Main screens & contextual dialogs
-│   └── shared/       # Global widgets & theme tokens
+│   ├── features/     # Feature modules (recording)
+│   ├── screens/      # Main screens & contextual dialogs (ProfileEditorDialog)
+│   └── shared/       # Global widgets & theme tokens (ActionBar, GlassDialog)
 └── main.dart         # Clean entry point with service bootstrap
 ```
 
@@ -63,6 +65,7 @@ lib/
 | Native APIs      | Win32 via ffi/win32 packages     |
 | Encryption       | encrypt (AES/CBC)                |
 
+- **Client-Edge Dictation Profiles & Custom LLM Prompts**: Built-in factory standards (**Raw**, **Clean Polish**, **Professional**, **Casual**, **Technical**) and up to three user-authored **Custom Profiles** (`CustomProfile` implementing `DictationProfileSpec`). Features an in-menu modal editor (`ProfileEditorDialog` on `GlassDialog`) with sequential default naming (`Custom 1..3`), user renaming, a 2,000 character cap, automatic safety preamble prepending, and length-based truncation rejection. Secondary controls are uniformly locked during active recording.
 - **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API with local WAV encoding, client-side rate-limit tracking, language validation, and a conservative 24 MB (~12.5 min) buffer guard. Switch between WhisperDoc backend and Groq Cloud from the Connection toggle in Settings.
 - **Instantaneous Connection**: Implements a "Zero-Latency" recording flow. Audio capture and UI feedback initiate instantly while the WebSocket handshake completes in parallel.
 - **Background Auto-Wake**: The transport layer automatically resumes connectivity when a recording is initiated, removing the need for manual connection management.
@@ -101,15 +104,15 @@ lib/
    # Templatized production build command:
    flutter build windows --release --build-name=<version> --build-number=<build_number> --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
 
-   # Example for current v2.25.2 release:
-   flutter build windows --release --build-name=2.25.2 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
+   # Example for current v3.0.0 release:
+   flutter build windows --release --build-name=3.0.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
    ```
 
 5. **Package Windows Installer**
    ```powershell
    # Compile setup executable with Inno Setup and copy to release distribution folder:
    & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\whisperdoc_setup.iss
-   Copy-Item windows\installer\WhisperDoc_Setup_v2.25.2.exe ..\win_x64_release\
+   Copy-Item windows\installer\WhisperDoc_Setup_v3.0.0.exe ..\win_x64_release\
    ```
 
 ## Configuration

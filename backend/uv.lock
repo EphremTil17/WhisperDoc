@@ -1365,7 +1365,7 @@ wheels = [
 
 [[package]]
 name = "whisperdoc-backend"
-version = "2.25.2"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },

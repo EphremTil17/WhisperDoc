@@ -16,7 +16,7 @@ colorama.init()
 
 SERVICE_NAME = "WhisperDoc_Client"
 ENV_PATH = Path(".env")
-DEFAULT_VERSION = "2.25.2"
+DEFAULT_VERSION = "3.0.0"
 
 
 def _parse_optional_int(value: str | None) -> int | None:

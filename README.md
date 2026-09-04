@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v2.25.2
+# WhisperDoc - Speech-to-Text System v3.0.0
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -267,11 +267,12 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v2.25.2
+### Flutter Client (Windows) v3.0.0
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
-- **Standalone Release Package**: Verified 64-bit production distribution installer packaged with Inno Setup ([win_x64_release/WhisperDoc_Setup_v2.25.2.exe](win_x64_release/WhisperDoc_Setup_v2.25.2.exe)).
+- **Standalone Release Package**: Verified 64-bit production distribution installer packaged with Inno Setup ([win_x64_release/WhisperDoc_Setup_v3.0.0.exe](win_x64_release/WhisperDoc_Setup_v3.0.0.exe)).
+- **Client-Edge Dictation Profiles & LLM Transformation**: Contextual post-processing rewrites (Raw, Clean Polish, Professional, Casual, Technical) powered by high-speed Groq `qwen/qwen3.8-27b` inference (~260ms latency, zero CoT tokens). Works across both WhisperDoc backend and Groq transcription modes with fail-open fallback, ASCII typographic normalization, input-scaled timeouts, and zero-stalling latency SLA.
 - **Groq Cloud Direct Transcription**: Backend-independent speech-to-text with runtime model selection between `whisper-large-v3-turbo` (lowest latency) and `whisper-large-v3` (maximum depth and verbatim accuracy). Works as a standalone fallback when the backend is down, under maintenance, or by user preference. Free-tier compliant with local rate-limit tracking and conservative buffer guards.
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
 - **Enterprise Security**: Windows Credential Manager enclave storage, Encrypted local history (AES-256), and automated JWT expiry warnings.
@@ -280,9 +281,9 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 - **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction (Local Only in Groq mode).
 - **Verification Suite**: Bundled security tests validating PKCE cryptographic integrity and state-parameter protection.
 
-📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v2.25.2.md)**
+📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v3.0.0.md)**
 
-### Python Terminal Client v2.25.2
+### Python Terminal Client v3.0.0
 
 A secure, modular, and production-ready Windows terminal client for high-performance dictation.
 
