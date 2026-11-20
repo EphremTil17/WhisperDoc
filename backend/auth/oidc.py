@@ -5,6 +5,7 @@ Handles OpenID Connect provider discovery, JWKS caching, and JWT validation
 
 import json
 import os
+import threading
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -110,12 +111,16 @@ if OIDC_ISSUER_URL and not _validate_oidc_url(OIDC_ISSUER_URL):
     log.warning("OIDC configuration invalid. OIDC authentication disabled.")
     OIDC_ISSUER_URL = ""
 
-# OIDC caches (thread-safe, TTL-based)
+# OIDC caches (TTL-based). TTLCache is not thread-safe, and validation runs in
+# worker threads (asyncio.to_thread, FastAPI's threadpool), so all access goes
+# through _cache_lock. Holding it across the fetch also collapses concurrent
+# cache misses into one network request. Re-entrant: fetch_jwks needs the config.
 _oidc_config_cache: TTLCache = TTLCache(maxsize=1, ttl=OIDC_CONFIG_CACHE_SECONDS)
 _jwks_cache: TTLCache = TTLCache(maxsize=10, ttl=OIDC_JWKS_CACHE_SECONDS)
+_cache_lock = threading.RLock()
 
 
-def fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
+def _fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
     """
     Fetches OIDC provider configuration from .well-known/openid-configuration.
     Uses module-level cache to avoid repeated network calls.
@@ -163,7 +168,7 @@ def fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
         return None
 
 
-def fetch_jwks() -> Optional[Dict[str, Any]]:
+def _fetch_jwks() -> Optional[Dict[str, Any]]:
     """
     Fetches JWKS (JSON Web Key Set) from the OIDC provider.
     Uses TTL cache to minimize network requests.
@@ -195,6 +200,18 @@ def fetch_jwks() -> Optional[Dict[str, Any]]:
     except Exception as e:
         log.error(f"Failed to fetch JWKS: {e}")
         return None
+
+
+def fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
+    """Thread-safe, cached OIDC discovery document (see _cache_lock)."""
+    with _cache_lock:
+        return _fetch_oidc_configuration()
+
+
+def fetch_jwks() -> Optional[Dict[str, Any]]:
+    """Thread-safe, cached JWKS (see _cache_lock)."""
+    with _cache_lock:
+        return _fetch_jwks()
 
 
 def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:

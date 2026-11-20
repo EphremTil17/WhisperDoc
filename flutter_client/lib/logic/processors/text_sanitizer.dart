@@ -1,43 +1,29 @@
 /// Client-side output sanitizer for transcription text.
 ///
 /// Mirrors the backend's `Sanitizer.sanitize()` (security/sanitizer.py) to
-/// neutralize control characters, ANSI escape sequences, and non-printable
-/// characters that could be injected into terminals or focused applications
-/// via the clipboard/paste automation path.
+/// neutralize ANSI escape sequences and control characters that could be
+/// injected into terminals or focused applications via the clipboard/paste
+/// automation path. Printable Unicode (accents, symbols, non-Latin scripts) is
+/// preserved: it cannot drive a terminal, and stripping it corrupts dictation.
 ///
-/// This is critical for the Groq Cloud path which bypasses the backend
-/// sanitizer entirely. The backend path is already sanitized server-side,
-/// but applying this client-side is harmless (idempotent on clean text)
-/// and provides defense-in-depth.
+/// This is critical for the Groq Cloud path, which bypasses the backend
+/// sanitizer entirely. On the backend path it is idempotent defense-in-depth.
 class TextSanitizer {
   // ANSI CSI sequences (colors, cursor moves) and OSC title sequences.
   static final RegExp _ansiEscapeRegex = RegExp(
     r'\x1b\[[0-9;]*[mGKH]|\x1b\]0;.*?\x07',
   );
 
-  // Whitelist: printable ASCII (\x20-\x7E) + safe whitespace (\n, \r, \t).
-  // Everything else (ANSI \x1b, null \x00, other control chars < \x20) is stripped.
-  static final RegExp _nonPrintableRegex = RegExp(r'[^\x20-\x7E\n\r\t]');
+  // C0 controls (except \t \n \r), DEL, and C1 controls. ESC (\x1b) and the
+  // 8-bit CSI introducer (\x9b) are covered, so any escape sequence the ANSI
+  // pattern misses is still rendered inert.
+  static final RegExp _controlCharRegex = RegExp(
+    r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]',
+  );
 
-  /// Strips ANSI escapes and non-printable characters from [text].
-  ///
-  /// Returns empty string on null/empty input or if sanitization fails
-  /// (fail-secure). Idempotent on already-clean text.
-  static String sanitize(String text) {
-    if (text.isEmpty) return '';
-
-    try {
-      // 1. Strip ANSI escape sequences explicitly.
-      var cleaned = text.replaceAll(_ansiEscapeRegex, '');
-
-      // 2. Apply strict whitelist (printable ASCII + safe whitespace).
-      cleaned = cleaned.replaceAll(_nonPrintableRegex, '');
-
-      // 3. Final trim.
-      return cleaned.trim();
-    } catch (_) {
-      // Fail-secure: return empty if processing fails.
-      return '';
-    }
-  }
+  /// Strips ANSI escapes and control characters from [text], then trims.
+  static String sanitize(String text) => text
+      .replaceAll(_ansiEscapeRegex, '')
+      .replaceAll(_controlCharRegex, '')
+      .trim();
 }

@@ -513,11 +513,16 @@ class ConnectionManager:
         connection_data: Dict[str, Any],
         conn_id: str,
     ) -> str | None:
-        """Validate credentials and return user_id, or reject and return None."""
+        """Validate credentials and return user_id, or reject and return None.
+
+        Validation can fetch discovery/JWKS over the network (up to the request
+        timeout on a cache miss or IdP outage), so it runs in a worker thread
+        rather than stalling every connection on the event loop.
+        """
         if auth_type == "oidc":
             from auth.oidc import validate_oidc_token
 
-            payload = validate_oidc_token(token)
+            payload = await asyncio.to_thread(validate_oidc_token, token)
             if not payload:
                 log.warning(f"[{conn_id}] OIDC Authentication Failed.")
                 await self._reject(
@@ -545,8 +550,8 @@ class ConnectionManager:
                 log.info(f"[{conn_id}] OIDC verified for sub={user_sub}")
             return user_sub
 
-        # Fallback to static API key validation
-        if not validate_token(token):
+        # Fallback to static API key validation (may also try OIDC for JWTs)
+        if not await asyncio.to_thread(validate_token, token):
             log.warning(f"[{conn_id}] API Key Authentication Failed.")
             await self._reject(
                 websocket,

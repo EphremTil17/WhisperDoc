@@ -28,9 +28,11 @@ class AutomationService {
 
     try {
       if (_settingsService.autoCopy) {
-        await ClipboardService.copyToClipboard(text);
+        final copied = await ClipboardService.copyToClipboard(text);
 
-        if (_settingsService.autoPaste) {
+        // Pasting after a failed copy would paste whatever the clipboard
+        // already held (possibly a password), not the transcription.
+        if (copied && _settingsService.autoPaste) {
           await ClipboardService.simulatePaste();
         }
       }

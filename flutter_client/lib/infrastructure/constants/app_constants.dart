@@ -23,6 +23,11 @@ class AppConstants {
   /// Idle timeout before closing the WebSocket connection to save resources.
   static const Duration wsIdleTimeout = Duration(minutes: 5);
 
+  /// Upper bound for opening the socket. Without it a black-holed tunnel
+  /// holds `_isConnecting` for the full OS TCP timeout, blocking retries and
+  /// the recording path's `ensureConnected()`.
+  static const Duration wsConnectTimeout = Duration(seconds: 10);
+
   /// Maximum delay between reconnection attempts (exponential backoff cap).
   static const Duration wsMaxReconnectDelay = Duration(seconds: 30);
 

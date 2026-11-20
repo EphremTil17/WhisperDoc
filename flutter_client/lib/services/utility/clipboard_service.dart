@@ -15,8 +15,10 @@ class ClipboardService {
   static const _vUpIndex = 2;
   static const _ctrlUpIndex = 3;
 
-  static Future<void> copyToClipboard(String text) async {
-    if (text.isEmpty) return;
+  /// Places [text] on the clipboard. Returns whether it actually landed there,
+  /// so callers never paste stale clipboard contents after a failed copy.
+  static Future<bool> copyToClipboard(String text) async {
+    if (text.isEmpty) return false;
 
     // Use Win32 API directly for reliability
     final units = text.codeUnits;
@@ -24,13 +26,13 @@ class ClipboardService {
         (units.length + 1) * _utf16BytesPerUnit; // UTF-16 + null terminator
 
     final hMem = GlobalAlloc(GMEM_MOVEABLE, size);
-    if (hMem == nullptr) return;
+    if (hMem == nullptr) return false;
 
     final pMem = GlobalLock(hMem);
     if (pMem == nullptr) {
       GlobalFree(hMem);
 
-      return;
+      return false;
     }
 
     final ptr = pMem.cast<Uint16>();
@@ -46,10 +48,10 @@ class ClipboardService {
     for (var i = 0; i < _clipboardRetryCount; i++) {
       if (OpenClipboard(0) != 0) {
         EmptyClipboard();
-        // win32 v5.x SetClipboardData expects int (handle address), not Pointer
-        SetClipboardData(CF_UNICODETEXT, hMem.address);
+        // win32 v5.x SetClipboardData expects int (handle address), not Pointer.
+        // On success the system owns hMem; on failure it is still ours.
+        success = SetClipboardData(CF_UNICODETEXT, hMem.address) != 0;
         CloseClipboard();
-        success = true;
         break;
       }
       await Future.delayed(
@@ -64,8 +66,10 @@ class ClipboardService {
       );
     } else {
       GlobalFree(hMem);
-      LoggingService().error('Failed to open clipboard', sendToServer: false);
+      LoggingService().error('Failed to set clipboard', sendToServer: false);
     }
+
+    return success;
   }
 
   /// Simulates Ctrl+V on Windows using scan codes to avoid Flutter's

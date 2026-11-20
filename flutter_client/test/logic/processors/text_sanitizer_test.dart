@@ -52,6 +52,22 @@ void main() {
       expect(TextSanitizer.sanitize(TextSanitizer.sanitize(clean)), clean);
     });
 
+    test('preserves printable Unicode in dictated text', () {
+      const samples = [
+        'José ordered a café au lait',
+        'naïve résumé — “quoted”',
+        'It costs €20 at 25°C',
+        'Ünïcödé Ελληνικά 日本語',
+      ];
+      for (final text in samples) {
+        expect(TextSanitizer.sanitize(text), text);
+      }
+    });
+
+    test('strips C1 controls including the 8-bit CSI introducer', () {
+      expect(TextSanitizer.sanitize('c1\x9b31m csi'), 'c131m csi');
+    });
+
     test('handles mixed ANSI and control characters', () {
       expect(
         TextSanitizer.sanitize('\x1b[32m\x00safe\x01 text\x1b[0m'),

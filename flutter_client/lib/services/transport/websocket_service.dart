@@ -4,6 +4,7 @@ import 'dart:io' show WebSocket;
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transport/transport_security_service.dart';
@@ -183,12 +184,11 @@ class WebSocketService extends ChangeNotifier {
       // terminal client does under the same tunnel.
       final socket = await WebSocket.connect(
         _transportSecurity.normalizeUri(uriString),
-      );
+      ).timeout(AppConstants.wsConnectTimeout);
       socket.pingInterval = const Duration(seconds: 30);
-      _channel = IOWebSocketChannel(socket);
-      final ch = _channel;
-      if (ch == null) throw Exception('Channel not initialized');
-      await ch.ready;
+      // The socket is already open, so the channel is ready immediately.
+      final ch = IOWebSocketChannel(socket);
+      _channel = ch;
 
       ch.stream.listen(
         _handleRawMessage,
