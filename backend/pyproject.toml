@@ -102,5 +102,10 @@ exclude = [
 select = ["E", "F", "I"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+# Explicit because pre-commit runs ruff from the repo root with --config, and
+# ruff then resolves first-party detection against the CWD, not backend/.
+known-first-party = ["api_server", "auth", "engine", "logging_config", "protocol", "security", "tests", "tools"]
+
 [tool.ruff.lint.per-file-ignores]
 "api_server.py" = ["E402"]

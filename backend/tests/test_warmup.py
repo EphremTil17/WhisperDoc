@@ -3,6 +3,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from engine.model_manager import ModelManager
 from protocol.websocket_handler import ConnectionManager
 

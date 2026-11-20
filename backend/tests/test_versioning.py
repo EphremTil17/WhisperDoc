@@ -3,8 +3,9 @@ import importlib
 import os
 from unittest import mock
 
-import api_server
 import pytest
+
+import api_server
 
 
 def test_version_from_env_var():

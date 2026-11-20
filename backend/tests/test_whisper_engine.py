@@ -13,6 +13,7 @@ dependencies. Verifies:
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from engine.base_engine import SegmentResult, TranscriptionResult
 from engine.whisper_engine import WhisperEngine
 

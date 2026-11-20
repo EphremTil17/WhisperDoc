@@ -77,9 +77,7 @@ def test_perform_preflight_check_against_workspace():
         assert len(content) > 0
 
 
-def test_bump_manifest_accumulates_rules_and_preserves_crlf(
-    tmp_path, monkeypatch
-):
+def test_bump_manifest_accumulates_rules_and_preserves_crlf(tmp_path, monkeypatch):
     target = tmp_path / "version.txt"
     target.write_bytes(b"Product: 1.0.0\r\nClient: 1.0.0\r\n")
     rules = [
