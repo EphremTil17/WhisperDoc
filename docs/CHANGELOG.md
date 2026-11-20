@@ -1,5 +1,42 @@
 # WhisperDoc Technical Changelog
 
+## [3.1.0] - 2026-11-19
+### Security Hardening
+- **Dependabot Remediation**: Patched all 44 open advisories (39 backend, 5 terminal client), including 15 PyJWT advisories, with lock refreshes plus GHSA-annotated `constraint-dependencies` floors so a future re-resolve cannot regress. An OSV scan of `flutter_client/pubspec.lock` found nothing.
+- **X-Forwarded-For Spoofing Closed**: Replaced uvicorn `--forwarded-allow-ips='*'` with `FORWARDED_ALLOW_IPS=172.16.0.0/12,192.168.0.0/16`, so IP bans and flood tracking key on the real client address.
+- **Pre-Parse Upload Guard**: `POST /transcribe` checks the bearer token, `Content-Length` presence, and a 25 MB cap in HTTP middleware (401 / 411 / 413) before the multipart body is read. ffmpeg runs with `-nostdin`, `FFMPEG_TIMEOUT_SECONDS`, and a duration cap.
+- **HTTP Output Parity**: `/transcribe` shares the per-user semaphore and the WebSocket sanitizer (`sanitized_segments`), logs only character counts, and masks internal errors behind a reference id.
+- **Attack Surface Removal**: Removed the `POST /log` endpoint and the unused `verify_api_key` dependency.
+- **OIDC Key Rotation**: An unknown `kid` triggers one JWKS refetch, rate-limited to once per 60 s. Discovery/JWKS caches are guarded by an `RLock`, and validation runs via `asyncio.to_thread` so the event loop never blocks on the identity provider.
+- **Unicode-Preserving Sanitizers**: Backend, Flutter, and terminal sanitizers replace the printable-ASCII whitelist with an ANSI + C0/C1 control-character blacklist. Backend sanitization is gated by `SANITIZE_TRANSCRIPTS`.
+- **Safe Auto-Paste**: The Flutter client checks `SetClipboardData` and pastes only after a successful copy.
+
+### Reliability
+- **Flutter Startup**: Hidden-window configuration, immediate `runApp()`, and a `BootScreen` first frame remove the white flash and the rare frozen white window. Session restore is network-free, OIDC requests time out after 10 s, sign-out happens only on `OidcRejectedException` (400/401), and PBKDF2 runs on a worker isolate.
+- **Microphone Hot-Plug**: The native `IMMNotificationClient` (`audio_device_watcher.cpp`) pushes coalesced Core Audio events over `whisperdoc/audio_devices`. Enumeration failures map to `unknown` instead of a sticky `noDevice`, and unavailable selections fall back to the default device.
+- **Recording Races**: Start/stop re-entry guards stop duplicate capture streams and double upload-and-paste.
+- **Structured Error Routing**: The Flutter client classifies session-ending errors by `error_code`, so the NO_AUDIO hint now fires and operational errors mentioning "Auth" no longer drop the session.
+- **Backend Lifecycles**: `ConnectionManager.start()`/`stop()` are owned by the lifespan, concurrent handshakes share one warmup task, the Whisper idle monitor runs on a daemon thread, and expired IP bans are pruned periodically. Startup failures re-raise so the restart policy recovers, and `/health` no longer fails on idle unload.
+- **Terminal Client Lifecycle**: A single idle watchdog ignores keepalive traffic, backoff resets only after authentication, there is no auto-reconnect after idle eviction or `AUTH_FAILED`, teardown no longer cancels itself, connects are serialized, and utterances finish in order (flush, then end-of-stream) through per-session capture queues. The version now comes from package metadata.
+
+### Performance & Cleanup
+- **Torch Removed**: Dropped CPU-only PyTorch and orjson from the backend. The Whisper image shrank from 5.23 GB to 4.3 GB.
+- **Narrow UI Rebuilds**: `context.select`/`Selector` scoping, one-time history decryption, shared styles, and a fix for the pulse-animation smear.
+- **Dead Code Purge**: Removed client-to-server log forwarding, unused widgets, getters, and constants, and the `whisper_client.py` shim. History is pruned to 100 entries.
+
+### Infrastructure & Tooling
+- **Compose Service Rename**: `whisper-backend` became `backend`, and `COMPOSE_PROFILES` is derived from `ASR_ENGINE`. Docker healthcheck runs every 30 s with a 180 s start period.
+- **Lint Determinism**: ruff `known-first-party` makes import grouping independent of the working directory.
+- **CI/CD**: GitHub Actions run every pre-commit hook; backend pyright and pytest plus a Docker end-to-end test of the Whisper image (CPU, `tiny.en`, production isolation flags, live API and WebSocket tests); terminal client and Flutter checks on Windows; and a tag-triggered release that builds the obfuscated installer into a draft GitHub Release. Actions are pinned to commit SHAs and kept current by Dependabot.
+- **Version Drift Gate**: `bump_version.py --check` fails when any managed file disagrees with the backend version. It runs in pre-commit and before every release build.
+
+### Verification & Quality Gates
+- **Backend**: 135 passed, 7 skipped; pyright 0 errors; ruff clean. New `test_backend_hardening.py` and `test_sanitizer.py`.
+- **Flutter**: `flutter analyze` clean; 235 tests passing, including new suites for the device monitor, session restore, and error routing.
+- **Terminal Client**: 174 passed; rewritten transport lifecycle, recording-order, and audio-queue suites.
+
+---
+
 ## [3.0.0] - 2026-09-05
 ### Client-Edge Dictation Profiles & LLM Transformation Subsystem
 - **Zero-Backend Transformation Engine**: Added `GroqTransformService` and `GroqChatClient` executing client-side post-processing rewrites via Groq's high-speed `qwen/qwen3.8-27b` (~260ms latency, zero reasoning tokens).

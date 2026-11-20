@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v3.0.0
+# WhisperDoc Flutter Client v3.1.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
 
@@ -18,8 +18,8 @@ The Flutter client has been hardened to match server-side security standards thr
 - **Credential Isolation**: API keys and OIDC JWTs are stored exclusively in the **Windows Credential Manager** (Secure Vault). Sensitive tokens are never written to plain-text configuration files.
 - **Transport Security & RFC 1918**: Mandatory `wss://` (TLS 1.2+) is enforced for all public connections. Plain-text `ws://` is permitted **only** after validating the target as a verified local private network IP (RFC 1918).
 - **Hardened Handshake (Handshake Cage)**: Implements a strict state machine that buffers audio locally and only flushes to the socket _after_ the identity-verified handshake is acknowledged by the backend.
-- **Structured Error Awareness**: Handles all backend `error_code` types alongside numeric `1008` closures. The UI provides real-time "Ban Cooldown" countdowns, version mismatch warnings, and respects server-mandated wait periods.
-- **Data-at-Rest Encryption**: Transcription history is stored in an **AES-256 encrypted Isar database**. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
+- **Structured Error Awareness**: Routes every backend error by its structured `error_code` (never by message text), alongside numeric `1008` closures. The UI provides real-time "Ban Cooldown" countdowns, version mismatch warnings, and respects server-mandated wait periods.
+- **Data-at-Rest Encryption**: Transcription history is stored in a **Drift (SQLite) database with every entry AES-256-GCM encrypted**, pruned to the newest 100 entries. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
 
 The client follows a **Smart Modular Architecture** designed for high scalability and zero-latency performance:
@@ -58,12 +58,12 @@ lib/
 | ---------------- | -------------------------------- |
 | Framework        | Flutter 3.x (Windows)            |
 | State Management | Provider + ChangeNotifier        |
-| Database         | Isar (AES-256 Encrypted)         |
+| Database         | Drift / SQLite (AES-GCM entries) |
 | Secure Storage   | flutter_secure_storage (WinCred) |
 | Networking       | WebSocket (web_socket_channel)   |
 | Cloud STT        | Groq REST API (http)             |
 | Native APIs      | Win32 via ffi/win32 packages     |
-| Encryption       | encrypt (AES/CBC)                |
+| Encryption       | encrypt (AES-256-GCM)            |
 
 - **Client-Edge Dictation Profiles & Custom LLM Prompts**: Built-in factory standards (**Raw**, **Clean Polish**, **Professional**, **Casual**, **Technical**) and up to three user-authored **Custom Profiles** (`CustomProfile` implementing `DictationProfileSpec`). Features an in-menu modal editor (`ProfileEditorDialog` on `GlassDialog`) with sequential default naming (`Custom 1..3`), user renaming, a 2,000 character cap, automatic safety preamble prepending, and length-based truncation rejection. Secondary controls are uniformly locked during active recording.
 - **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API with local WAV encoding, client-side rate-limit tracking, language validation, and a conservative 24 MB (~12.5 min) buffer guard. Switch between WhisperDoc backend and Groq Cloud from the Connection toggle in Settings.
@@ -104,8 +104,8 @@ lib/
    # Templatized production build command:
    flutter build windows --release --build-name=<version> --build-number=<build_number> --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
 
-   # Example for current v3.0.0 release:
-   flutter build windows --release --build-name=3.0.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
+   # Example for current v3.1.0 release:
+   flutter build windows --release --build-name=3.1.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
    ```
 
 5. **Package Windows Installer**
@@ -141,7 +141,27 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v2.24.0)
+## Recent Improvements (v3.1.0)
+
+### Startup, Devices & Session Reliability
+
+- **Boot Screen First Frame**: The window is configured hidden and shown on a branded `BootScreen` frame while services initialize behind it, eliminating the white launch flash and the rare frozen white window. Setup failures are shown instead of hanging.
+- **Offline-Safe Sessions**: Session restore no longer waits on the network. OIDC requests have 10 s timeouts, and the client signs out only when the identity provider definitively rejects the refresh token (HTTP 400/401), never on a network error.
+- **Native Microphone Hot-Plug**: A Win32 `IMMNotificationClient` in the runner pushes Core Audio device events to Dart over `whisperdoc/audio_devices`, so plugging in a microphone recovers immediately with no polling. An unavailable selected device falls back to the system default.
+- **Recording Race Guards**: Overlapping start/stop requests can no longer open a second capture stream or upload and paste the same clip twice.
+
+### Security & Correctness
+
+- **Unicode-Preserving Sanitizer**: `TextSanitizer` strips only ANSI sequences and control characters, so accents, typographic punctuation, and non-Latin scripts survive in both backend and Groq modes.
+- **Safe Paste**: Auto-paste runs only after the clipboard write succeeds, so a locked clipboard can never paste stale contents (such as a password) into the focused window.
+- **`error_code` Routing**: Server errors are classified by `error_code`, so operational errors no longer end the session and the "No audio detected" hint now appears.
+- **Bounded Connects**: WebSocket connects time out instead of hanging.
+
+### Performance
+
+- **Narrow Rebuilds**: Widgets subscribe only to the state they render, history entries are decrypted once per dialog, and pulsing buttons no longer smear from restarted implicit animations.
+
+## Older Improvements (v2.24.0)
 
 ### Groq Cloud Direct Transcription
 

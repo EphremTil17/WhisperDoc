@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v3.0.0
+# WhisperDoc - Speech-to-Text System v3.1.0
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -160,7 +160,7 @@ If you're actively developing in this repository, install these hooks.
 **API Endpoints:**
 
 - `GET /health` - Check API status and model readiness
-- `POST /transcribe` - Upload audio file for transcription
+- `POST /transcribe` - Upload an audio file for transcription (`Authorization: Bearer <key>` required; requests need a `Content-Length` and are capped at 25 MB, both checked before the body is read)
 - `GET /ws` - WebSocket connection (JSON handshake with token required)
 
 ## CI/CD
@@ -222,7 +222,7 @@ Review the draft on the Releases page, then publish it. Installed clients learn 
 
 ### 6. "Weight Shedding" & Performance (v2.14.0)
 
-- **Digital Liposuction (Docker Slimming)**: Reduced image size and build complexity by implementing **Static FFmpeg** binaries and **CPU-only PyTorch** foundations. Faster-Whisper continues to use GPU-accelerated `ctranslate2` independently, resulting in a ~40% reduction in production image footprint.
+- **Digital Liposuction (Docker Slimming)**: **Static FFmpeg** binaries keep the image lean, and v3.1.0 removed PyTorch entirely: Faster-Whisper runs on GPU-accelerated `ctranslate2`, which frees its own CUDA memory on unload. The Whisper image dropped from 5.23 GB to 4.3 GB.
 - **High-Performance Infrastructure**: Integrated **uvloop** (high-speed C-based event loop) to minimize I/O latency and CPU overhead during heavy concurrency.
 - **Memory Hygiene (malloc_trim)**: Aggressive RAM reclamation using `malloc_trim` to force the Linux kernel to reclaim heap memory immediately after models are unloaded from VRAM.
 - **Drift-Proof Security Tracking**: Re-engineered the security maintenance loop to be time-interval based rather than clock-modulo based, ensuring robust IP-ban cleanup regardless of event-loop timing.
@@ -232,6 +232,13 @@ Review the draft on the Releases page, then publish it. Installed clients learn 
 - **Structured Error Protocol**: All WebSocket error payloads include both a numeric `code` (for backwards compatibility) and a structured `error_code` string (e.g., `AUTH_FAILED`, `VERSION_OUTDATED`, `IP_BANNED`) for precise client-side error routing.
 - **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol, ensuring descriptive error messages for bans or version mismatches.
 - Added **Profile-Based Logic** to prevent "Update Available" notifications from appearing during active transcription sessions and ensures that if a security patch is available, the user is immediately notified and blocked from using the service until updated.
+
+### 8. Request & Identity Hardening (v3.1.0)
+
+- **Pre-Parse Upload Guard**: `POST /transcribe` authenticates and size-checks on headers alone (401 / 411 / 413) before any multipart body is read, and ffmpeg conversion runs under a wall-clock timeout and a duration cap.
+- **Trusted Proxy Hops Only**: uvicorn honours `X-Forwarded-For` only from Docker bridge networks (`FORWARDED_ALLOW_IPS`), so clients cannot spoof their address to dodge or redirect IP bans.
+- **Unicode-Safe Sanitization**: Transcript sanitizers in all three components strip ANSI sequences and C0/C1 control characters while preserving accents, typographic punctuation, and non-Latin scripts.
+- **Non-Blocking Identity Checks**: OIDC and API-key validation run off the event loop; an unknown signing key id triggers one rate-limited JWKS refetch, so key rotation works without a restart.
 
 ## Configuration
 
@@ -299,7 +306,7 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v3.0.0
+### Flutter Client (Windows) v3.1.0
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
@@ -307,15 +314,16 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 - **Client-Edge Dictation Profiles & LLM Transformation**: Contextual post-processing rewrites (Raw, Clean Polish, Professional, Casual, Technical) powered by high-speed Groq `qwen/qwen3.8-27b` inference (~260ms latency, zero CoT tokens). Works across both WhisperDoc backend and Groq transcription modes with fail-open fallback, ASCII typographic normalization, input-scaled timeouts, and zero-stalling latency SLA.
 - **Groq Cloud Direct Transcription**: Backend-independent speech-to-text with runtime model selection between `whisper-large-v3-turbo` (lowest latency) and `whisper-large-v3` (maximum depth and verbatim accuracy). Works as a standalone fallback when the backend is down, under maintenance, or by user preference. Free-tier compliant with local rate-limit tracking and conservative buffer guards.
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
+- **Microphone Hot-Plug Recovery**: Native Core Audio notifications re-check input devices the moment a microphone is plugged in or removed, falling back to the system default when the selected device disappears.
 - **Enterprise Security**: Windows Credential Manager enclave storage, Encrypted local history (AES-256), and automated JWT expiry warnings.
 - **Handshake Cage Protocol**: Native implementation of the buffer-then-flush security strategy to ensure zero-data leakage before identity verification.
 - **Native System Integration**: Single-instance enforcement via Win32 Named Mutex and deep-sleep resilient global hotkeys.
 - **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction (Local Only in Groq mode).
 - **Verification Suite**: Bundled security tests validating PKCE cryptographic integrity and state-parameter protection.
 
-📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v3.0.0.md)**
+📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v3.1.0.md)**
 
-### Python Terminal Client v3.0.0
+### Python Terminal Client v3.1.0
 
 A secure, modular, and production-ready Windows terminal client for high-performance dictation.
 
@@ -370,3 +378,5 @@ This means Docker cannot find the NVIDIA runtime.
 | Phase 12 | UI and Functional Improvements                         | 🚧 In Progress |
 | Phase 13 | Multi-Engine ASR Abstraction (v2.23.0)                 | ✅ Complete    |
 | Phase 14 | Multi-Connection Path [Groq Cloud] (v2.24.0)           | ✅ Complete    |
+| Phase 15 | Client-Edge Dictation Profiles (v3.0.0)                | ✅ Complete    |
+| Phase 16 | Security Maintenance, Audits & Pen Testing (v3.1.0)    | 🚧 In Progress |

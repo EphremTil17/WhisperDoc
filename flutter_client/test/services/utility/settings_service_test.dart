@@ -24,7 +24,7 @@ void main() {
       PackageInfo.setMockInitialValues(
         appName: 'WhisperDoc',
         packageName: 'com.whisperdoc',
-        version: '3.0.0',
+        version: '3.1.0',
         buildNumber: '1',
         buildSignature: '',
       );

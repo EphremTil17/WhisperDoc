@@ -1,4 +1,4 @@
-# WhisperDoc Terminal Client (v3.0.0)
+# WhisperDoc Terminal Client (v3.1.0)
 
 A secure, modular Python terminal client for real-time dictation using the WhisperDoc backend. It is the supported Windows fallback and diagnostic client when the Flutter desktop app is unavailable or when you want lower-level visibility into transport behavior.
 

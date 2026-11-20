@@ -148,3 +148,43 @@ This document serves as the project's living ledger of architectural corrections
 - **The Mistake / Issue**: Allowing client-edge LLM transformation to run across self-hosted backend connections when the required third-party cloud credential (Groq API key) was only exposed in the UI during cloud mode, causing backend users to see disabled profile tiles with no accessible way to configure keys.
 - **The Root Cause**: Coupling an execution feature (LLM rewriting) to an external cloud vendor without strictly gating it behind the connection mode where that vendor's credentials exist, and fragmenting the mode invariant across multiple consumers rather than encapsulating state enforcement inside the settings owner.
 - **The Core Corrective Rule**: When a feature requires third-party cloud credentials that are not part of the self-hosted transport contract, completely disable and gray out the control in self-hosted mode with an explicit onboarding tooltip (`'Available in Groq Cloud mode'`). Encapsulate the invariant strictly within `SettingsService` (resolving non-raw profiles to `DictationProfile.raw` whenever `!isGroqMode`) so downstream controllers remain context-blind to transport modes.
+
+---
+
+## 19. Framework Parse Order vs. Authorization Placement
+
+- **The Mistake / Issue**: Guarding `POST /transcribe` with a FastAPI `Depends(verify_api_key)` and assuming unauthenticated uploads were rejected before costing anything.
+- **The Root Cause**: Starlette parses (and spools to disk) a multipart body to build the endpoint's form parameters *before* dependencies run, so an anonymous client could push an arbitrarily large upload through the server before receiving 401.
+- **The Core Corrective Rule**: Any check meant to protect resources must run before the resource is spent. Authenticate and size-check on headers in middleware (401 / 411 / 413) for body-bearing routes, and bound every external process the route launches (ffmpeg `-nostdin`, wall-clock timeout, duration cap).
+
+---
+
+## 20. Trusting Every Proxy Hop Makes IP-Keyed Security Spoofable
+
+- **The Mistake / Issue**: Starting uvicorn with `--forwarded-allow-ips='*'` while bans, flood tracking, and violation counts were keyed on the resolved client IP.
+- **The Root Cause**: Trusting every hop makes uvicorn take the leftmost `X-Forwarded-For` entry, which the caller writes. A flooder could rotate the header to dodge bans, or name a victim's IP to get them banned.
+- **The Core Corrective Rule**: Trust forwarding headers only from the networks your proxy actually arrives through (`FORWARDED_ALLOW_IPS=172.16.0.0/12,192.168.0.0/16` for host-side cloudflared into Docker). Never `*` when any security decision consumes the client address.
+
+---
+
+## 21. Whitelist Sanitizers Destroy Legitimate Data
+
+- **The Mistake / Issue**: Sanitizing transcripts with a printable-ASCII whitelist in the backend, the Flutter client, and the terminal client.
+- **The Root Cause**: The threat was terminal escape injection, but the whitelist also removed every accent, typographic quote, and non-Latin script ("café" became "caf"), breaking 98 of the 99 languages Groq mode advertises. The same rule had been copied into three components.
+- **The Core Corrective Rule**: Remove exactly what is dangerous: ANSI sequences and C0/C1 control characters (including ESC and the 8-bit CSI introducer). Keep one rule and port it identically across components, with Unicode-preservation tests in each.
+
+---
+
+## 22. Transient Failure vs. Definitive Rejection in Session Handling
+
+- **The Mistake / Issue**: Signing the user out whenever an OIDC silent refresh threw, and running that refresh with no timeout before the first frame was drawn.
+- **The Root Cause**: Network errors and timeouts were treated the same as the provider rejecting the token, so launching offline wiped a valid refresh token. Doing network I/O ahead of `runApp()` with no timeout left a visible but unpainted window that could freeze.
+- **The Core Corrective Rule**: Destroy credentials only on a definitive rejection (HTTP 400/401, typed as `OidcRejectedException`). Keep startup off the network, put timeouts on every identity request, and draw a first frame before initializing services.
+
+---
+
+## 23. Event-Driven Hardware State & Explicit Task Ownership
+
+- **The Mistake / Issue**: Re-checking microphone availability only on focus or settings changes, mapping any device-enumeration exception to a sticky `noDevice`, and starting backend background tasks from constructors.
+- **The Root Cause**: Without OS notifications the app could not see a re-plugged device. One endpoint mid-transition made the whole listing fail, which was misread as "no device". On the backend, `asyncio.create_task` in `__init__` left cleanup and warmup tasks with no owner at shutdown, and the Whisper idle monitor ran blocking unload work on the event loop.
+- **The Core Corrective Rule**: Subscribe to OS events (`IMMNotificationClient`) rather than polling, and treat enumeration failure as `unknown` rather than `noDevice`. Give every background task an explicit owner with `start()`/`stop()` driven by the lifespan, and move blocking periodic work to a daemon thread.
