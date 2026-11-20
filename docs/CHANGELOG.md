@@ -30,9 +30,20 @@
 - **CI/CD**: GitHub Actions run every pre-commit hook; backend pyright and pytest plus a Docker end-to-end test of the Whisper image (CPU, `tiny.en`, production isolation flags, live API and WebSocket tests); terminal client and Flutter checks on Windows; and a tag-triggered release that builds the obfuscated installer into a draft GitHub Release. Actions are pinned to commit SHAs and kept current by Dependabot.
 - **Version Drift Gate**: `bump_version.py --check` fails when any managed file disagrees with the backend version. It runs in pre-commit and before every release build.
 
+### Dependency Refresh
+- **Python**: FastAPI 0.165, uvicorn 0.54, websockets 17, cachetools 8, loguru 0.8, ctranslate2 4.9, cuDNN 9.28. uv 0.13.9 and static-ffmpeg 9.0.2 in the images and CI. PyAV capped below 19 (faster-whisper 1.2.1 passes the `metadata_errors` argument PyAV 19 removed).
+- **Flutter 3.50.1**:
+  - win32 6: typed handles and `Win32Result`; a raw `GetMessageW` binding so its -1 error ends the hotkey loop.
+  - record 7 with `audioRouteChange: follow`.
+  - window_manager 0.7's native `Window` API.
+  - flutter_web_auth_2 6, google_fonts 9, drift 2.35, and `material_ui`.
+  - Dropped `sqlite3_flutter_libs` and the discontinued `screen_retriever` packages.
+- **Settings Dropdowns**: shared compact `GlassDropdown` in the theme font for audio input and Groq model.
+- **E2E XFF Probe**: CI asserts that forged `X-Forwarded-For` hops resolve to the trusted rightmost entry.
+
 ### Verification & Quality Gates
-- **Backend**: 135 passed, 7 skipped; pyright 0 errors; ruff clean. New `test_backend_hardening.py` and `test_sanitizer.py`.
-- **Flutter**: `flutter analyze` clean; 235 tests passing, including new suites for the device monitor, session restore, and error routing.
+- **Backend**: 137 passed, 7 skipped; pyright 0 errors; ruff clean. New `test_backend_hardening.py` and `test_sanitizer.py`.
+- **Flutter**: `flutter analyze` clean; 239 tests passing, including new suites for the device monitor, session restore, and error routing.
 - **Terminal Client**: 174 passed; rewritten transport lifecycle, recording-order, and audio-queue suites.
 
 ---

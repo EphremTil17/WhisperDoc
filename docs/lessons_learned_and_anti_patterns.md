@@ -188,3 +188,27 @@ This document serves as the project's living ledger of architectural corrections
 - **The Mistake / Issue**: Re-checking microphone availability only on focus or settings changes, mapping any device-enumeration exception to a sticky `noDevice`, and starting backend background tasks from constructors.
 - **The Root Cause**: Without OS notifications the app could not see a re-plugged device. One endpoint mid-transition made the whole listing fail, which was misread as "no device". On the backend, `asyncio.create_task` in `__init__` left cleanup and warmup tasks with no owner at shutdown, and the Whisper idle monitor ran blocking unload work on the event loop.
 - **The Core Corrective Rule**: Subscribe to OS events (`IMMNotificationClient`) rather than polling, and treat enumeration failure as `unknown` rather than `noDevice`. Give every background task an explicit owner with `start()`/`stop()` driven by the lifespan, and move blocking periodic work to a daemon thread.
+
+---
+
+## 24. Transitive Majors Behind a Pinned Direct Dependency
+
+- **The Mistake / Issue**: Refreshing the lockfile with `uv lock --upgrade` while faster-whisper stayed on its latest release, assuming its own dependencies would stay compatible.
+- **The Root Cause**: faster-whisper declares PyAV without an upper bound. The refresh pulled in PyAV 19, which removed the `metadata_errors` argument faster-whisper passes to `av.open()`, so every transcription returned 500. Unit tests stub faster-whisper, so only the Docker end-to-end test exercised the real decode path.
+- **The Core Corrective Rule**: After any lock refresh, run the shipped image end to end before merging. When a dependency's unbounded transitive breaks it, cap that transitive in `constraint-dependencies` with a comment naming the cause and a TODO to lift the cap.
+
+---
+
+## 25. BOOL-to-bool Mappings Lose Tri-State Win32 Returns
+
+- **The Mistake / Issue**: Porting the hotkey message loop to win32 6, where `GetMessage` returns `bool`.
+- **The Root Cause**: GetMessage returns a BOOL with three meanings (>0 message, 0 WM_QUIT, -1 error). Mapping it with `!= FALSE` turns the error into `true`, so a failing loop would spin a CPU core forever.
+- **The Core Corrective Rule**: When a binding library narrows a Win32 return type, check the API's documented values. Bind tri-state functions directly (`lookupFunction` with `Int32`) and keep the `> 0` loop condition.
+
+---
+
+## 26. Widgets That Replace DefaultTextStyle Lose the Theme Font
+
+- **The Mistake / Issue**: Removing explicit `GoogleFonts.lexend()` calls on the assumption that `ThemeData.fontFamily` reaches every widget.
+- **The Root Cause**: `Text` and `TextField` merge with the theme's text styles, but Material's `DropdownButton` installs its `style` as a replacement `DefaultTextStyle`. A raw `TextStyle` without a font family dropped the menu to the platform font.
+- **The Core Corrective Rule**: Derive component styles from `Theme.of(context).textTheme` rather than raw `TextStyle`s. Before deleting a "redundant" font override, confirm the widget merges with the inherited style, and cover the font in a widget test.
