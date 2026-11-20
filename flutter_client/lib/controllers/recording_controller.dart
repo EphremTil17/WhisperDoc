@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
+import 'package:flutter_client/services/hardware/audio_device_monitor.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
@@ -31,6 +32,7 @@ class RecordingController extends ChangeNotifier {
 
   StreamSubscription? _audioSubscription;
   StreamSubscription? _messageSubscription;
+  StreamSubscription<void>? _deviceChangeSubscription;
 
   // Buffer of transcription segments (limited to prevent memory issues)
   final List<HistoryEntry> _history = [];
@@ -46,6 +48,10 @@ class RecordingController extends ChangeNotifier {
 
   // Groq transcription lockout — single source of truth for all UI/hotkey paths
   bool _isTranscribing = false;
+
+  // Re-entry guards for overlapping start/stop requests (rapid hotkey presses).
+  bool _isStarting = false;
+  bool _isStopping = false;
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
 
@@ -71,6 +77,7 @@ class RecordingController extends ChangeNotifier {
     required HistoryService historyService,
     required SettingsService settingsService,
     required AudioCueService audioCueService,
+    required AudioDeviceMonitor deviceMonitor,
   }) : _audioService = audioService,
        _wsService = wsService,
        _groqService = groqService,
@@ -84,6 +91,10 @@ class RecordingController extends ChangeNotifier {
     _audioService.addListener(_onAudioStateChanged);
     // Sync with settings changes and re-verify hardware
     _settingsService.addListener(_onSettingsChanged);
+    // Re-verify hardware the moment the OS reports a device plug/unplug.
+    _deviceChangeSubscription = deviceMonitor.changes.listen(
+      (_) => unawaited(refreshHardwareStatus()),
+    );
     // Load initial history from encrypted storage and check initial hardware status
     unawaited(_loadHistory());
     unawaited(refreshHardwareStatus());
@@ -126,12 +137,27 @@ class RecordingController extends ChangeNotifier {
 
   Future<void> startRecording() async {
     // Groq transcription lockout — prevent hotkey/capsule race during upload.
-    if (_isTranscribing) return;
+    // A start already in flight must not open a second capture stream.
+    if (_isTranscribing || _isStarting) return;
+    _isStarting = true;
+    try {
+      await _beginRecording();
+    } finally {
+      _isStarting = false;
+    }
+  }
 
+  Future<void> _beginRecording() async {
     // Hardware input guard — prevent recording start when hardware is unavailable.
-    if (!_audioService.inputStatus.canRecord) {
+    // A degraded status may be stale (e.g. set before a device was connected),
+    // so re-check once before refusing; one enumeration costs a few ms.
+    var inputStatus = _audioService.inputStatus;
+    if (!inputStatus.canRecord) {
+      inputStatus = await refreshHardwareStatus();
+    }
+    if (!inputStatus.canRecord) {
       _errorController.add(
-        _audioService.inputStatus.bannerMessage ??
+        inputStatus.bannerMessage ??
             'Recording blocked: No microphone connected.',
       );
 
@@ -163,8 +189,14 @@ class RecordingController extends ChangeNotifier {
       }
 
       // 2. ZERO-LATENCY START: Initiate capture and cues instantly.
-      final String? deviceId = _settingsService.microphoneId;
-      final String? deviceLabel = _settingsService.microphoneLabel;
+      // A missing saved microphone falls back to the system default device.
+      final useDefault = inputStatus.usesDefaultDevice;
+      final String? deviceId = useDefault
+          ? null
+          : _settingsService.microphoneId;
+      final String? deviceLabel = useDefault
+          ? null
+          : _settingsService.microphoneLabel;
 
       await _audioService.startRecording(
         deviceId: deviceId,
@@ -236,15 +268,24 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> stopRecording() async {
-    await _audioService.stopRecording();
-    _audioCueService.playStopCue();
-    await _audioSubscription?.cancel();
-    _audioSubscription = null;
+    // Claim the stop synchronously: the buffer-cap path (once per late chunk)
+    // and the hotkey can request it while the recorder is still shutting
+    // down, and each extra pass would upload and paste the clip again.
+    if (_isStopping || !_audioService.isRecording) return;
+    _isStopping = true;
+    try {
+      await _audioService.stopRecording();
+      _audioCueService.playStopCue();
+      await _audioSubscription?.cancel();
+      _audioSubscription = null;
 
-    if (_settingsService.isGroqMode) {
-      unawaited(_transcribeWithGroq());
-    } else {
-      _wsService.sendEndSignal();
+      if (_settingsService.isGroqMode) {
+        unawaited(_transcribeWithGroq());
+      } else {
+        _wsService.sendEndSignal();
+      }
+    } finally {
+      _isStopping = false;
     }
   }
 
@@ -255,6 +296,7 @@ class RecordingController extends ChangeNotifier {
     _settingsService.removeListener(_onSettingsChanged);
     unawaited(_audioSubscription?.cancel());
     unawaited(_messageSubscription?.cancel());
+    unawaited(_deviceChangeSubscription?.cancel());
     unawaited(_errorController.close());
     super.dispose();
   }
@@ -269,11 +311,10 @@ class RecordingController extends ChangeNotifier {
   }
 
   /// Public pass-through method to trigger hardware status re-evaluation.
-  Future<void> refreshHardwareStatus() async {
-    await _audioService.evaluateInputStatus(
-      targetDeviceId: _settingsService.microphoneId,
-    );
-  }
+  Future<AudioInputStatus> refreshHardwareStatus() =>
+      _audioService.evaluateInputStatus(
+        targetDeviceId: _settingsService.microphoneId,
+      );
 
   void _onAudioStateChanged() {
     if (_isRecording != _audioService.isRecording) {

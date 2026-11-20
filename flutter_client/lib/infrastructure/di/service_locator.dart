@@ -1,6 +1,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
+import 'package:flutter_client/services/hardware/audio_device_monitor.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
@@ -30,6 +31,7 @@ class ServiceLocator {
     // 2. Core Services
     getIt.registerSingleton<HotkeyService>(HotkeyService());
     getIt.registerSingleton<AudioService>(AudioService());
+    getIt.registerSingleton<AudioDeviceMonitor>(AudioDeviceMonitor()..start());
 
     final audioCueService = AudioCueService();
     await audioCueService.initialize();
@@ -75,6 +77,7 @@ class ServiceLocator {
         historyService: getIt<HistoryService>(),
         settingsService: getIt<SettingsService>(),
         audioCueService: getIt<AudioCueService>(),
+        deviceMonitor: getIt<AudioDeviceMonitor>(),
       ),
     );
     getIt.registerSingleton<ProfileController>(

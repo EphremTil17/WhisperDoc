@@ -39,24 +39,40 @@ class AudioService extends ChangeNotifier {
 
   /// Proactively evaluates input device status and updates [inputStatus].
   Future<AudioInputStatus> evaluateInputStatus({String? targetDeviceId}) async {
+    final clock = Stopwatch()..start();
     try {
       final devices = await _audioRecorder.listInputDevices();
-      if (devices.isEmpty) return _setStatus(AudioInputStatus.noDevice);
-      if (targetDeviceId != null &&
-          !devices.any((d) => d.id == targetDeviceId)) {
-        return _setStatus(AudioInputStatus.selectedUnavailable);
-      }
-
-      return _setStatus(AudioInputStatus.available);
-    } catch (e, st) {
-      LoggingService().error(
-        'Input enumeration failed',
-        error: e,
-        stackTrace: st,
+      final status = _classify(devices, targetDeviceId);
+      LoggingService().debug(
+        'Input check: ${status.name} (${devices.length} device(s), '
+        'enumerated in ${clock.elapsedMilliseconds} ms)',
       );
 
-      return _setStatus(AudioInputStatus.noDevice);
+      return _setStatus(status);
+    } catch (e) {
+      // A failed enumeration is not evidence of a missing microphone: the
+      // Windows plugin fails the whole listing if any single endpoint (e.g. a
+      // virtual driver or a reconnecting headset) is mid-transition. Report
+      // "unknown" so recording can still be attempted; a real failure will
+      // surface from startRecording, and the next device event re-checks.
+      LoggingService().warning(
+        'Input enumeration failed; availability unknown: $e',
+      );
+
+      return _setStatus(AudioInputStatus.unknown);
     }
+  }
+
+  static AudioInputStatus _classify(
+    List<InputDevice> devices,
+    String? targetDeviceId,
+  ) {
+    if (devices.isEmpty) return AudioInputStatus.noDevice;
+    if (targetDeviceId != null && !devices.any((d) => d.id == targetDeviceId)) {
+      return AudioInputStatus.selectedUnavailable;
+    }
+
+    return AudioInputStatus.available;
   }
 
   AudioInputStatus _setStatus(AudioInputStatus status) {
@@ -117,7 +133,9 @@ class AudioService extends ChangeNotifier {
       );
     } catch (e) {
       _isRecording = false;
-      _setStatus(AudioInputStatus.noDevice);
+      // Derive status from the actual device list rather than assuming the
+      // microphone is gone: a busy or transient device must stay retryable.
+      await evaluateInputStatus(targetDeviceId: deviceId);
       notifyListeners();
       rethrow;
     }
@@ -147,18 +165,14 @@ class AudioService extends ChangeNotifier {
   void _calculateAmplitude(Uint8List data) {
     if (data.isEmpty) return;
 
-    // PCM 16-bit Mono: each sample is 2 bytes.
+    // PCM 16-bit Mono: each sample is 2 bytes. One view per chunk; this runs
+    // for every captured chunk (~16k samples/s).
     double total = 0;
     final sampleCount = data.length ~/ _bytesPerSample;
+    final samples = ByteData.sublistView(data);
 
     for (int i = 0; i < data.length - 1; i += _bytesPerSample) {
-      // Convert 2 bytes to a 16-bit signed integer (little endian).
-      final sample = ByteData.sublistView(
-        data,
-        i,
-        i + _bytesPerSample,
-      ).getInt16(0, Endian.little);
-      total += sample.abs();
+      total += samples.getInt16(i, Endian.little).abs();
     }
 
     final average = total / sampleCount;

@@ -76,13 +76,19 @@ void main() {
       },
     );
 
-    test('treats enumeration failure as noDevice', () async {
-      when(() => mockRecorder.listInputDevices()).thenThrow(Exception('IO'));
-      final audioService = AudioService(audioRecorder: mockRecorder);
+    test(
+      'treats enumeration failure as unknown so recording stays possible',
+      () async {
+        // The Windows plugin fails the whole listing when one endpoint is
+        // mid-transition; that is not evidence of a missing microphone.
+        when(() => mockRecorder.listInputDevices()).thenThrow(Exception('IO'));
+        final audioService = AudioService(audioRecorder: mockRecorder);
 
-      final status = await audioService.evaluateInputStatus();
-      expect(status, equals(AudioInputStatus.noDevice));
-    });
+        final status = await audioService.evaluateInputStatus();
+        expect(status, equals(AudioInputStatus.unknown));
+        expect(status.canRecord, isTrue);
+      },
+    );
 
     test('notifies once per real status transition', () async {
       final audioService = AudioService(audioRecorder: mockRecorder);
@@ -118,15 +124,53 @@ void main() {
       },
     );
 
-    test('sets noDevice and rethrows when the stream fails to start', () async {
-      when(() => mockRecorder.hasPermission()).thenAnswer((_) async => true);
-      when(
-        () => mockRecorder.startStream(any()),
-      ).thenThrow(Exception('No audio recording device'));
-      final audioService = AudioService(audioRecorder: mockRecorder);
+    test(
+      'sets noDevice and rethrows when the stream fails with no devices',
+      () async {
+        when(() => mockRecorder.hasPermission()).thenAnswer((_) async => true);
+        when(
+          () => mockRecorder.startStream(any()),
+        ).thenThrow(Exception('No audio recording device'));
+        when(() => mockRecorder.listInputDevices()).thenAnswer((_) async => []);
+        final audioService = AudioService(audioRecorder: mockRecorder);
 
-      await expectLater(audioService.startRecording(), throwsException);
-      expect(audioService.inputStatus, equals(AudioInputStatus.noDevice));
+        await expectLater(audioService.startRecording(), throwsException);
+        expect(audioService.inputStatus, equals(AudioInputStatus.noDevice));
+      },
+    );
+
+    test(
+      'stays recordable when the stream fails but devices are present',
+      () async {
+        // A busy or transient device must not be reported as missing.
+        when(() => mockRecorder.hasPermission()).thenAnswer((_) async => true);
+        when(
+          () => mockRecorder.startStream(any()),
+        ).thenThrow(Exception('Device in use'));
+        when(() => mockRecorder.listInputDevices()).thenAnswer(
+          (_) async => const [InputDevice(id: 'dev-1', label: 'Mic 1')],
+        );
+        final audioService = AudioService(audioRecorder: mockRecorder);
+
+        await expectLater(audioService.startRecording(), throwsException);
+        expect(audioService.inputStatus, equals(AudioInputStatus.available));
+      },
+    );
+  });
+
+  group('AudioInputStatus policy', () {
+    test('a missing saved microphone falls back to the default device', () {
+      const status = AudioInputStatus.selectedUnavailable;
+      expect(status.canRecord, isTrue);
+      expect(status.usesDefaultDevice, isTrue);
+      expect(status.bannerMessage, isNotNull);
+    });
+
+    test('only selectedUnavailable redirects to the default device', () {
+      final redirecting = AudioInputStatus.values.where(
+        (s) => s.usesDefaultDevice,
+      );
+      expect(redirecting, equals([AudioInputStatus.selectedUnavailable]));
     });
   });
 }

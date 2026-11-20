@@ -1,7 +1,8 @@
-// ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block
+// ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block, prefer-moving-to-variable
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:flutter_client/services/hardware/audio_device_monitor.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
@@ -32,6 +33,8 @@ class _MockGroqTranscriptionService extends Mock
 
 class _MockGroqTransformService extends Mock implements GroqTransformService {}
 
+class _MockAudioDeviceMonitor extends Mock implements AudioDeviceMonitor {}
+
 void main() {
   setUpAll(() {
     registerFallbackValue(DictationProfile.raw);
@@ -48,6 +51,7 @@ void main() {
   late _MockGroqTranscriptionService mockGroqService;
   late _MockGroqTransformService mockTransformService;
   late StreamController<Map<String, dynamic>> mockWsMessageController;
+  late StreamController<void> deviceChangeController;
   late void Function() audioStateListener;
 
   setUp(() {
@@ -64,6 +68,11 @@ void main() {
     mockAudioCueService = _MockAudioCueService();
     mockWsMessageController =
         StreamController<Map<String, dynamic>>.broadcast();
+    deviceChangeController = StreamController<void>.broadcast();
+    final mockDeviceMonitor = _MockAudioDeviceMonitor();
+    when(
+      () => mockDeviceMonitor.changes,
+    ).thenAnswer((_) => deviceChangeController.stream);
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
@@ -123,11 +132,13 @@ void main() {
       historyService: mockHistoryService,
       settingsService: mockSettingsService,
       audioCueService: mockAudioCueService,
+      deviceMonitor: mockDeviceMonitor,
     );
   });
 
   tearDown(() async {
     await mockWsMessageController.close();
+    await deviceChangeController.close();
   });
 
   group('Incognito Mode', () {
@@ -279,6 +290,54 @@ void main() {
     });
   });
 
+  group('Start/stop re-entry', () {
+    test('overlapping stop requests end the stream exactly once', () async {
+      // Buffer-cap path + hotkey can both ask to stop mid-shutdown.
+      final recorderStopped = Completer<void>();
+      when(() => mockAudioService.isRecording).thenReturn(true);
+      when(
+        () => mockAudioService.stopRecording(),
+      ).thenAnswer((_) => recorderStopped.future);
+      when(() => mockWsService.sendEndSignal()).thenReturn(null);
+
+      final first = controller.stopRecording();
+      final second = controller.stopRecording();
+      recorderStopped.complete();
+      await Future.wait([first, second]);
+
+      final stops = verify(() => mockAudioService.stopRecording());
+      expect(stops.callCount, equals(1));
+      final endSignals = verify(() => mockWsService.sendEndSignal());
+      expect(endSignals.callCount, equals(1));
+    });
+
+    test('overlapping start requests open one capture stream', () async {
+      final captureStarted = Completer<void>();
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) => captureStarted.future);
+      when(
+        () => mockAudioService.audioStream,
+      ).thenAnswer((_) => const Stream.empty());
+
+      final first = controller.startRecording();
+      final second = controller.startRecording();
+      captureStarted.complete();
+      await Future.wait([first, second]);
+
+      final starts = verify(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      );
+      expect(starts.callCount, equals(1));
+    });
+  });
+
   group('Current Text Buffer', () {
     test('currentText initially empty', () {
       expect(controller.currentText, isEmpty);
@@ -306,16 +365,24 @@ void main() {
     test('startRecording blocks for each non-canRecord status', () async {
       final nonRecordableStatuses = [
         AudioInputStatus.noDevice,
-        AudioInputStatus.selectedUnavailable,
         AudioInputStatus.permissionDenied,
       ];
 
       for (final status in nonRecordableStatuses) {
         when(() => mockAudioService.inputStatus).thenReturn(status);
+        // The pre-refusal re-check confirms the degraded status.
+        when(
+          () => mockAudioService.evaluateInputStatus(
+            targetDeviceId: any(named: 'targetDeviceId'),
+          ),
+        ).thenAnswer((_) async => status);
         String? emittedError;
         final sub = controller.onError.listen((e) => emittedError = e);
 
         await controller.startRecording();
+        // The refusal now follows an async re-check; let the broadcast
+        // stream deliver before asserting and cancelling the listener.
+        await Future<void>.delayed(Duration.zero);
 
         expect(controller.isRecording, isFalse);
         expect(emittedError, equals(status.bannerMessage));
@@ -327,6 +394,74 @@ void main() {
         );
         await sub.cancel();
       }
+    });
+
+    test('re-checks a stale degraded status before refusing', () async {
+      // Status went stale while the mic was unplugged; it is back now.
+      when(
+        () => mockAudioService.inputStatus,
+      ).thenReturn(AudioInputStatus.noDevice);
+      when(
+        () => mockAudioService.evaluateInputStatus(
+          targetDeviceId: any(named: 'targetDeviceId'),
+        ),
+      ).thenAnswer((_) async => AudioInputStatus.available);
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.audioStream,
+      ).thenAnswer((_) => const Stream.empty());
+
+      await controller.startRecording();
+
+      final startCall = verify(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      );
+      expect(startCall.callCount, equals(1));
+    });
+
+    test('missing saved microphone records from the system default', () async {
+      when(() => mockSettingsService.microphoneId).thenReturn('stale-id');
+      when(() => mockSettingsService.microphoneLabel).thenReturn('Old Mic');
+      when(
+        () => mockAudioService.inputStatus,
+      ).thenReturn(AudioInputStatus.selectedUnavailable);
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockAudioService.audioStream,
+      ).thenAnswer((_) => const Stream.empty());
+
+      await controller.startRecording();
+
+      final defaultDeviceCall = verify(
+        () => mockAudioService.startRecording(deviceId: null, deviceLabel: null),
+      );
+      expect(defaultDeviceCall.callCount, equals(1));
+    });
+
+    test('an OS device change re-evaluates hardware status', () async {
+      when(() => mockSettingsService.microphoneId).thenReturn('mic-1');
+      clearInteractions(mockAudioService);
+
+      deviceChangeController.add(null);
+      await Future<void>.delayed(Duration.zero);
+
+      final recheck = verify(
+        () => mockAudioService.evaluateInputStatus(targetDeviceId: 'mic-1'),
+      );
+      expect(recheck.callCount, equals(1));
     });
 
     test('hardware failure surfaces the status banner message', () async {

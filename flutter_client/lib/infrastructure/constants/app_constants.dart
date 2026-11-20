@@ -42,6 +42,12 @@ class AppConstants {
   /// Maximum number of log entries to keep in UI buffer.
   static const int logBufferSize = 500;
 
+  /// Quiet period after the last OS audio-endpoint notification before
+  /// re-enumerating devices. Measured bursts last ~40 ms, and Windows' device
+  /// list lags the first notification, so re-checking immediately reads stale
+  /// state; this leaves ~6x headroom over the burst.
+  static const Duration audioDeviceChangeSettle = Duration(milliseconds: 250);
+
   // === UI ===
   /// Default window size for the main application.
   static const double windowWidth = 420;

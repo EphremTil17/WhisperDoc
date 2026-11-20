@@ -87,17 +87,21 @@ class RecordingView extends StatelessWidget {
             ),
           )
         else if (hardwareBannerMessage != null)
-          // Tap to re-check hardware — lets the user recover after connecting a
-          // device without leaving and re-focusing the window.
+          // Device changes re-check automatically; tapping is a manual fallback.
+          // Amber when recording still works (default-device fallback).
           GestureDetector(
             onTap: () => unawaited(controller.refreshHardwareStatus()),
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                '$hardwareBannerMessage (Tap to retry)',
-                style: const TextStyle(
-                  color: Colors.redAccent,
+                inputStatus.canRecord
+                    ? hardwareBannerMessage
+                    : '$hardwareBannerMessage (Tap to retry)',
+                style: TextStyle(
+                  color: inputStatus.canRecord
+                      ? Colors.amberAccent
+                      : Colors.redAccent,
                   fontSize: _statusFontSize,
                   fontWeight: FontWeight.w500,
                 ),
