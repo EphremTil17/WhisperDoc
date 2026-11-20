@@ -101,11 +101,7 @@ void main() {
         ChangeNotifierProvider<GroqTranscriptionService>.value(value: mockGroq),
       ],
       child: const MaterialApp(
-        home: Scaffold(
-          body: ActionBar(
-            onIncognitoTap: _TestConstants.noop,
-          ),
-        ),
+        home: Scaffold(body: ActionBar(onIncognitoTap: _TestConstants.noop)),
       ),
     );
   }

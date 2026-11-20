@@ -13,25 +13,27 @@ import tempfile
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import Annotated, Optional
 
 from fastapi import (
-    Depends,
     FastAPI,
     File,
     HTTPException,
+    Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
-from auth import get_api_key, verify_api_key, warmup_oidc
+from auth import get_api_key, validate_token, warmup_oidc
 from engine.engine_factory import create_engine
 from logging_config import log
-from protocol.websocket_handler import ConnectionManager
+from protocol.websocket_handler import (
+    MAX_BUFFER_SIZE,
+    ConnectionManager,
+    sanitized_segments,
+)
 
 # Initialize uvloop for performance before anything else
 try:
@@ -39,18 +41,6 @@ try:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except ImportError:
     pass
-
-
-# --- Pydantic Models for Log Ingestion ---
-class RemoteLogRecord(BaseModel):
-    source: str
-    level: str
-    message: str
-    timestamp: str
-
-
-class LogBatch(BaseModel):
-    logs: List[RemoteLogRecord]
 
 
 # Read version from environment variable (Docker). The port is passed to
@@ -63,8 +53,16 @@ APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
 MIN_CLIENT_VERSION = os.getenv("MIN_CLIENT_VERSION", "0.0.0")
 SEC_CLIENT_VERSION = os.getenv("SEC_CLIENT_VERSION", "0.0.0")
 
-# --- Security & Validation Configuration ---
-MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB limit for single HTTP uploads
+# --- HTTP Upload Limits ---
+# Whole request body (file + multipart framing), enforced before parsing.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+# Same audio-length ceiling as the WebSocket path (16 kHz, 16-bit mono).
+_PCM_BYTES_PER_SECOND = 16000 * 2
+MAX_AUDIO_SECONDS = MAX_BUFFER_SIZE // _PCM_BYTES_PER_SECOND
+# A small upload can still decode slowly (or hang on a crafted file).
+FFMPEG_TIMEOUT_SECONDS = int(os.getenv("FFMPEG_TIMEOUT_SECONDS", "60"))
+# HTTP transcriptions share one concurrency slot, like a single WebSocket user.
+_HTTP_IDENTITY = "http"
 
 # Global initialized on startup
 manager: Optional[ConnectionManager] = None
@@ -98,6 +96,7 @@ async def lifespan(app: FastAPI):
             min_client_version=MIN_CLIENT_VERSION,
             sec_client_version=SEC_CLIENT_VERSION,
         )
+        manager.start()
 
         # Warmup OIDC (graceful degradation: logs warnings if provider unreachable)
         warmup_oidc()
@@ -115,6 +114,7 @@ async def lifespan(app: FastAPI):
     # --- Shutdown Logic ---
     log.info("Shutting down WhisperDoc API server...")
     if manager:
+        await manager.stop()
         manager.engine.unload()
     log.success("Cleanup completed.")
 
@@ -176,6 +176,42 @@ async def global_exception_handler(request, exc):
     )
 
 
+async def _reject_upload(request: Request) -> JSONResponse | None:
+    """Authenticate and size-check an upload before its body is read.
+
+    FastAPI parses (and spools to disk) a multipart body before route
+    dependencies run, so checking auth in a dependency let unauthenticated
+    clients upload up to the size cap. Both checks happen here, on headers only.
+    """
+    header = request.headers.get("authorization", "")
+    token = header[7:] if header.lower().startswith("bearer ") else header
+    if not token or not await asyncio.to_thread(validate_token, token):
+        return JSONResponse(status_code=401, content={"detail": "Invalid API Key"})
+
+    length = request.headers.get("content-length")
+    if length is None:
+        return JSONResponse(
+            status_code=411, content={"detail": "Content-Length required"}
+        )
+    if not length.isdigit() or int(length) > MAX_UPLOAD_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "detail": f"Upload too large. Maximum is {MAX_UPLOAD_BYTES} bytes."
+            },
+        )
+    return None
+
+
+@app.middleware("http")
+async def guard_transcribe_uploads(request: Request, call_next):
+    if request.method == "POST" and request.url.path == "/transcribe":
+        rejection = await _reject_upload(request)
+        if rejection is not None:
+            return rejection
+    return await call_next(request)
+
+
 @app.get("/health")
 async def health_check():
     """Opaque health check to prevent information disclosure.
@@ -209,36 +245,67 @@ def _validate_upload_type(file: UploadFile, filename: str) -> None:
 
 
 def _save_upload_to_temp(file_obj, suffix: str) -> str:
-    """Write uploaded file to a temporary path and validate size (sync, for use with to_thread).
+    """Write the uploaded file to a temp path (sync, for use with to_thread).
 
-    The size check is performed here (off the event loop) rather than in the
-    async caller, avoiding a synchronous seek/tell on Starlette's
-    SpooledTemporaryFile that would block the event loop for large uploads.
+    Size is already bounded by the upload guard's Content-Length check.
     """
-    file_obj.seek(0, os.SEEK_END)
-    file_size = file_obj.tell()
-    file_obj.seek(0)
-
-    if file_size > MAX_FILE_SIZE:
-        log.warning(
-            f"File upload rejected: {file_size} bytes exceeds limit of {MAX_FILE_SIZE}"
-        )
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum size is {MAX_FILE_SIZE} bytes.",
-        )
-
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file_obj, tmp)
         return tmp.name
 
 
+def _convert_to_pcm_wav(source: str, target: str) -> None:
+    """Normalize any audio to 16 kHz mono s16 WAV, bounded in time and length.
+
+    Decoding stops just past MAX_AUDIO_SECONDS so an over-long file is
+    detected without decoding all of it.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-i",
+                source,
+                "-t",
+                str(MAX_AUDIO_SECONDS + 1),
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-sample_fmt",
+                "s16",
+                target,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=FFMPEG_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        log.warning(f"FFmpeg conversion exceeded {FFMPEG_TIMEOUT_SECONDS}s")
+        raise HTTPException(
+            status_code=400, detail="Audio could not be decoded in time"
+        )
+
+    if proc.returncode != 0:
+        log.error(f"FFmpeg conversion failed: {proc.stderr.decode(errors='replace')}")
+        raise HTTPException(status_code=400, detail="Unsupported audio format")
+
+    if os.path.getsize(target) > MAX_AUDIO_SECONDS * _PCM_BYTES_PER_SECOND + 1024:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio too long. Maximum is {MAX_AUDIO_SECONDS} seconds.",
+        )
+
+
 @app.post(
     "/transcribe",
-    dependencies=[Depends(verify_api_key)],
     responses={
         400: {"description": "Invalid file type or unsupported audio format"},
-        413: {"description": "File too large"},
+        401: {"description": "Missing or invalid API key"},
+        411: {"description": "Content-Length required"},
+        413: {"description": "Upload or audio too large"},
         500: {"description": "Transcription failed"},
         503: {"description": "System not initialized"},
     },
@@ -267,58 +334,34 @@ async def transcribe_audio(file: Annotated[UploadFile, File()]):
 
         # Normalize to WAV (16kHz, mono, 16-bit) for engine compatibility
         wav_path = temp_path + ".wav"
-        proc = await asyncio.to_thread(
-            subprocess.run,
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                temp_path,
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-sample_fmt",
-                "s16",
-                wav_path,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        if proc.returncode != 0:
-            log.error(
-                f"FFmpeg conversion failed: {proc.stderr.decode(errors='replace')}"
-            )
-            raise HTTPException(status_code=400, detail="Unsupported audio format")
+        await asyncio.to_thread(_convert_to_pcm_wav, temp_path, wav_path)
 
-        log.debug(
-            f"FFmpeg conversion OK: {temp_path} → {wav_path} ({os.path.getsize(wav_path)} bytes)"
-        )
+        # One HTTP transcription at a time, like a single WebSocket identity.
+        async with manager.user_semaphores[_HTTP_IDENTITY]:
+            result = await asyncio.to_thread(manager.engine.transcribe, wav_path)
 
-        # Transcribe via engine (load-on-demand handled internally)
-        result = await asyncio.to_thread(manager.engine.transcribe, wav_path)
-
-        log.success(f"Transcription completed in {result.processing_time:.2f}s")
-        log.info(
-            f"Result: {result.text[:100]}{'...' if len(result.text) > 100 else ''}"
+        # Same output gate as the WebSocket path. Transcript text is not
+        # logged: HTTP callers cannot request incognito, so treat it as private.
+        segments = sanitized_segments(result)
+        text = " ".join(seg["text"] for seg in segments)
+        log.success(
+            f"Transcription completed in {result.processing_time:.2f}s ({len(text)} chars)"
         )
 
         return {
-            "text": result.text,
+            "text": text,
             "language": result.language,
-            "segments": [
-                {"start": s.start, "end": s.end, "text": s.text}
-                for s in result.segments
-            ],
+            "segments": segments,
             "processing_time": result.processing_time,
             "timestamp": time.time(),
         }
 
     except HTTPException:
-        raise  # Re-raise client errors (400, 413) as-is
+        raise  # Client errors (400, 413) carry safe, specific messages
     except Exception as e:
-        log.error(f"Transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        ref = str(uuid.uuid4())[:8]
+        log.error(f"Transcription failed [Ref: {ref}]: {e}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed (ref {ref})")
 
     finally:
         for path in (temp_path, wav_path):
@@ -327,24 +370,6 @@ async def transcribe_audio(file: Annotated[UploadFile, File()]):
                     os.unlink(path)
                 except FileNotFoundError:
                     pass
-
-
-@app.post("/log", dependencies=[Depends(verify_api_key)])
-async def ingest_logs(batch: LogBatch):
-    """Receive and process a batch of log records from a remote client."""
-    log.info(f"Received log batch with {len(batch.logs)} records.")
-    for record in batch.logs:
-        # Convert timestamp to datetime object
-        client_time = datetime.fromisoformat(record.timestamp)
-
-        def _inject_time(entry, _t=client_time):
-            entry["time"] = _t
-
-        # Patch the emitted record so the stored timestamp reflects the client event time.
-        log.patch(_inject_time).bind(source=record.source).log(
-            record.level, record.message
-        )
-    return {"status": "ok"}
 
 
 @app.websocket("/ws")

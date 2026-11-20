@@ -15,12 +15,9 @@ from engine.engine_factory import create_engine
 
 @pytest.fixture(autouse=True)
 def _patch_whisper_model():
-    """Prevent WhisperModel from loading and suppress asyncio.create_task."""
+    """Prevent WhisperModel from loading."""
     with (
         patch("engine.model_manager.WhisperModel") as mock,
-        patch(
-            "engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()
-        ),
     ):
         mock.return_value = MagicMock()
         yield mock

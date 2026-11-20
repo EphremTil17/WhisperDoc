@@ -1,4 +1,3 @@
-import asyncio
 import ctypes
 import gc
 import importlib
@@ -12,6 +11,7 @@ from logging_config import log
 
 # Load config from env
 MODEL_TIMEOUT_SECONDS = int(os.getenv("MODEL_TIMEOUT_SECONDS", "1800"))
+_MONITOR_INTERVAL_SECONDS = 60
 WhisperModel: Any | None = None
 
 
@@ -41,13 +41,12 @@ class ModelManager:
         # Initial load
         self.load_model()
 
-        # Start cleanup task — guard against sync contexts (tests, scripts)
-        _coro = self._monitor_usage()
-        try:
-            self._monitor_task = asyncio.create_task(_coro)
-        except RuntimeError:
-            _coro.close()
-            self._monitor_task = None
+        # Idle unloading runs on a daemon thread rather than an event-loop task:
+        # unload_model() does gc, CUDA teardown and malloc_trim, which would
+        # stall every connection if run on the loop.
+        threading.Thread(
+            target=self._monitor_usage, name="whisper-idle-monitor", daemon=True
+        ).start()
 
     def load_model(self):
         with self._lock:
@@ -115,8 +114,8 @@ class ModelManager:
             self.load_model()
         return self.model
 
-    async def _monitor_usage(self):
+    def _monitor_usage(self) -> None:
         while True:
-            await asyncio.sleep(60)  # Check every minute
+            time.sleep(_MONITOR_INTERVAL_SECONDS)
             if self.model and (time.time() - self.last_used > MODEL_TIMEOUT_SECONDS):
                 self.unload_model()

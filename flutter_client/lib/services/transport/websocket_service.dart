@@ -21,9 +21,21 @@ import 'reconnection_manager.dart';
 /// Delegates specialized logic to sub-managers for buffering, reconnection, and heartbeats.
 class WebSocketService extends ChangeNotifier {
   static const int _normalCloseCode = 1000;
-  static const int _authForbiddenCode = 403;
   static const int _policyViolationCode = 1008;
   static const int _serverIdleCloseCode = 4001;
+
+  /// Backend `error_code`s that end the session. Everything else (NO_AUDIO,
+  /// TRANSCRIPTION_FAILED, ...) is operational and goes to [onMessage].
+  static const Set<String> _sessionErrorCodes = {
+    'AUTH_FAILED',
+    'IP_BANNED',
+    'VERSION_OUTDATED',
+    'MAX_CONNECTIONS',
+    'HANDSHAKE_REQUIRED',
+    'MALFORMED_JSON',
+    'INVALID_EVENT',
+    'DUPLICATE_HANDSHAKE',
+  };
 
   final SettingsService _settingsService;
   final AuthService _authService;
@@ -283,6 +295,10 @@ class WebSocketService extends ChangeNotifier {
     _handleRawMessage('{"event":"authenticated"}');
   }
 
+  /// Feeds a raw server frame through the message router.
+  @visibleForTesting
+  void handleRawMessageForTesting(Object? data) => _handleRawMessage(data);
+
   /// Seeds the audio buffer with a test chunk to exercise the flush/clear paths.
   @visibleForTesting
   void bufferAudioForTesting(Uint8List chunk) => _audioBuffer.add(chunk);
@@ -338,10 +354,11 @@ class WebSocketService extends ChangeNotifier {
           if (ch != null) _audioBuffer.flush(ch);
         }
       } else if (event == 'error' &&
-          (json['code'] == _authForbiddenCode ||
-              json['code'] == _policyViolationCode ||
-              json['message']?.contains('Auth') == true)) {
-        _handleAuthError(json['message']);
+          _sessionErrorCodes.contains(json['error_code'])) {
+        _handleAuthError(
+          json['message'],
+          errorCode: json['error_code'] as String,
+        );
       } else {
         _messageController.add(json);
       }
@@ -350,13 +367,19 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
-  void _handleAuthError(Object? message) {
+  /// Ends the session after a session-level rejection. [errorCode] comes from
+  /// the server's error JSON; it is null on the close-frame fallback path,
+  /// where only the close reason text is available.
+  void _handleAuthError(Object? message, {String? errorCode}) {
     final msgStr = message?.toString() ?? 'Auth failed';
     final lowerMsg = msgStr.toLowerCase();
     _lastHandshakeError = msgStr;
     _handshake.transitionTo(HandshakeState.failed);
 
-    if (lowerMsg.contains('ban') || lowerMsg.contains('cooldown')) {
+    final isBan = errorCode != null
+        ? errorCode == 'IP_BANNED'
+        : lowerMsg.contains('ban') || lowerMsg.contains('cooldown');
+    if (isBan) {
       _banState.parseBanMessage(msgStr);
       _updateStatus(ConnectionStatus.banned);
     }

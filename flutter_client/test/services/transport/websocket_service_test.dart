@@ -1,5 +1,6 @@
 // ignore_for_file: avoid-dynamic, no-empty-block
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -522,5 +523,91 @@ void main() {
         svc.dispose();
       },
     );
+  });
+
+  // --- Server errors are routed by error_code, not numeric code or text ----
+
+  group('WebSocketService error routing', () {
+    Future<(WebSocketService, List<Map<String, dynamic>>)>
+    connectedService() async {
+      final svc = _ServiceFactory.make(apiKey: 'test-key');
+      svc.forceConnectedForTesting();
+      final forwarded = <Map<String, dynamic>>[];
+      svc.onMessage.listen(forwarded.add);
+
+      return (svc, forwarded);
+    }
+
+    test(
+      'operational errors reach listeners even if the text says Auth',
+      () async {
+        // Regression: any error whose message contained "Auth" (or carried
+        // code 403/1008) was treated as a failed login and dropped the session.
+        final (svc, forwarded) = await connectedService();
+        svc.handleRawMessageForTesting(
+          jsonEncode({
+            'event': 'error',
+            'code': 1011,
+            'error_code': 'TRANSCRIPTION_FAILED',
+            'message': 'Auth backend unavailable',
+          }),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(forwarded.single['error_code'], 'TRANSCRIPTION_FAILED');
+        expect(svc.handshakeState.state, isNot(HandshakeState.failed));
+        svc.dispose();
+      },
+    );
+
+    test('NO_AUDIO is forwarded, not treated as a session failure', () async {
+      final (svc, forwarded) = await connectedService();
+      svc.handleRawMessageForTesting(
+        jsonEncode({
+          'event': 'error',
+          'code': 422,
+          'error_code': 'NO_AUDIO',
+          'message': 'No audio data received',
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(forwarded.single['error_code'], 'NO_AUDIO');
+      svc.dispose();
+    });
+
+    test('AUTH_FAILED fails the handshake without a ban', () async {
+      final (svc, forwarded) = await connectedService();
+      svc.handleRawMessageForTesting(
+        jsonEncode({
+          'event': 'error',
+          'code': 403,
+          'error_code': 'AUTH_FAILED',
+          'message': 'API Key Authentication failed',
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(forwarded, isEmpty);
+      expect(svc.handshakeState.state, HandshakeState.failed);
+      expect(svc.status, isNot(ConnectionStatus.banned));
+      svc.dispose();
+    });
+
+    test('IP_BANNED enters the banned state', () async {
+      final (svc, _) = await connectedService();
+      svc.handleRawMessageForTesting(
+        jsonEncode({
+          'event': 'error',
+          'code': 1008,
+          'error_code': 'IP_BANNED',
+          'message': 'IP Banned. Cooldown: 120s',
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(svc.status, ConnectionStatus.banned);
+      svc.dispose();
+    });
   });
 }

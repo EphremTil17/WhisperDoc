@@ -30,10 +30,6 @@ def engine(request, tmp_path):
     if request.param == "whisper":
         with (
             patch("engine.model_manager.WhisperModel") as MockWhisper,
-            patch(
-                "engine.model_manager.asyncio.create_task",
-                side_effect=lambda c: c.close(),
-            ),
         ):
             mock_instance = MagicMock()
             seg = MagicMock()

@@ -3,16 +3,10 @@ Authentication Module - Public API
 Orchestrates dual-door authentication: Static API Key + OIDC/JWT tokens
 """
 
-from fastapi import HTTPException, Security, status
-from fastapi.security import APIKeyHeader
-
 from .oidc import validate_oidc_token, warmup_oidc
 
 # Import authentication strategies
 from .static_key import get_api_key, validate_static_key
-
-# Define the scheme but don't auto-error so we can handle it manually
-api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
 def validate_token(token: str) -> bool:
@@ -21,6 +15,9 @@ def validate_token(token: str) -> bool:
 
     Door #1: Static API Key (constant-time comparison)
     Door #2: OIDC JWT Token (cryptographic verification)
+
+    Used by the WebSocket handshake and by the HTTP upload guard, which checks
+    the Authorization header before any request body is read.
 
     Args:
         token: The authentication token to validate
@@ -46,36 +43,5 @@ def validate_token(token: str) -> bool:
     return False
 
 
-def verify_api_key(header_value: str = Security(api_key_header)):
-    """
-    FastAPI dependency for HTTP route authentication.
-    Expects 'Authorization: Bearer <token>'
-
-    Args:
-        header_value: The Authorization header value
-
-    Returns:
-        bool: True if authentication succeeds
-
-    Raises:
-        HTTPException: If authentication fails
-    """
-    if not header_value:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization Header",
-        )
-
-    token = header_value
-    if token.lower().startswith("bearer "):
-        token = token[7:]  # Strip "Bearer "
-
-    if not validate_token(token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key"
-        )
-    return True
-
-
 # Re-export public functions for convenience
-__all__ = ["validate_token", "verify_api_key", "get_api_key", "warmup_oidc"]
+__all__ = ["validate_token", "get_api_key", "warmup_oidc"]

@@ -158,7 +158,6 @@ If you're actively developing in this repository, install these hooks.
 
 - `GET /health` - Check API status and model readiness
 - `POST /transcribe` - Upload audio file for transcription
-- `POST /log` - Ingest a batch of logs from a remote client
 - `GET /ws` - WebSocket connection (JSON handshake with token required)
 
 ## 🛡️ Architecture & Security Deep-Dive (Hardened v2.14.0)

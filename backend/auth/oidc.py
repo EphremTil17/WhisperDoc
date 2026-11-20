@@ -6,6 +6,7 @@ Handles OpenID Connect provider discovery, JWKS caching, and JWT validation
 import json
 import os
 import threading
+import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -116,6 +117,8 @@ if OIDC_ISSUER_URL and not _validate_oidc_url(OIDC_ISSUER_URL):
 _oidc_config_cache: TTLCache = TTLCache(maxsize=1, ttl=OIDC_CONFIG_CACHE_SECONDS)
 _jwks_cache: TTLCache = TTLCache(maxsize=10, ttl=OIDC_JWKS_CACHE_SECONDS)
 _cache_lock = threading.RLock()
+_JWKS_REFETCH_COOLDOWN_SECONDS = 60
+_last_jwks_refetch = 0.0
 
 
 def _fetch_oidc_configuration() -> Optional[Dict[str, Any]]:
@@ -179,12 +182,8 @@ def _fetch_jwks() -> Optional[Dict[str, Any]]:
     if not config:
         return None
 
-    jwks_uri = config.get("jwks_uri")
-    if not jwks_uri:
-        log.error("OIDC configuration missing jwks_uri")
-        return None
-    if not _validate_same_origin(jwks_uri, "jwks_uri"):
-        return None
+    # Validated (present, same-origin) before the config was cached.
+    jwks_uri = config["jwks_uri"]
 
     try:
         log.debug(f"Fetching JWKS from {jwks_uri}")
@@ -212,6 +211,26 @@ def fetch_jwks() -> Optional[Dict[str, Any]]:
         return _fetch_jwks()
 
 
+def _refetch_jwks_for_unknown_kid() -> Optional[Dict[str, Any]]:
+    """Bypass the JWKS cache once so rotated signing keys are picked up.
+
+    Rate-limited: an unknown ``kid`` is attacker-controlled, so without a
+    cooldown every forged token would trigger a request to the IdP.
+    """
+    global _last_jwks_refetch
+    with _cache_lock:
+        now = time.monotonic()
+        if now - _last_jwks_refetch < _JWKS_REFETCH_COOLDOWN_SECONDS:
+            return None
+        _last_jwks_refetch = now
+        _jwks_cache.pop("jwks", None)
+        return _fetch_jwks()
+
+
+def _find_signing_key(jwks: Dict[str, Any], kid: str) -> Optional[Dict[str, Any]]:
+    return next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+
+
 def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
     """
     Validates an OIDC JWT token by verifying its signature and claims.
@@ -237,12 +256,12 @@ def validate_oidc_token(token: str) -> Optional[Dict[str, Any]]:
             log.warning("JWT missing 'kid' in header")
             return None
 
-        # Find matching public key
-        rsa_key = None
-        for key in jwks.get("keys", []):
-            if key.get("kid") == kid:
-                rsa_key = key
-                break
+        # Find matching public key; an unknown kid may mean the IdP rotated keys.
+        rsa_key = _find_signing_key(jwks, kid)
+        if not rsa_key:
+            refreshed = _refetch_jwks_for_unknown_kid()
+            if refreshed:
+                rsa_key = _find_signing_key(refreshed, kid)
 
         if not rsa_key:
             log.warning(f"No matching key found for kid: {kid}")

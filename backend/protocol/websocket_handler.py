@@ -10,7 +10,7 @@ from typing import Any, Dict
 from fastapi import WebSocket
 
 from auth import validate_token
-from engine.base_engine import BaseEngine
+from engine.base_engine import BaseEngine, TranscriptionResult
 from logging_config import log
 from security.governance import (
     HANDSHAKE_TIMEOUT_SECONDS,
@@ -29,6 +29,22 @@ MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
 SANITIZE_TRANSCRIPTS = (
     os.getenv("SANITIZE_TRANSCRIPTS", "true").strip().lower() != "false"
 )
+
+
+def sanitized_segments(result: TranscriptionResult) -> list[dict[str, Any]]:
+    """Segments as JSON-ready dicts, sanitized once per segment.
+
+    Shared by the WebSocket and HTTP paths so both apply the same output
+    gate; the full text is derived from these to stay consistent.
+    """
+    return [
+        {
+            "start": s.start,
+            "end": s.end,
+            "text": Sanitizer.sanitize(s.text) if SANITIZE_TRANSCRIPTS else s.text,
+        }
+        for s in result.segments
+    ]
 
 
 def get_client_host(websocket: WebSocket) -> str:
@@ -74,13 +90,6 @@ class ErrorCode:
     SERVER_ERROR = "SERVER_ERROR"
 
 
-class _Sentinel:
-    """Marker for unset default arguments."""
-
-
-_SENTINEL: _Sentinel = _Sentinel()
-
-
 class ConnectionManager:
     """Manages WebSocket connection lifecycle, protocol state, and audio processing."""
 
@@ -102,16 +111,10 @@ class ConnectionManager:
         # Identity-Pinned Concurrency (IPC) Guard: 1 transcription per user at a time
         self.user_semaphores = defaultdict(lambda: asyncio.Semaphore(1))
 
-        # Background task references
+        # Background tasks, owned by start()/stop() (called from the app lifespan)
+        self._cleanup_task: asyncio.Task | None = None
         self._warmup_task: asyncio.Task | None = None
 
-        # Start background cleanup — guard against sync contexts (tests, scripts)
-        _coro = self._cleanup_inactive_connections()
-        try:
-            self.cleanup_task = asyncio.create_task(_coro)
-        except RuntimeError:
-            _coro.close()
-            self.cleanup_task = None
         log.info(
             f"ConnectionManager initialized. Proxy-Ready. Max Connections: {MAX_CONNECTIONS}"
         )
@@ -120,6 +123,25 @@ class ConnectionManager:
                 "Transcript sanitization DISABLED (SANITIZE_TRANSCRIPTS=false). "
                 "Raw model output is sent to clients; re-enable after benchmarking."
             )
+
+    # ------------------------------------------------------------------
+    # Service lifecycle
+    # ------------------------------------------------------------------
+
+    def start(self) -> None:
+        """Start background maintenance. Requires a running event loop."""
+        if self._cleanup_task is None:
+            self._cleanup_task = asyncio.create_task(
+                self._cleanup_inactive_connections()
+            )
+
+    async def stop(self) -> None:
+        """Cancel background tasks and wait for them to finish."""
+        tasks = [t for t in (self._cleanup_task, self._warmup_task) if t]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._cleanup_task = self._warmup_task = None
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -216,16 +238,16 @@ class ConnectionManager:
         close_code: int,
         error_code: str,
         message: str,
-        close_reason: str | None | _Sentinel = _SENTINEL,
         record_violation: bool = False,
         do_disconnect: bool = False,
     ) -> None:
         """Send a structured error JSON and close the WebSocket.
 
-        ``close_reason`` controls the WebSocket close-frame reason string.
-        Pass an explicit string (including ``""``) to override, or omit to
-        reuse *message*.  Pass ``None`` to close without a reason keyword
-        (preserves the legacy contract for paths that never sent one).
+        The JSON payload carries the human-readable message; the close frame
+        carries only the code. Echoing messages into the close reason was
+        unsafe: some embed client-supplied values (e.g. the client version),
+        and close reasons are capped at 123 bytes, so a long one made close()
+        raise.
         """
         ip = get_client_host(websocket)
         if record_violation:
@@ -238,12 +260,7 @@ class ConnectionManager:
                 "message": message,
             }
         )
-        if isinstance(close_reason, _Sentinel):
-            await websocket.close(code=close_code, reason=message)
-        elif close_reason is None:
-            await websocket.close(code=close_code)
-        else:
-            await websocket.close(code=close_code, reason=close_reason)
+        await websocket.close(code=close_code)
         if do_disconnect:
             self.disconnect(websocket)
 
@@ -462,7 +479,6 @@ class ConnectionManager:
                 close_code=1008,
                 error_code=ErrorCode.VERSION_OUTDATED,
                 message=f"Update required: v{self.min_client_version} (Client: {client_version})",
-                close_reason=None,
                 record_violation=True,
             )
             return
@@ -497,7 +513,8 @@ class ConnectionManager:
         # TRIGGER WARMUP: Load model in background if not already loaded.
         # Guard skips the task entirely for reconnecting clients whose model is still hot,
         # avoiding a pointless thread spawn and last_used timestamp churn.
-        if not self.engine.is_loaded():
+        warmup_running = self._warmup_task is not None and not self._warmup_task.done()
+        if not self.engine.is_loaded() and not warmup_running:
             self._warmup_task = asyncio.create_task(self._warmup_model())
 
     async def _authenticate(
@@ -526,7 +543,6 @@ class ConnectionManager:
                     close_code=1008,
                     error_code=ErrorCode.AUTH_FAILED,
                     message="OIDC Authentication failed",
-                    close_reason=None,
                     record_violation=True,
                 )
                 return None
@@ -554,7 +570,6 @@ class ConnectionManager:
                 close_code=1008,
                 error_code=ErrorCode.AUTH_FAILED,
                 message="API Key Authentication failed",
-                close_reason=None,
                 record_violation=True,
             )
             return None
@@ -670,16 +685,7 @@ class ConnectionManager:
             # Sanitize each segment once and derive full_text from the results.
             # This avoids a redundant second sanitization pass on the joined text
             # and guarantees full_text is consistent with the segment texts.
-            safe_segments = [
-                {
-                    "start": s.start,
-                    "end": s.end,
-                    "text": Sanitizer.sanitize(s.text)
-                    if SANITIZE_TRANSCRIPTS
-                    else s.text,
-                }
-                for s in result.segments
-            ]
+            safe_segments = sanitized_segments(result)
             full_text = " ".join(seg["text"] for seg in safe_segments)
 
             if not is_incognito:

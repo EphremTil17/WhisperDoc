@@ -739,4 +739,39 @@ void main() {
       expect(controller.isTranscribing, isFalse);
     });
   });
+
+  group('Server error messages', () {
+    test('NO_AUDIO is recognized by error_code', () async {
+      // Regression: the check compared the numeric `code` to 'NO_AUDIO', so
+      // the microphone hint never showed.
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+
+      mockWsMessageController.add({
+        'event': 'error',
+        'code': 422,
+        'error_code': 'NO_AUDIO',
+        'message': 'No audio data received',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      expect(errors, ['No audio detected. Please check your microphone.']);
+      await sub.cancel();
+    });
+
+    test('other server errors surface their message', () async {
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+
+      mockWsMessageController.add({
+        'event': 'error',
+        'error_code': 'TRANSCRIPTION_FAILED',
+        'message': 'Transcription failed',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      expect(errors, ['Server error: Transcription failed']);
+      await sub.cancel();
+    });
+  });
 }

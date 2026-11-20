@@ -20,12 +20,9 @@ from engine.whisper_engine import WhisperEngine
 
 @pytest.fixture
 def mock_whisper_model():
-    """Patch WhisperModel and asyncio.create_task so no GPU or event loop is needed."""
+    """Patch WhisperModel so no GPU is needed."""
     with (
         patch("engine.model_manager.WhisperModel") as MockClass,
-        patch(
-            "engine.model_manager.asyncio.create_task", side_effect=lambda c: c.close()
-        ),
     ):
         instance = MagicMock()
         MockClass.return_value = instance

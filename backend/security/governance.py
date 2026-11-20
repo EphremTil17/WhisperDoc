@@ -79,3 +79,7 @@ class SecurityGovernance:
         self.attempt_tracker = {
             ip: ts for ip, ts in self.attempt_tracker.items() if now - ts[-1] < 3600
         }
+        # Expired bans are otherwise only dropped when that IP connects again.
+        self.ban_tracker = {
+            ip: until for ip, until in self.ban_tracker.items() if until > now
+        }

@@ -339,10 +339,9 @@ class RecordingController extends ChangeNotifier {
       notifyListeners();
       unawaited(_finishRecordingSession());
     } else if (event == 'error') {
-      final code = msg['code']?.toString();
-      final errorMsg = msg['message'] ?? msg['error'] ?? 'Unknown error';
+      final errorMsg = msg['message'] ?? 'Unknown error';
 
-      if (code == 'NO_AUDIO') {
+      if (msg['error_code'] == 'NO_AUDIO') {
         _errorController.add(
           'No audio detected. Please check your microphone.',
         );
