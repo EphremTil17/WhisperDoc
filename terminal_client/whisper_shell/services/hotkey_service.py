@@ -4,7 +4,6 @@ import threading
 from typing import Any, cast
 
 from loguru import logger
-from pynput import keyboard
 
 from ..services.config_service import cfg
 
@@ -69,21 +68,11 @@ class HotkeyService:
             logger.error(f"Native Hotkey Loop Error: {e}")
 
     def start(self):
-        """Initiates the hotkey listener."""
-        if os.name == "nt":
-            self.thread = threading.Thread(target=self._windows_loop, daemon=True)
-            self.thread.start()
-        else:
-            # Fallback for non-Windows platforms
-            hk_str = f"<{cfg.RECORD_HOTKEY.replace('+', '><')}>"
-            hk = {hk_str: self.callback}
-            self.listener = keyboard.GlobalHotKeys(hk)
-            self.listener.start()
-            logger.info(f"Hotkey Active (pynput): {hk_str}")
+        """Initiates the Win32 hotkey listener (the client runs on Windows only)."""
+        self.thread = threading.Thread(target=self._windows_loop, daemon=True)
+        self.thread.start()
 
     def stop(self):
         """Shutdown listeners."""
         self.running = False
-        if os.name != "nt" and hasattr(self, "listener"):
-            self.listener.stop()
         logger.info("Hotkey Service Stopped.")

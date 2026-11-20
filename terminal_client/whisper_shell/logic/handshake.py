@@ -19,10 +19,9 @@ class HandshakeStateMachine:
         self._state = HandshakeState.LOCKED
         self._timeout_duration = timeout
         self._timeout_task: asyncio.Task[None] | None = None
-        self._listeners: list[Callable[[HandshakeState], object]] = []
+        self._listeners: list[Callable[[HandshakeState], None]] = []
         self._last_error_code: str | None = None
         self._last_message: str | None = None
-        self._listener_tasks: set[asyncio.Task[object]] = set()
 
     @property
     def state(self) -> HandshakeState:
@@ -50,16 +49,14 @@ class HandshakeStateMachine:
             )
             return
 
+        self._enter(new_state)
+
+    def _enter(self, new_state: HandshakeState) -> None:
         logger.info(f"Handshake state: {self._state.name} -> {new_state.name}")
         self._state = new_state
 
         for listener in self._listeners:
-            if asyncio.iscoroutinefunction(listener):
-                task = asyncio.create_task(listener(new_state))
-                self._listener_tasks.add(task)
-                task.add_done_callback(self._listener_tasks.discard)
-            else:
-                listener(new_state)
+            listener(new_state)
 
         if new_state == HandshakeState.AUTHENTICATING:
             self._start_timeout()
@@ -70,10 +67,17 @@ class HandshakeStateMachine:
         return self._state == HandshakeState.AUTHENTICATED
 
     def reset(self) -> None:
+        """Return to LOCKED from any state.
+
+        Not routed through transition validation: AUTHENTICATING has no
+        regular edge to LOCKED, so a disconnect mid-handshake used to leave
+        the machine stuck in AUTHENTICATING.
+        """
         self._cancel_timeout()
         self._last_error_code = None
         self._last_message = None
-        self.transition_to(HandshakeState.LOCKED)
+        if self._state != HandshakeState.LOCKED:
+            self._enter(HandshakeState.LOCKED)
 
     def _is_valid_transition(
         self, from_state: HandshakeState, to_state: HandshakeState
@@ -130,5 +134,5 @@ class HandshakeStateMachine:
             self._timeout_task.cancel()
             self._timeout_task = None
 
-    def add_listener(self, callback: Callable[[HandshakeState], object]) -> None:
+    def add_listener(self, callback: Callable[[HandshakeState], None]) -> None:
         self._listeners.append(callback)

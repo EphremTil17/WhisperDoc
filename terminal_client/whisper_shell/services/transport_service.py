@@ -1,8 +1,8 @@
 import asyncio
-import gc
 import json
 import random
 import ssl
+import time
 from typing import cast
 from urllib.parse import urlparse
 
@@ -25,11 +25,33 @@ BACKOFF_MAX_S = 60.0
 BACKOFF_FACTOR = 2.0
 MAX_RECONNECT_ATTEMPTS = 10
 
+# Server close codes for idle eviction (backend: inactivity, no audio). The
+# server closed an unused connection on purpose; reconnecting immediately would
+# just be evicted again. The next recording reconnects on demand.
+IDLE_EVICTION_CLOSE_CODES = frozenset({4000, 4001})
+
+# Error codes that end the session; listeners report them via handshake state.
+_SESSION_ERRORS: dict[str, HandshakeState] = {
+    "IP_BANNED": HandshakeState.BANNED,
+    "VERSION_OUTDATED": HandshakeState.VERSION_OUTDATED,
+    "AUTH_FAILED": HandshakeState.FAILED,
+    "MAX_CONNECTIONS": HandshakeState.FAILED,
+    "HANDSHAKE_REQUIRED": HandshakeState.FAILED,
+    "MALFORMED_JSON": HandshakeState.FAILED,
+    "INVALID_EVENT": HandshakeState.FAILED,
+    "DUPLICATE_HANDSHAKE": HandshakeState.FAILED,
+}
+
+# Handshake states that carry an error worth preserving across teardown.
+_ERROR_STATES = frozenset(
+    {HandshakeState.FAILED, HandshakeState.BANNED, HandshakeState.VERSION_OUTDATED}
+)
+
 
 class TransportService:
     """
     Service managing WebSocket connectivity, the application-level handshake,
-    keepalive pings, and automatic reconnection with exponential backoff.
+    keepalive pings, idle disconnects, and reconnection with exponential backoff.
     """
 
     def __init__(self):
@@ -42,10 +64,14 @@ class TransportService:
         self._message_listeners: list[MessageListener] = []
         self._receive_task: asyncio.Task | None = None
         self._keepalive_task: asyncio.Task | None = None
-        self._idle_timer: asyncio.Task | None = None
+        self._idle_task: asyncio.Task | None = None
+        self._last_activity = time.monotonic()
         self._reconnect_attempt = 0
         self._reconnect_task: asyncio.Task | None = None
         self._intentional_disconnect = False
+        # Serializes connect(): the launch-time connect and a hotkey press can
+        # race, and each would otherwise open its own socket.
+        self._connect_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # URI preparation
@@ -75,50 +101,51 @@ class TransportService:
     # Connection lifecycle
     # ------------------------------------------------------------------
 
+    @property
+    def is_ready(self) -> bool:
+        """True when audio can be streamed: socket open and authenticated."""
+        return self._ws is not None and self.handshake.can_send_audio()
+
     async def connect(self) -> bool:
         """Establishes connection and initiates the application-level handshake."""
-        if self._ws:
-            return True
+        async with self._connect_lock:
+            if self._ws:
+                return True
+            return await self._open_connection()
 
+    async def _open_connection(self) -> bool:
         self._intentional_disconnect = False
         self._cancel_reconnect()
         logger.info(f"Connecting to {self.hostname}...")
         self.handshake.reset()
 
         try:
-            scheme = urlparse(self._final_uri).scheme
             ssl_context = None
-            if scheme == "wss":
+            if urlparse(self._final_uri).scheme == "wss":
                 ssl_context = ssl.create_default_context()
                 ssl_context.check_hostname = True
                 ssl_context.verify_mode = ssl.CERT_REQUIRED
                 logger.debug(f"TLS Verification Enabled for {self.hostname}")
 
-            self._ws = await websockets.connect(
-                self._final_uri,
-                ssl=ssl_context,
-            )
-
+            self._ws = await websockets.connect(self._final_uri, ssl=ssl_context)
+            self._touch()
             self._receive_task = asyncio.create_task(self._listen_loop())
-            self._start_keepalive()
+            self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+            self._idle_task = asyncio.create_task(self._idle_watchdog())
 
-            api_key = sec_cfg.get_api_key(self.hostname)
+            # Keyring access (and a first-run prompt) is blocking IO.
+            api_key = await asyncio.to_thread(sec_cfg.get_api_key, self.hostname)
             if not api_key:
                 raise ValueError("No API Key available for authentication.")
 
-            payload = PayloadBuilder.build_hello(
-                token=api_key,
-                auth_type="api_key",
-                incognito=cfg.args.incognito,
+            await self.send_json(
+                PayloadBuilder.build_hello(
+                    token=api_key,
+                    version=cfg.VERSION,
+                    incognito=cfg.args.incognito,
+                )
             )
-            await self.send_json(payload)
-
-            del api_key
-            del payload
-            gc.collect()
-
             self.handshake.transition_to(HandshakeState.AUTHENTICATING)
-            self._reconnect_attempt = 0
             return True
 
         except websockets.exceptions.InvalidStatus as e:
@@ -138,7 +165,7 @@ class TransportService:
 
     async def ensure_connected(self) -> bool:
         """Background auto-wake pattern with reconnection guard."""
-        if self.handshake.state == HandshakeState.AUTHENTICATED:
+        if self.is_ready:
             return True
         if self.handshake.state in (
             HandshakeState.BANNED,
@@ -150,6 +177,7 @@ class TransportService:
     async def disconnect(self, reason: str = "Client closed"):
         """Intentional disconnect — cancels all background tasks and resets state."""
         self._intentional_disconnect = True
+        self._cancel_reconnect()
         await self._teardown(reason)
 
     # ------------------------------------------------------------------
@@ -157,6 +185,7 @@ class TransportService:
     # ------------------------------------------------------------------
 
     async def _listen_loop(self):
+        close_code: int | None = None
         try:
             ws = self._ws
             if ws is None:
@@ -164,86 +193,64 @@ class TransportService:
             async for message in ws:
                 await self._handle_raw_message(message)
         except websockets.exceptions.ConnectionClosed as e:
-            logger.warning(f"WebSocket closed: {e.code} - {e.reason}")
-            await self._handle_unexpected_close()
+            close_code = e.rcvd.code if e.rcvd else None
+            reason = e.rcvd.reason if e.rcvd else ""
+            logger.warning(f"WebSocket closed: {close_code} - {reason}")
         except Exception as e:
             logger.error(f"Transport receiver error: {e}")
-            await self._handle_unexpected_close()
+        await self._handle_unexpected_close(close_code)
 
     async def _handle_raw_message(self, data: object) -> None:
         if not isinstance(data, str):
             return
-        self._reset_idle_timer()
 
         try:
             msg = cast(ServerMessage, json.loads(data))
-            event = msg.get("event")
-
-            if event == "hello":
-                logger.debug("Server hello acknowledged")
-            elif event == "authenticated":
-                self.handshake.transition_to(HandshakeState.AUTHENTICATED)
-                logger.success(f"Authenticated CID: {msg.get('cid', 'unknown')}")
-                gc.collect()
-            elif event == "pong":
-                logger.debug("Keepalive pong received")
-            elif event == "error":
-                self._handle_error_message(msg)
-            else:
-                for cb in self._message_listeners:
-                    await cb(msg)
-
-        except Exception as e:
+        except json.JSONDecodeError as e:
             logger.error(f"Message parsing error: {e}")
-
-    def _handle_error_message(self, msg: ServerMessage) -> None:
-        """Routes server error payloads to the appropriate handshake state."""
-        error_code = msg.get("error_code", "")
-        code = msg.get("code")
-        message = msg.get("message", "Unknown error")
-
-        self.handshake.set_error_context(error_code, message)
-
-        if error_code == "IP_BANNED":
-            logger.error(f"IP Banned: {message}")
-            self.handshake.transition_to(HandshakeState.BANNED)
-        elif error_code == "VERSION_OUTDATED":
-            logger.error(f"Version outdated: {message}. Please update your client.")
-            self.handshake.transition_to(HandshakeState.VERSION_OUTDATED)
-        elif error_code == "AUTH_FAILED":
-            logger.error(f"Authentication failed: {message}")
-            sec_cfg.clear_key(self.hostname)
-            self.handshake.transition_to(HandshakeState.FAILED)
-        elif error_code == "MAX_CONNECTIONS":
-            logger.warning(f"Server at capacity: {message}")
-            self.handshake.transition_to(HandshakeState.FAILED)
-        elif error_code == "HANDSHAKE_REQUIRED":
-            logger.warning(f"Handshake required: {message}")
-            self.handshake.transition_to(HandshakeState.FAILED)
-        elif error_code in ("MALFORMED_JSON", "INVALID_EVENT", "DUPLICATE_HANDSHAKE"):
-            logger.error(f"Protocol error ({error_code}): {message}")
-            self.handshake.transition_to(HandshakeState.FAILED)
-        elif error_code in ("BUFFER_EXCEEDED", "TRANSCRIPTION_FAILED", "SERVER_ERROR"):
-            logger.error(f"Server error ({error_code}): {message}")
-            # Operational errors — notify listeners, don't transition handshake
-            self._notify_listeners(msg)
             return
-        elif error_code == "NO_AUDIO":
-            logger.info(f"No audio detected: {message}")
-            self._notify_listeners(msg)
+
+        event = msg.get("event")
+        if event == "pong":
+            # Keepalive traffic is not user activity; it must not defer idle.
+            logger.debug("Keepalive pong received")
             return
+
+        self._touch()
+        if event == "hello":
+            logger.debug("Server hello acknowledged")
+        elif event == "authenticated":
+            self._reconnect_attempt = 0  # backoff resets only on real success
+            self.handshake.transition_to(HandshakeState.AUTHENTICATED)
+            logger.success(f"Authenticated CID: {msg.get('cid', 'unknown')}")
+        elif event == "error":
+            await self._handle_error_message(msg)
         else:
-            # Fallback for legacy payloads without error_code
-            if code in (401, 403, 1008):
-                logger.error(f"Server error (code={code}): {message}")
-                self.handshake.transition_to(HandshakeState.FAILED)
-            else:
-                logger.warning(f"Unrecognized error: {msg}")
-                self._notify_listeners(msg)
-                return
+            await self._notify_listeners(msg)
 
-        # Notify listeners for terminal errors too
-        self._notify_listeners(msg)
+    async def _handle_error_message(self, msg: ServerMessage) -> None:
+        """Session errors become handshake state; operational errors go to listeners.
+
+        Transport does not log these: the controller reports each error once
+        (handshake listener for session errors, message listener otherwise).
+        """
+        error_code = msg.get("error_code", "")
+        session_state = _SESSION_ERRORS.get(error_code)
+        if session_state is None:
+            # NO_AUDIO, TRANSCRIPTION_FAILED, BUFFER_EXCEEDED, SERVER_ERROR, ...
+            await self._notify_listeners(msg)
+            return
+
+        if error_code == "AUTH_FAILED":
+            await asyncio.to_thread(sec_cfg.clear_key, self.hostname)
+        self.handshake.set_error_context(
+            error_code, msg.get("message", "Unknown error")
+        )
+        self.handshake.transition_to(session_state)
+
+    async def _notify_listeners(self, msg: ServerMessage) -> None:
+        for cb in self._message_listeners:
+            await cb(msg)
 
     # ------------------------------------------------------------------
     # Send methods
@@ -251,68 +258,50 @@ class TransportService:
 
     async def send_audio(self, chunk: bytes):
         """Sends raw PCM chunks ONLY if authenticated."""
-        if self.handshake.can_send_audio() and self._ws:
-            self._reset_idle_timer()
+        if self.is_ready and self._ws:
+            self._touch()
             await self._ws.send(chunk)
 
     async def send_json(self, data: dict[str, JSONValue]) -> None:
         if self._ws:
-            self._reset_idle_timer()
+            self._touch()
             await self._ws.send(json.dumps(data))
 
-    def _notify_listeners(self, msg: ServerMessage) -> None:
-        """Dispatches async listeners in runtime code and sync-style tests."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            for cb in self._message_listeners:
-                asyncio.run(cb(msg))
-            return
-
-        for cb in self._message_listeners:
-            loop.create_task(cb(msg))
-
     # ------------------------------------------------------------------
-    # Keepalive ping
+    # Keepalive & idle
     # ------------------------------------------------------------------
 
-    def _start_keepalive(self):
-        self._stop_keepalive()
+    def _touch(self) -> None:
+        """Record user-driven activity (audio, transcripts, control messages)."""
+        self._last_activity = time.monotonic()
 
-        async def _ping_loop():
-            while self._ws:
-                await asyncio.sleep(KEEPALIVE_INTERVAL_S)
-                if self._ws and self.handshake.state == HandshakeState.AUTHENTICATED:
-                    try:
-                        await self.send_json({"event": "ping"})
-                        logger.debug("Keepalive ping sent")
-                    except Exception:
-                        break
+    async def _keepalive_loop(self):
+        while self._ws:
+            await asyncio.sleep(KEEPALIVE_INTERVAL_S)
+            ws = self._ws
+            if ws and self.handshake.state == HandshakeState.AUTHENTICATED:
+                try:
+                    # Sent directly: a ping must not count as activity.
+                    await ws.send(json.dumps({"event": "ping"}))
+                    logger.debug("Keepalive ping sent")
+                except Exception:
+                    break
 
-        self._keepalive_task = asyncio.create_task(_ping_loop())
+    async def _idle_watchdog(self):
+        """Disconnect after IDLE_TIMEOUT without user activity.
 
-    def _stop_keepalive(self):
-        if self._keepalive_task:
-            self._keepalive_task.cancel()
-            self._keepalive_task = None
-
-    # ------------------------------------------------------------------
-    # Idle timer
-    # ------------------------------------------------------------------
-
-    def _reset_idle_timer(self):
-        if self._idle_timer:
-            self._idle_timer.cancel()
-
-        async def _timeout():
-            await asyncio.sleep(cfg.IDLE_TIMEOUT)
-            if self._ws:
+        One task per connection that sleeps until the idle deadline, rather
+        than a timer recreated on every audio chunk.
+        """
+        while self._ws:
+            remaining = cfg.IDLE_TIMEOUT - (time.monotonic() - self._last_activity)
+            if remaining <= 0:
                 logger.info(
                     f"Idle for {cfg.IDLE_TIMEOUT}s. Disconnecting to save server resources."
                 )
                 await self.disconnect(reason="Idle Timeout")
-
-        self._idle_timer = asyncio.create_task(_timeout())
+                return
+            await asyncio.sleep(remaining)
 
     # ------------------------------------------------------------------
     # Reconnection with exponential backoff + jitter
@@ -323,20 +312,33 @@ class TransportService:
         await self._teardown("Connection failed", reset_handshake=False)
         self._schedule_reconnect()
 
-    async def _handle_unexpected_close(self):
-        """Called when the server closes the connection unexpectedly."""
-        # Terminal states should not trigger reconnection
-        if self.handshake.state in (
-            HandshakeState.BANNED,
-            HandshakeState.VERSION_OUTDATED,
-        ):
-            await self._teardown("Terminal error")
+    async def _handle_unexpected_close(self, close_code: int | None = None):
+        """Called when the connection ends without a local disconnect()."""
+        if self._intentional_disconnect:
             return
 
-        await self._teardown("Closed by server", reset_handshake=False)
+        # Keep error states (and their context) for listeners and
+        # ensure_connected; a plain drop returns to LOCKED.
+        keep_state = self.handshake.state in _ERROR_STATES
+        await self._teardown("Closed by server", reset_handshake=not keep_state)
 
-        if not self._intentional_disconnect:
+        if self._should_auto_reconnect(close_code):
             self._schedule_reconnect()
+
+    def _should_auto_reconnect(self, close_code: int | None) -> bool:
+        state = self.handshake.state
+        if state in (HandshakeState.BANNED, HandshakeState.VERSION_OUTDATED):
+            return False
+        if state == HandshakeState.FAILED and (
+            self.handshake.last_error_code == "AUTH_FAILED"
+        ):
+            # The key was rejected and cleared; retrying would only prompt for
+            # a key in the background. The next recording asks interactively.
+            return False
+        if close_code in IDLE_EVICTION_CLOSE_CODES:
+            logger.info("Server closed the idle connection; reconnecting on demand.")
+            return False
+        return True
 
     def _schedule_reconnect(self):
         if self._reconnect_attempt >= MAX_RECONNECT_ATTEMPTS:
@@ -350,8 +352,7 @@ class TransportService:
         delay = min(
             BACKOFF_BASE_S * (BACKOFF_FACTOR**self._reconnect_attempt), BACKOFF_MAX_S
         )
-        jitter = random.uniform(0, delay * 0.3)
-        wait = delay + jitter
+        wait = delay + random.uniform(0, delay * 0.3)
         self._reconnect_attempt += 1
 
         logger.info(
@@ -365,32 +366,33 @@ class TransportService:
         self._reconnect_task = asyncio.create_task(_reconnect())
 
     def _cancel_reconnect(self):
-        if self._reconnect_task:
+        if self._reconnect_task and self._reconnect_task is not asyncio.current_task():
             self._reconnect_task.cancel()
-            self._reconnect_task = None
+        self._reconnect_task = None
 
     # ------------------------------------------------------------------
     # Teardown / cleanup
     # ------------------------------------------------------------------
 
     async def _teardown(self, reason: str, reset_handshake: bool = True):
-        """Cancels background tasks and closes the socket."""
-        self._stop_keepalive()
+        """Cancels background tasks and closes the socket.
 
-        if self._idle_timer:
-            self._idle_timer.cancel()
-            self._idle_timer = None
+        Teardown is often reached from one of these tasks (the idle watchdog,
+        the receive loop); cancelling the current task would abort teardown at
+        its next await and leave the socket and handshake half-reset.
+        """
+        current = asyncio.current_task()
+        for task in (self._keepalive_task, self._idle_task, self._receive_task):
+            if task is not None and task is not current:
+                task.cancel()
+        self._keepalive_task = self._idle_task = self._receive_task = None
 
-        if self._receive_task:
-            self._receive_task.cancel()
-            self._receive_task = None
-
-        if self._ws:
+        ws, self._ws = self._ws, None
+        if ws is not None:
             try:
-                await self._ws.close(1000, reason)
+                await ws.close(1000, reason)
             except Exception as e:
                 logger.debug(f"Ignoring socket-close error during teardown: {e}")
-            self._ws = None
 
         if reset_handshake:
             self.handshake.reset()

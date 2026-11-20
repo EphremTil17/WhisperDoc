@@ -1,7 +1,5 @@
 from typing import Dict
 
-from ..services.config_service import cfg
-
 
 class PayloadBuilder:
     """
@@ -9,18 +7,16 @@ class PayloadBuilder:
     """
 
     @staticmethod
-    def build_hello(
-        token: str, auth_type: str = "api_key", incognito: bool = False
-    ) -> Dict:
-        """
-        Constructs the mandatory application-level handshake payload.
-        Including 'auth_type' triggers user-specific model hot-reloading on the backend.
+    def build_hello(token: str, version: str, incognito: bool = False) -> Dict:
+        """Constructs the mandatory application-level handshake payload.
+
+        The terminal client authenticates with a static API key only.
         """
         return {
             "event": "hello",
             "client": "whisper.client.terminal",
-            "version": cfg.VERSION,
-            "auth_type": auth_type,
+            "version": version,
+            "auth_type": "api_key",
             "token": token,
             "incognito": incognito,
         }

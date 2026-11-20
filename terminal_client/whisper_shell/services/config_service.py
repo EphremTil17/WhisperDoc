@@ -1,7 +1,9 @@
 import argparse
 import os
 import sys
+import tomllib
 from getpass import getpass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import colorama
@@ -16,7 +18,22 @@ colorama.init()
 
 SERVICE_NAME = "WhisperDoc_Client"
 ENV_PATH = Path(".env")
-DEFAULT_VERSION = "3.0.0"
+
+
+def _client_version() -> str:
+    """The installed package version (single source: pyproject.toml).
+
+    Not configurable via .env: a version pinned there survived upgrades and
+    made the server reject the updated client as VERSION_OUTDATED.
+    """
+    try:
+        return version("whisperdoc-terminal")
+    except PackageNotFoundError:
+        # Source checkout that was never `uv sync`ed.
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        return tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"][
+            "version"
+        ]
 
 
 def _parse_optional_int(value: str | None) -> int | None:
@@ -48,7 +65,7 @@ class ConfigService:
         self.RECORD_HOTKEY = os.getenv("RECORD_HOTKEY", "ctrl+alt+w")
         self.AUDIO_DEVICE_ID = _parse_optional_int(os.getenv("AUDIO_DEVICE_ID"))
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-        self.VERSION = os.getenv("CLIENT_VERSION", DEFAULT_VERSION)
+        self.VERSION = _client_version()
         self.IDLE_TIMEOUT = int(os.getenv("IDLE_TIMEOUT", 300))
 
     def _parse_args(self):

@@ -1,66 +1,47 @@
-from typing import Awaitable, Callable, List
+from collections import deque
+from typing import Awaitable, Callable
 
 from loguru import logger
 
 
 class AudioBufferManager:
     """
-    Buffers audio chunks during handshake or hot-reload.
-    Ensures zero-loss transcription by delaying the stream until authenticated.
+    Holds one utterance's audio while the connection is not yet ready, so
+    speech captured during connect/handshake is streamed rather than lost.
     """
 
-    def __init__(self):
-        self._buffer: List[bytes] = []
-        self._is_buffering = True
-
-    # Safety Cap: 16kHz Mono 16-bit = ~32KB/sec.
-    # 600 seconds (10 mins) = ~19.2MB = ~18,750 chunks (at 1024 frames)
-    # We cap at 20,000 chunks for safety.
+    # Safety cap: 16kHz mono 16-bit = ~32KB/s; 20,000 chunks (at 1024 frames)
+    # is ~10 minutes. Beyond it the oldest audio is dropped to bound memory.
     MAX_CHUNKS = 20000
 
-    def add(self, chunk: bytes):
-        if self._is_buffering:
-            if len(self._buffer) >= self.MAX_CHUNKS:
-                # Prevent OOM: Pop oldest chunk before adding new one
-                self._buffer.pop(0)
-                logger.warning(
-                    "Audio buffer limit reached. Dropping oldest chunk to prevent memory exhaustion."
-                )
-            self._buffer.append(chunk)
-        else:
-            # This shouldn't happen if the controller is logic-correct,
-            # but we keep it for safety.
-            pass
+    def __init__(self):
+        self._buffer: deque[bytes] = deque(maxlen=self.MAX_CHUNKS)
+        self._overflow_logged = False
 
-    async def flush(self, send_callback: Callable[[bytes], Awaitable[None]]):
-        """
-        Streams all buffered chunks through the provided callback.
-        """
+    def add(self, chunk: bytes) -> None:
+        if len(self._buffer) == self.MAX_CHUNKS and not self._overflow_logged:
+            logger.warning(
+                "Audio buffer limit reached. Dropping oldest audio to bound memory."
+            )
+            self._overflow_logged = True
+        self._buffer.append(chunk)
+
+    async def flush(self, send_callback: Callable[[bytes], Awaitable[None]]) -> None:
+        """Streams all buffered chunks, oldest first, through send_callback."""
         if not self._buffer:
-            self._is_buffering = False
             return
 
         logger.info(f"Flushing {len(self._buffer)} buffered audio chunks...")
+        while self._buffer:
+            await send_callback(self._buffer.popleft())
 
-        # Create a copy and clear to allow concurrent additions if needed
-        # (though usually state transitions block this)
-        to_flush = self._buffer.copy()
+    def clear(self) -> None:
         self._buffer.clear()
-        self._is_buffering = False
+        self._overflow_logged = False
 
-        for chunk in to_flush:
-            await send_callback(chunk)
-
-        logger.debug("Audio buffer flush complete.")
-
-    def clear(self):
-        self._buffer.clear()
-        self._is_buffering = True
+    def __len__(self) -> int:
+        return len(self._buffer)
 
     @property
     def is_empty(self) -> bool:
-        return len(self._buffer) == 0
-
-    @property
-    def count(self) -> int:
-        return len(self._buffer)
+        return not self._buffer

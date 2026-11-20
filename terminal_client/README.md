@@ -19,7 +19,7 @@ A secure, modular Python terminal client for real-time dictation using the Whisp
 - **Structured Error Handling**: Parses all 12 backend `error_code` types (`AUTH_FAILED`, `IP_BANNED`, `VERSION_OUTDATED`, `MAX_CONNECTIONS`, etc.) and surfaces user-specific guidance for each — including key reset prompts, update notices, and capacity warnings.
 - **Granular Handshake State Machine**: Five-state machine (`LOCKED`, `AUTHENTICATING`, `AUTHENTICATED`, `FAILED`, `BANNED`, `VERSION_OUTDATED`) with error context propagation to the UI layer.
 - **Keepalive Ping**: Sends periodic pings every 45 seconds to prevent Cloudflare Tunnel idle connection drops (~100s threshold).
-- **Exponential Backoff Reconnection**: Automatic reconnection with jittered exponential backoff (base 1s, max 60s, 10 attempts). Terminal states (banned, version outdated) and intentional disconnects suppress reconnection.
+- **Exponential Backoff Reconnection**: Automatic reconnection with jittered exponential backoff (base 1s, max 60s, 10 attempts). Backoff resets only after a successful handshake. Terminal states (banned, version outdated), rejected API keys, server idle evictions, and intentional disconnects suppress automatic reconnection; the next recording reconnects on demand.
 - **Hardened Handshake Protocol**: Implements strict authentication sequencing. Audio data is only transmitted after the identity-verified handshake is successfully acknowledged by the backend.
 - **Low-Latency PCM Streaming**: Streams raw PCM audio chunks in real-time with zero-latency handover.
 - **Instant-Ready Lifecycle**: Proactively authenticates and warms up the backend connection on client launch, ensuring the model is loaded before you even press the hotkey.
@@ -75,8 +75,6 @@ uv run python -m whisper_shell
 - **API Key**: You will be prompted for your API Key, which is then stored securely in your OS Enclave.
 - **Hardware Validation**: Select your microphone device and host API (e.g., **WASAPI**). The setup wizard strictly enforces valid hardware configurations to prevent "ghost" audio inputs.
 - **Ready**: Once you see "Client Ready", press (Default: **Ctrl+Alt+W**) to start dictating.
-
-`whisper_client.py` remains as a compatibility shim, but the UV commands above are the supported workflow.
 
 ## CLI Options
 

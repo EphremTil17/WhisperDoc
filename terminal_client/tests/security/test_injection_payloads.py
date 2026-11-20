@@ -48,3 +48,18 @@ def test_empty_string_returns_empty():
 
 def test_none_returns_empty():
     assert Sanitizer.sanitize(None) == ""
+
+
+def test_preserves_printable_unicode():
+    """Regression: an ASCII whitelist turned "café" into "caf"."""
+    for text in (
+        "José ordered a café au lait",
+        "naïve résumé — “quoted”",
+        "It costs €20 at 25°C",
+        "Ünïcödé Ελληνικά 日本語",
+    ):
+        assert Sanitizer.sanitize(text) == text
+
+
+def test_strips_c1_csi_introducer():
+    assert Sanitizer.sanitize("c1\x9b31m csi") == "c131m csi"

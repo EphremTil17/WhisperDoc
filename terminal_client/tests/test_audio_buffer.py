@@ -5,6 +5,7 @@ Tests for AudioBufferManager.
 from unittest.mock import AsyncMock
 
 import pytest
+
 from whisper_shell.logic.audio_buffer import AudioBufferManager
 
 
@@ -12,13 +13,13 @@ class TestAudioBuffer:
     def test_starts_empty(self):
         buf = AudioBufferManager()
         assert buf.is_empty
-        assert buf.count == 0
+        assert len(buf) == 0
 
     def test_add_and_count(self):
         buf = AudioBufferManager()
         buf.add(b"\x01\x02")
         buf.add(b"\x03\x04")
-        assert buf.count == 2
+        assert len(buf) == 2
         assert not buf.is_empty
 
     def test_clear(self):
@@ -49,4 +50,4 @@ class TestAudioBuffer:
         buf = AudioBufferManager()
         for i in range(AudioBufferManager.MAX_CHUNKS + 5):
             buf.add(bytes([i % 256]))
-        assert buf.count == AudioBufferManager.MAX_CHUNKS
+        assert len(buf) == AudioBufferManager.MAX_CHUNKS

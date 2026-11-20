@@ -9,9 +9,31 @@ from ..logic.audio_buffer import AudioBufferManager
 from ..logic.handshake import HandshakeState
 from ..logic.messages import ServerMessage
 from ..logic.payload import PayloadBuilder
-from ..services.audio_service import AudioService
+from ..logic.sanitizer import Sanitizer
+from ..services.audio_service import AudioService, CaptureQueue
 from ..services.config_service import cfg
 from ..services.transport_service import TransportService
+
+# Upper bound for finishing an utterance recorded while still connecting. The
+# handshake itself times out at 15 s; this also covers the socket connect.
+HANDSHAKE_WAIT_S = 20.0
+
+# Handshake states after which waiting cannot change the outcome.
+_SETTLED_STATES = frozenset(
+    {
+        HandshakeState.AUTHENTICATED,
+        HandshakeState.FAILED,
+        HandshakeState.BANNED,
+        HandshakeState.VERSION_OUTDATED,
+    }
+)
+
+_OPERATIONAL_ERROR_MESSAGES = {
+    "NO_AUDIO": "No audio detected",
+    "TRANSCRIPTION_FAILED": "Transcription failed",
+    "BUFFER_EXCEEDED": "Audio buffer exceeded",
+    "SERVER_ERROR": "Server error",
+}
 
 
 class RecordingController:
@@ -22,18 +44,15 @@ class RecordingController:
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
-        self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
 
         # Services
-        self.audio = AudioService(loop, self.audio_queue)
+        self.audio = AudioService(loop)
         self.transport = TransportService()
-
-        # Logic
-        self.buffer_manager = AudioBufferManager()
         self.kb = keyboard.Controller()
 
         # State
         self.is_recording = False
+        self._handshake_settled = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
 
         # Wire up transport listeners
@@ -49,7 +68,7 @@ class RecordingController:
         if not self.is_recording:
             self._start_recording_session()
         else:
-            await self._stop_recording_session()
+            self._stop_recording_session()
 
     def _start_recording_session(self):
         if self.is_recording:
@@ -58,87 +77,92 @@ class RecordingController:
         self.is_recording = True
         logger.info(f"{Fore.CYAN}Recording...{Style.RESET_ALL}")
 
-        # 1. Start Hardware Capture Instantly (Zero-Latency)
-        self.audio.start_capture()
+        # 1. Start capture instantly (zero-latency); the session owns its queue.
+        capture = self.audio.start_capture()
 
-        # 2. Reset Buffer for new session
-        self.buffer_manager.clear()
-
-        # 3. Ensure Transport is connected in background (Auto-Wake)
+        # 2. Ensure Transport is connected in background (Auto-Wake)
         self._track_task(asyncio.create_task(self.transport.ensure_connected()))
 
-        # 4. Start the Pipe loop
-        self._track_task(asyncio.create_task(self._process_audio_pipe()))
+        # 3. Stream this session, then finish it in order
+        self._track_task(asyncio.create_task(self._process_audio_pipe(capture)))
 
-    async def _stop_recording_session(self):
+    def _stop_recording_session(self):
         if not self.is_recording:
             return
 
         self.is_recording = False
+        # Ends the session's queue with a sentinel; the pipe flushes the
+        # remaining audio and then sends end-of-stream, in that order.
         self.audio.stop_capture()
         logger.info(f"{Fore.CYAN}Stopped. Processing...{Style.RESET_ALL}")
 
-        if self.transport.handshake.state == HandshakeState.AUTHENTICATED:
-            await self.transport.send_json(PayloadBuilder.build_end_of_stream())
-
-    async def _process_audio_pipe(self):
-        """
-        Continuously pulls data from audio queue and directs it to
-        the Buffer or the Socket depending on handshake state.
-        """
-        while self.is_recording or not self.audio_queue.empty():
-            try:
-                chunk = await asyncio.wait_for(self.audio_queue.get(), timeout=0.1)
-
-                if self.transport.handshake.state == HandshakeState.AUTHENTICATED:
-                    if not self.buffer_manager.is_empty:
-                        await self.buffer_manager.flush(self.transport.send_audio)
+    async def _process_audio_pipe(self, capture: CaptureQueue) -> None:
+        """Streams one session's audio, buffering while the connection is not ready."""
+        buffer = AudioBufferManager()
+        try:
+            while (chunk := await capture.get()) is not None:
+                if self.transport.is_ready:
+                    await buffer.flush(self.transport.send_audio)
                     await self.transport.send_audio(chunk)
                 else:
-                    self.buffer_manager.add(chunk)
+                    buffer.add(chunk)
+            await self._finish_utterance(buffer)
+        except Exception as e:
+            logger.error(f"Audio pipe error: {e}")
 
-            except asyncio.TimeoutError:
-                if not self.is_recording:
-                    break
-            except Exception as e:
-                logger.error(f"Audio pipe error: {e}")
-                break
+    async def _finish_utterance(self, buffer: AudioBufferManager) -> None:
+        """Send any buffered tail, then end-of-stream — never the reverse."""
+        if not self.transport.is_ready:
+            try:
+                await asyncio.wait_for(
+                    self._handshake_settled.wait(), timeout=HANDSHAKE_WAIT_S
+                )
+            except TimeoutError:
+                pass
+        if not self.transport.is_ready:
+            if not buffer.is_empty:
+                logger.warning(
+                    f"Not connected; discarded {len(buffer)} chunks of recorded audio."
+                )
+            return
+
+        await buffer.flush(self.transport.send_audio)
+        await self.transport.send_json(PayloadBuilder.build_end_of_stream())
 
     def _on_handshake_state_changed(self, state: HandshakeState):
-        """Reacts to handshake state transitions."""
+        """Tracks handshake progress and reports session-ending errors once."""
+        if state in _SETTLED_STATES:
+            self._handshake_settled.set()
+        else:
+            self._handshake_settled.clear()
+
+        handshake = self.transport.handshake
+        message = handshake.last_message
         if state == HandshakeState.AUTHENTICATED:
-            logger.debug("Handshake Authenticated. Pipe loop will flush buffer.")
+            logger.debug("Handshake authenticated; buffered audio will stream.")
         elif state == HandshakeState.FAILED:
-            error_code = self.transport.handshake.last_error_code
-            message = self.transport.handshake.last_message or "Unknown error"
+            error_code = handshake.last_error_code
             if error_code == "AUTH_FAILED":
                 logger.error(
-                    f"Authentication failed: {message}. Run --clear-key to re-enter your API key."
+                    f"Authentication failed: {message}. The stored API key was "
+                    "removed; you will be prompted for a new one on the next recording."
                 )
             elif error_code == "MAX_CONNECTIONS":
-                logger.warning(f"Server at capacity: {message}. Try again shortly.")
+                logger.warning(f"Server at capacity: {message}. Retrying shortly.")
             else:
-                logger.error(f"Handshake failed: {message}")
-            self.buffer_manager.clear()
+                logger.error(f"Handshake failed: {message or 'Unknown error'}")
         elif state == HandshakeState.BANNED:
-            message = self.transport.handshake.last_message or "IP banned"
-            logger.error(f"{Fore.RED}Banned: {message}{Style.RESET_ALL}")
-            self.buffer_manager.clear()
+            logger.error(f"{Fore.RED}Banned: {message or 'IP banned'}{Style.RESET_ALL}")
         elif state == HandshakeState.VERSION_OUTDATED:
-            message = self.transport.handshake.last_message or "Client version outdated"
             logger.error(
-                f"{Fore.RED}{message}. Please update your client.{Style.RESET_ALL}"
+                f"{Fore.RED}{message or 'Client version outdated'}. "
+                f"Please update your client.{Style.RESET_ALL}"
             )
-            self.buffer_manager.clear()
 
     async def _handle_server_message(self, msg: ServerMessage) -> None:
-        """Processes transcription results and server errors.
+        """Processes transcription results and operational server errors.
 
-        Intentionally async despite no current awaits. TransportService dispatches
-        all MessageListener callbacks with `await cb(msg)`, so this must return a
-        coroutine. Future work that would naturally use this — writing results to an
-        async queue, aiofiles logging, or rate-limited paste — should be added here
-        directly rather than spawning a new task.
+        Async because TransportService awaits every message listener.
         """
         event = msg.get("event")
 
@@ -147,27 +171,17 @@ class RecordingController:
         elif event == "error":
             error_code = msg.get("error_code", "")
             message = msg.get("message", "Unknown error")
+            label = _OPERATIONAL_ERROR_MESSAGES.get(error_code)
             if error_code == "NO_AUDIO":
-                logger.info(f"No audio detected: {message}")
-            elif error_code == "TRANSCRIPTION_FAILED":
-                logger.error(f"Transcription failed: {message}")
-            elif error_code == "BUFFER_EXCEEDED":
-                logger.warning(f"Audio buffer exceeded: {message}")
-            elif error_code == "SERVER_ERROR":
-                logger.error(f"Server error: {message}")
+                logger.info(f"{label}: {message}")
+            elif label is not None:
+                logger.error(f"{label}: {message}")
             else:
-                logger.error(
-                    f"Server Error ({error_code or msg.get('code')}): {message}"
-                )
+                logger.error(f"Server error ({error_code or 'unknown'}): {message}")
         elif event == "status":
             logger.info(f"Server Status: {msg.get('message')}")
 
     def _paste_text(self, text: str) -> None:
-        if not text or not text.strip():
-            return
-
-        from ..logic.sanitizer import Sanitizer
-
         safe_text = Sanitizer.sanitize(text)
         if not safe_text:
             return

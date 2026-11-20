@@ -9,6 +9,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from whisper_shell.logic.handshake import HandshakeState
 from whisper_shell.services.transport_service import (
     MAX_RECONNECT_ATTEMPTS,
@@ -62,147 +63,75 @@ class TestPrepareUri:
 
 
 class TestErrorRouting:
+    """Session errors become handshake state; operational errors go to listeners."""
+
     def _make_svc(self) -> TransportService:
         svc = TransportService()
         svc.handshake.transition_to(HandshakeState.AUTHENTICATING)
         return svc
 
-    def test_ip_banned(self):
-        svc = self._make_svc()
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "code": 1008,
-                "error_code": "IP_BANNED",
-                "message": "Banned for 300s",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.BANNED
-        assert svc.handshake.last_error_code == "IP_BANNED"
+    @staticmethod
+    def _error(error_code: str, message: str = "msg") -> dict:
+        return {"event": "error", "error_code": error_code, "message": message}
 
-    def test_version_outdated(self):
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("error_code", "expected"),
+        [
+            ("IP_BANNED", HandshakeState.BANNED),
+            ("VERSION_OUTDATED", HandshakeState.VERSION_OUTDATED),
+            ("MAX_CONNECTIONS", HandshakeState.FAILED),
+            ("HANDSHAKE_REQUIRED", HandshakeState.FAILED),
+            ("MALFORMED_JSON", HandshakeState.FAILED),
+            ("INVALID_EVENT", HandshakeState.FAILED),
+            ("DUPLICATE_HANDSHAKE", HandshakeState.FAILED),
+        ],
+    )
+    async def test_session_errors_set_state_without_notifying(
+        self, error_code, expected
+    ):
         svc = self._make_svc()
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "code": 1008,
-                "error_code": "VERSION_OUTDATED",
-                "message": "Min version 3.0.0",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.VERSION_OUTDATED
+        listener = AsyncMock()
+        svc.add_message_listener(listener)
 
-    def test_auth_failed_clears_key(self):
+        await svc._handle_error_message(self._error(error_code, "why"))
+
+        assert svc.handshake.state == expected
+        assert svc.handshake.last_error_code == error_code
+        assert svc.handshake.last_message == "why"
+        listener.assert_not_awaited()  # reported once, via handshake state
+
+    @pytest.mark.asyncio
+    async def test_auth_failed_clears_key(self):
         svc = self._make_svc()
         with patch("whisper_shell.services.transport_service.sec_cfg") as mock_sec:
-            svc._handle_error_message(
-                {
-                    "event": "error",
-                    "code": 403,
-                    "error_code": "AUTH_FAILED",
-                    "message": "Invalid token",
-                }
-            )
+            await svc._handle_error_message(self._error("AUTH_FAILED"))
             mock_sec.clear_key.assert_called_once_with(svc.hostname)
         assert svc.handshake.state == HandshakeState.FAILED
 
-    def test_max_connections(self):
-        svc = self._make_svc()
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "code": 1008,
-                "error_code": "MAX_CONNECTIONS",
-                "message": "Server full",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.FAILED
-
-    def test_handshake_required(self):
-        svc = self._make_svc()
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "code": 1008,
-                "error_code": "HANDSHAKE_REQUIRED",
-                "message": "Send hello first",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.FAILED
-
-    def test_malformed_json(self):
-        svc = self._make_svc()
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "code": 1008,
-                "error_code": "MALFORMED_JSON",
-                "message": "Bad JSON",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.FAILED
-
-    def test_no_audio_does_not_change_handshake(self):
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error_code",
+        [
+            "NO_AUDIO",
+            "TRANSCRIPTION_FAILED",
+            "BUFFER_EXCEEDED",
+            "SERVER_ERROR",
+            "UNKNOWN_FUTURE_CODE",
+            "",
+        ],
+    )
+    async def test_operational_errors_notify_and_keep_session(self, error_code):
         svc = self._make_svc()
         svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "error_code": "NO_AUDIO",
-                "message": "No speech detected",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.AUTHENTICATED
+        listener = AsyncMock()
+        svc.add_message_listener(listener)
+        msg = self._error(error_code)
 
-    def test_transcription_failed_does_not_change_handshake(self):
-        svc = self._make_svc()
-        svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "error_code": "TRANSCRIPTION_FAILED",
-                "message": "Engine error",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.AUTHENTICATED
+        await svc._handle_error_message(msg)
 
-    def test_server_error_does_not_change_handshake(self):
-        svc = self._make_svc()
-        svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "error_code": "SERVER_ERROR",
-                "message": "Internal",
-            }
-        )
         assert svc.handshake.state == HandshakeState.AUTHENTICATED
-
-    def test_legacy_numeric_code_fallback(self):
-        """Servers without error_code field — fall back to numeric code."""
-        svc = self._make_svc()
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "code": 403,
-                "message": "Forbidden",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.FAILED
-
-    def test_unknown_error_code_notifies_listeners(self):
-        svc = self._make_svc()
-        svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
-        received = []
-        svc.add_message_listener(AsyncMock(side_effect=lambda m: received.append(m)))
-        svc._handle_error_message(
-            {
-                "event": "error",
-                "error_code": "UNKNOWN_FUTURE_CODE",
-                "message": "???",
-            }
-        )
-        assert svc.handshake.state == HandshakeState.AUTHENTICATED
+        listener.assert_awaited_once_with(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -333,9 +262,20 @@ class TestEnsureConnected:
     @pytest.mark.asyncio
     async def test_returns_true_when_already_authenticated(self):
         svc = TransportService()
+        svc._ws = MagicMock()
         svc.handshake.transition_to(HandshakeState.AUTHENTICATING)
         svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
         assert await svc.ensure_connected() is True
+
+    @pytest.mark.asyncio
+    async def test_reconnects_when_authenticated_state_has_no_socket(self):
+        """A dropped socket must not pass for a live session."""
+        svc = TransportService()
+        svc.handshake.transition_to(HandshakeState.AUTHENTICATING)
+        svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
+        with patch.object(svc, "connect", AsyncMock(return_value=True)) as connect:
+            assert await svc.ensure_connected() is True
+            connect.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +305,16 @@ class TestReconnectionBackoff:
         svc._schedule_reconnect()
         svc._cancel_reconnect()
         assert svc._reconnect_task is None
+
+    @pytest.mark.asyncio
+    async def test_backoff_resets_only_on_authentication(self):
+        """Regression: the counter reset when the socket opened, so a server
+        rejecting before auth (e.g. at capacity) was retried every second."""
+        svc = TransportService()
+        svc._reconnect_attempt = 3
+        svc.handshake.transition_to(HandshakeState.AUTHENTICATING)
+        await svc._handle_raw_message('{"event": "authenticated", "cid": "x"}')
+        assert svc._reconnect_attempt == 0
 
 
 # ---------------------------------------------------------------------------

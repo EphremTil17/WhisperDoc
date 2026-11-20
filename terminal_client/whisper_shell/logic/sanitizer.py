@@ -5,42 +5,31 @@ from loguru import logger
 
 class Sanitizer:
     """
-    Principal-level input sanitizer using a strict whitelist-only approach.
-    Prevents terminal injection, ReDoS, and control sequence escalation.
-    """
+    Output sanitizer for transcripts before they reach the clipboard/terminal.
 
-    # Whitelist: Only basic printable ASCII + safe whitespace
-    # Prevents ANSI escapes (\x1b), Null bytes (\x00), and control characters (< \x20)
-    WHITELIST_REGEX = re.compile(r"[^\x20-\x7E\n\r\t]")
+    Mirrors the backend's Sanitizer: strips ANSI escape sequences and control
+    characters that could drive a terminal, while preserving printable Unicode
+    (accents, typographic punctuation, non-Latin scripts) so dictation is not
+    corrupted.
+    """
 
     # Comprehensive ANSI stripper covering CSI (colors/moves) and OSC (titles/etc).
     ANSI_ESCAPE_REGEX = re.compile(r"\x1b\[[0-9;]*[mGKH]|\x1b]0;[^\x07]*\x07")
 
+    # C0 controls (except \t \n \r), DEL, and C1 controls. ESC (\x1b) and the
+    # 8-bit CSI introducer (\x9b) are covered, so any escape sequence the ANSI
+    # pattern misses is still rendered inert.
+    CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+
     @classmethod
     def sanitize(cls, text: str | None) -> str:
-        """
-        Neutralizes all non-printable or suspicious characters.
-        """
         if not text:
             return ""
 
-        try:
-            # 1. Strip ANSI escape sequences explicitly
-            cleaned = cls.ANSI_ESCAPE_REGEX.sub("", text)
+        cleaned = cls.ANSI_ESCAPE_REGEX.sub("", text)
+        cleaned = cls.CONTROL_CHAR_REGEX.sub("", cleaned).strip()
 
-            # 2. Apply strict whitelist (printable ASCII + safe whitespace)
-            cleaned = cls.WHITELIST_REGEX.sub("", cleaned)
+        if cleaned != text:
+            logger.debug("Sanitizer neutralized control sequences in transcript.")
 
-            # 3. Final cleaning
-            cleaned = cleaned.strip()
-
-            if cleaned != text:
-                logger.warning(
-                    "Sanitizer neutralized control sequences or non-whitelisted characters."
-                )
-
-            return cleaned
-        except Exception as e:
-            logger.error(f"Sanitization failure: {e}")
-            # Fail-secure: return empty if processing fails
-            return ""
+        return cleaned

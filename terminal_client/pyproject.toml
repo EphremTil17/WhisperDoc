@@ -79,6 +79,11 @@ exclude = [
 select = ["E", "F", "I"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+# Explicit because pre-commit runs ruff from the repo root with --config, and
+# ruff then resolves first-party detection against the CWD.
+known-first-party = ["whisper_shell", "tests"]
+
 [tool.coverage.run]
 source = ["whisper_shell"]
 omit = ["whisper_shell/__main__.py"]

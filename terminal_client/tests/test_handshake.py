@@ -7,6 +7,7 @@ Pure state-machine logic — no I/O, no mocking required.
 import asyncio
 
 import pytest
+
 from whisper_shell.logic.handshake import HandshakeState, HandshakeStateMachine
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,17 @@ class TestErrorPaths:
         sm.transition_to(HandshakeState.FAILED)
         sm.reset()
         assert sm.state == HandshakeState.LOCKED
+
+    def test_reset_mid_handshake_reaches_locked(self):
+        """Regression: AUTHENTICATING has no regular edge to LOCKED, so a
+        disconnect mid-handshake left the machine stuck in AUTHENTICATING."""
+        sm = HandshakeStateMachine()
+        seen = []
+        sm.add_listener(seen.append)
+        sm.transition_to(HandshakeState.AUTHENTICATING)
+        sm.reset()
+        assert sm.state == HandshakeState.LOCKED
+        assert seen == [HandshakeState.AUTHENTICATING, HandshakeState.LOCKED]
 
     def test_banned_reachable_from_authenticating(self):
         sm = HandshakeStateMachine()

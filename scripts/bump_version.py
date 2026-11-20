@@ -138,18 +138,6 @@ TARGET_MANIFEST: list[TargetRule] = [
         description="Terminal client pyproject.toml package version",
     ),
     TargetRule(
-        path="terminal_client/.env.template",
-        pattern=r"(?m)^(CLIENT_VERSION=)[^\r\n]*",
-        replacement_template=r"\g<1>{version}",
-        description="Terminal client .env.template version",
-    ),
-    TargetRule(
-        path="terminal_client/whisper_shell/services/config_service.py",
-        pattern=r'(?m)^(DEFAULT_VERSION\s*=\s*")[^"]+(")',
-        replacement_template=r"\g<1>{version}\g<2>",
-        description="Terminal client config service fallback version",
-    ),
-    TargetRule(
         path="terminal_client/README.md",
         pattern=r"(?m)^(# WhisperDoc Terminal Client \(v)[^\)]+(\))",
         replacement_template=r"\g<1>{version}\g<2>",
