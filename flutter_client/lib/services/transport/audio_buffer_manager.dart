@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+
 import 'package:web_socket_channel/web_socket_channel.dart';
+
 import '../utility/logging_service.dart';
 
 /// Manages temporary audio buffering during the WebSocket handshake.

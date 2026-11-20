@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/mappers/dictation_profile_ui_mapper.dart';

@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
+
 import 'oidc_manager.dart';
 import 'session_manager.dart';
 
@@ -14,9 +16,8 @@ class AuthService extends ChangeNotifier {
   final OidcManager _oidc;
   final SessionManager _session;
 
-  AuthService({required SessionManager session, OidcManager? oidc})
-    : _session = session,
-      _oidc = oidc ?? OidcManager();
+  AuthService({required this._session, OidcManager? oidc})
+    : _oidc = oidc ?? OidcManager();
 
   bool _isInitialized = false;
   bool _isAuthenticating = false;

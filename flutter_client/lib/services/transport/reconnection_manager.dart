@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+
 import '../utility/logging_service.dart';
 
 /// Orchestrates WebSocket reconnection attempts with security "Kill Switch" enforcement.

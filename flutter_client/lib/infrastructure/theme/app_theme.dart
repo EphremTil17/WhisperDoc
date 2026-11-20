@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
@@ -35,9 +35,8 @@ class AppTheme {
           borderSide: BorderSide.none,
         ),
       ),
-      textTheme: GoogleFonts.lexendTextTheme(
-        ThemeData.dark().textTheme,
-      ).apply(bodyColor: Colors.white, displayColor: Colors.white),
+      textTheme: GoogleFonts.lexendTextTheme(ThemeData.dark().textTheme)
+          .apply(bodyColor: Colors.white, displayColor: Colors.white),
       iconTheme: const IconThemeData(color: Colors.white70),
     );
   }

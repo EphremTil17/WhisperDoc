@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show WebSocket;
+
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_client/services/transport/transport_security_service.dar
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/ban_state_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
+
 import 'configuration_manager.dart';
 import 'handshake_payload_builder.dart';
 import 'audio_buffer_manager.dart';

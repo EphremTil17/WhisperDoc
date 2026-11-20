@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 /// Transport security service for RFC 1918 validation and WSS enforcement.

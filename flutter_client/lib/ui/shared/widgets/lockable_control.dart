@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Wraps an action control with an animated opacity lock and disabled tooltip
 /// during active recording sessions.

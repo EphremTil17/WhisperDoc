@@ -1,26 +1,26 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/ui/whisper_doc_app.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Configure the window while it is still hidden. The native runner shows it
   // on Flutter's first frame (flutter_window.cpp), and that frame is the boot
   // screen, so a blank window is never visible.
   try {
-    const windowOptions = WindowOptions(
-      size: Size(AppConstants.windowWidth, AppConstants.windowHeight),
-      center: true,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-      title: 'WhisperDoc',
-    );
-    await windowManager.ensureInitialized();
-    await windowManager.waitUntilReadyToShow(windowOptions);
-    await windowManager.setResizable(false);
+    final window = WindowManager.instance.getCurrent();
+    if (window != null) {
+      const size = Size(AppConstants.windowWidth, AppConstants.windowHeight);
+      window
+        ..titleBarStyle = TitleBarStyle.hidden
+        ..setSize(size.toNative(), false)
+        ..center()
+        ..backgroundColor = Colors.transparent.toNative()
+        ..title = 'WhisperDoc'
+        ..isResizable = false;
+    }
   } catch (e) {
     debugPrint('Window configuration failed: $e');
   }

@@ -27,15 +27,13 @@ void main() {
     mockWindowsInfo = _MockWindowsDeviceInfo();
 
     // Setup default mock behavior
-    when(
-      () => mockDeviceInfo.windowsInfo,
-    ).thenAnswer((_) => Future.value(mockWindowsInfo));
+    when(() => mockDeviceInfo.windowsInfo)
+        .thenAnswer((_) => Future.value(mockWindowsInfo));
     when(() => mockWindowsInfo.deviceId).thenReturn('{uuid-1234}');
 
     // Default: no salt stored
-    when(
-      () => mockStorage.read(key: any(named: 'key')),
-    ).thenAnswer((_) => Future.value(null));
+    when(() => mockStorage.read(key: any(named: 'key')))
+        .thenAnswer((_) => Future.value(null));
     when(
       () => mockStorage.write(
         key: any(named: 'key'),
@@ -115,9 +113,8 @@ void main() {
 
       await vault.initialize();
 
-      when(
-        () => mockStorage.read(key: 'api_key'),
-      ).thenAnswer((_) => Future.value('test-key-123'));
+      when(() => mockStorage.read(key: 'api_key'))
+          .thenAnswer((_) => Future.value('test-key-123'));
 
       final result = await vault.retrieveCredential('api_key');
 

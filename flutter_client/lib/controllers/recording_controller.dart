@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
 import 'package:flutter_client/services/hardware/audio_device_monitor.dart';
@@ -69,23 +70,16 @@ class RecordingController extends ChangeNotifier {
   Stream<String> get onError => _errorController.stream;
 
   RecordingController({
-    required AudioService audioService,
-    required WebSocketService wsService,
-    required GroqTranscriptionService groqService,
-    required GroqTransformService transformService,
-    required AutomationService automationService,
-    required HistoryService historyService,
-    required SettingsService settingsService,
-    required AudioCueService audioCueService,
+    required this._audioService,
+    required this._wsService,
+    required this._groqService,
+    required this._transformService,
+    required this._automationService,
+    required this._historyService,
+    required this._settingsService,
+    required this._audioCueService,
     required AudioDeviceMonitor deviceMonitor,
-  }) : _audioService = audioService,
-       _wsService = wsService,
-       _groqService = groqService,
-       _transformService = transformService,
-       _automationService = automationService,
-       _historyService = historyService,
-       _settingsService = settingsService,
-       _audioCueService = audioCueService {
+  }) {
     _initListeners();
     // Listen to AudioService state changes
     _audioService.addListener(_onAudioStateChanged);

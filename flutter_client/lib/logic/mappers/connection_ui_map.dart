@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/transport_security_service.dart';

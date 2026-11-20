@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/formatters/clock_time.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';

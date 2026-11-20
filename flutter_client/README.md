@@ -83,7 +83,7 @@ lib/
 ## Prerequisites
 
 - Windows 10/11
-- Flutter SDK 3.x
+- Flutter SDK 3.50+ (Dart 3.14; the client uses the separate `material_ui` package)
 - A running WhisperDoc backend server **or** a [Groq API key](https://console.groq.com) (free tier)
 
 ## Quick Start

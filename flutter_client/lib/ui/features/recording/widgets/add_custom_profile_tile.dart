@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The bottom action tile in the profile dropdown for creating a new custom dictation profile.
 class AddCustomProfileTile extends StatefulWidget {

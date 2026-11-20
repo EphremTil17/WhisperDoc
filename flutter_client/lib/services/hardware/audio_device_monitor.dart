@@ -27,10 +27,9 @@ class AudioDeviceMonitor {
   int _burstNotifications = 0;
 
   AudioDeviceMonitor({
-    MethodChannel channel = const MethodChannel(channelName),
-    Duration settle = AppConstants.audioDeviceChangeSettle,
-  }) : _channel = channel,
-       _settle = settle;
+    this._channel = const MethodChannel(channelName),
+    this._settle = AppConstants.audioDeviceChangeSettle,
+  });
 
   /// Emits once per settled burst of endpoint changes.
   Stream<void> get changes => _changes.stream;

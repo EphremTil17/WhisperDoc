@@ -1,11 +1,12 @@
 // ignore_for_file: avoid-late-keyword, prefer-match-file-name
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_editor_dialog.dart';
+
 import '../../../../orchestrators/profile_editor_dialog_orchestrator.dart';
 
 class _MockSettingsService extends Mock
@@ -28,15 +29,12 @@ void main() {
 
   setUp(() {
     mockSettings = _MockSettingsService();
-    when(
-      () => mockSettings.saveCustomProfile(any()),
-    ).thenAnswer((_) => Future<void>.value());
-    when(
-      () => mockSettings.setDictationProfile(any()),
-    ).thenAnswer((_) => Future<void>.value());
-    when(
-      () => mockSettings.deleteCustomProfile(any()),
-    ).thenAnswer((_) => Future<void>.value());
+    when(() => mockSettings.saveCustomProfile(any()))
+        .thenAnswer((_) => Future<void>.value());
+    when(() => mockSettings.setDictationProfile(any()))
+        .thenAnswer((_) => Future<void>.value());
+    when(() => mockSettings.deleteCustomProfile(any()))
+        .thenAnswer((_) => Future<void>.value());
   });
 
   ProfileEditorDialogOrchestrator createOrchestrator(WidgetTester tester) =>

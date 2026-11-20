@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class ProfileInfoBlock extends StatelessWidget {
   const ProfileInfoBlock({super.key, required this.user});

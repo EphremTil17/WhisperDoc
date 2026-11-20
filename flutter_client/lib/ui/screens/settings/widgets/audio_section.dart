@@ -1,11 +1,13 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/ui/shared/widgets/glass_dropdown.dart';
 
 class AudioSection extends StatefulWidget {
   const AudioSection({super.key});
@@ -15,9 +17,6 @@ class AudioSection extends StatefulWidget {
 }
 
 class _AudioSectionState extends State<AudioSection> {
-  static const _fontSize = 14.0;
-  static const _iconSize = 20.0;
-
   Future<List<InputDevice>> _devicesFuture = Future<List<InputDevice>>.value(
     const <InputDevice>[],
   );
@@ -52,37 +51,29 @@ class _AudioSectionState extends State<AudioSection> {
     };
   }
 
-  DropdownButtonBuilder _buildSelectedItemBuilder(
+  Widget _buildDevicePicker(
+    SettingsService settings,
     List<InputDevice> devices,
     bool isRecording,
   ) {
-    return (context) {
-      return [
-        const DropdownMenuItem<String?>(
-          value: null,
-          child: Text('Default (System Voice Input)'),
-        ),
-        ...devices.map(
-          (device) => DropdownMenuItem<String?>(
-            value: device.id,
-            child: Text(device.label, overflow: TextOverflow.ellipsis),
-          ),
-        ),
-      ].map((item) {
-        final label = (item.child as Text).data ?? '';
+    final currentId = settings.microphoneId;
+    // A remembered device that is no longer present shows as Default.
+    final isListed = currentId == null || devices.any((d) => d.id == currentId);
 
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isRecording ? Colors.white38 : Colors.white,
-              fontSize: _fontSize,
-            ),
-          ),
-        );
-      }).toList();
-    };
+    return GlassDropdown<String?>(
+      value: isListed ? currentId : null,
+      items: [
+        const GlassDropdownItem(
+          value: null,
+          label: 'Default (System Voice Input)',
+        ),
+        for (final device in devices)
+          GlassDropdownItem(value: device.id, label: device.label),
+      ],
+      onChanged: isRecording
+          ? null
+          : _buildDeviceChangedHandler(settings, devices),
+    );
   }
 
   @override
@@ -121,61 +112,11 @@ class _AudioSectionState extends State<AudioSection> {
         const SizedBox(height: 8),
         FutureBuilder<List<InputDevice>>(
           future: _devicesFuture,
-          builder: (context, snapshot) {
-            final devices = snapshot.data ?? [];
-            final currentId = settings.microphoneId;
-
-            // Ensure currentId is in the list or it's null (Default)
-            final foundSelected =
-                currentId == null || devices.any((d) => d.id == currentId);
-
-            return DropdownButtonFormField<String?>(
-              initialValue: foundSelected ? currentId : null,
-              isExpanded: true,
-              dropdownColor: const Color(0xFF1E1E23),
-              icon: Icon(
-                Icons.keyboard_arrow_down,
-                color: isRecording ? Colors.white10 : Colors.white24,
-                size: _iconSize,
-              ),
-              borderRadius: const BorderRadius.all(Radius.circular(8)),
-              style: TextStyle(
-                color: isRecording ? Colors.white38 : Colors.white,
-                fontSize: _fontSize,
-              ),
-              decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 14,
-                ),
-              ),
-              selectedItemBuilder: _buildSelectedItemBuilder(
-                devices,
-                isRecording,
-              ),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text(
-                    'Default (System Voice Input)',
-                    style: TextStyle(fontSize: _fontSize),
-                  ),
-                ),
-                ...devices.map(
-                  (d) => DropdownMenuItem<String?>(
-                    value: d.id,
-                    child: Text(
-                      d.label,
-                      style: const TextStyle(fontSize: _fontSize),
-                    ),
-                  ),
-                ),
-              ],
-              onChanged: isRecording
-                  ? null
-                  : _buildDeviceChangedHandler(settings, devices),
-            );
-          },
+          builder: (context, snapshot) => _buildDevicePicker(
+            settings,
+            snapshot.data ?? const [],
+            isRecording,
+          ),
         ),
       ],
     );

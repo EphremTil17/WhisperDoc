@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
+
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 import 'package:flutter/services.dart';
@@ -9,9 +10,13 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// Plays custom chimes from memory using the win32 PlaySound API.
 /// This is the leanest possible approach: No heavy plugins, zero disk I/O at playback.
 class AudioCueService {
-  static const _sndMemory = 0x0004;
-  static const _sndAsync = 0x0001;
-  static const _sndNoDefault = 0x0002;
+  static final _chimeFlags = SND_MEMORY | SND_ASYNC | SND_NODEFAULT;
+  static final _fallbackFlags = SND_ALIAS | SND_ASYNC | SND_NODEFAULT;
+
+  // Allocated once and kept for the process lifetime: with SND_ASYNC,
+  // PlaySound may still read the alias after it returns.
+  static final PCWSTR _startFallback = 'SystemAsterisk'.toPcwstr();
+  static final PCWSTR _stopFallback = 'SystemDefault'.toPcwstr();
 
   final LoggingService _logger = LoggingService();
 
@@ -40,15 +45,10 @@ class AudioCueService {
   void playStartCue() {
     final startPtr = _startSoundPtr;
     if (_isInitialized && startPtr != null) {
-      // SND_MEMORY | SND_ASYNC | SND_NODEFAULT
-      PlaySound(startPtr.cast(), 0, _sndMemory | _sndAsync | _sndNoDefault);
+      PlaySound(PCWSTR(startPtr.cast()), null, _chimeFlags);
     } else {
       // Fallback to a subtle system sound if assets are missing
-      PlaySound(
-        TEXT('SystemAsterisk'),
-        0,
-        SND_ALIAS | SND_ASYNC | SND_NODEFAULT,
-      );
+      PlaySound(_startFallback, null, _fallbackFlags);
     }
   }
 
@@ -56,13 +56,9 @@ class AudioCueService {
   void playStopCue() {
     final stopPtr = _stopSoundPtr;
     if (_isInitialized && stopPtr != null) {
-      PlaySound(stopPtr.cast(), 0, _sndMemory | _sndAsync | _sndNoDefault);
+      PlaySound(PCWSTR(stopPtr.cast()), null, _chimeFlags);
     } else {
-      PlaySound(
-        TEXT('SystemDefault'),
-        0,
-        SND_ALIAS | SND_ASYNC | SND_NODEFAULT,
-      );
+      PlaySound(_stopFallback, null, _fallbackFlags);
     }
   }
 

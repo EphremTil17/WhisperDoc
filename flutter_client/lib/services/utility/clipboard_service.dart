@@ -1,4 +1,5 @@
 import 'dart:ffi';
+
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
@@ -25,11 +26,11 @@ class ClipboardService {
     final size =
         (units.length + 1) * _utf16BytesPerUnit; // UTF-16 + null terminator
 
-    final hMem = GlobalAlloc(GMEM_MOVEABLE, size);
-    if (hMem == nullptr) return false;
+    final hMem = GlobalAlloc(GMEM_MOVEABLE, size).value;
+    if (hMem.isNull) return false;
 
-    final pMem = GlobalLock(hMem);
-    if (pMem == nullptr) {
+    final pMem = GlobalLock(hMem).value;
+    if (pMem.isNull) {
       GlobalFree(hMem);
 
       return false;
@@ -46,11 +47,10 @@ class ClipboardService {
     // Retry opening clipboard a few times as it might be locked by another app
     bool success = false;
     for (var i = 0; i < _clipboardRetryCount; i++) {
-      if (OpenClipboard(0) != 0) {
+      if (OpenClipboard(null).value) {
         EmptyClipboard();
-        // win32 v5.x SetClipboardData expects int (handle address), not Pointer.
         // On success the system owns hMem; on failure it is still ours.
-        success = SetClipboardData(CF_UNICODETEXT, hMem.address) != 0;
+        success = !SetClipboardData(CF_UNICODETEXT, HANDLE(hMem)).value.isNull;
         CloseClipboard();
         break;
       }

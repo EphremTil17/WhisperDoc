@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../auth/auth_service.dart';
 import '../utility/settings_service.dart';
 import '../utility/logging_service.dart';

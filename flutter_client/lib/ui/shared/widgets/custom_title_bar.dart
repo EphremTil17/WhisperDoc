@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/ui/shared/widgets/window_button.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -31,12 +31,12 @@ class CustomTitleBar extends StatelessWidget {
           ),
           WindowButton(
             icon: Icons.minimize,
-            onPressed: () => windowManager.minimize(),
+            onPressed: () => WindowManager.instance.getCurrent()?.minimize(),
           ),
           WindowButton(
             icon: Icons.close,
             isClose: true,
-            onPressed: () => windowManager.close(),
+            onPressed: () => WindowManager.instance.getCurrent()?.close(),
           ),
           _trailingGap,
         ],

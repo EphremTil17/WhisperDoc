@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+
 import '../utility/logging_service.dart';
 
 /// Manages the WebSocket idle timeout heartbeat.

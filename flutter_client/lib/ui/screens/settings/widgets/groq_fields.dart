@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/secure_key_field.dart';
+import 'package:flutter_client/ui/shared/widgets/glass_dropdown.dart';
 
 class GroqFields extends StatelessWidget {
   const GroqFields({
@@ -13,7 +14,6 @@ class GroqFields extends StatelessWidget {
   });
 
   static const int _promptMaxLines = 2;
-  static const double _iconSize = 18;
   static const double _fontSize = 13;
 
   final TextEditingController groqApiKeyController;
@@ -21,12 +21,6 @@ class GroqFields extends StatelessWidget {
   final TextEditingController groqPromptController;
   final String selectedGroqModel;
   final ValueChanged<String> onGroqModelChanged;
-
-  void _handleModelChanged(String? model) {
-    if (model != null) {
-      onGroqModelChanged(model);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,42 +128,23 @@ class GroqFields extends StatelessWidget {
                     style: TextStyle(color: Colors.white38, fontSize: 10),
                   ),
                   const SizedBox(height: 4),
-                  DropdownButtonFormField<String>(
-                    initialValue:
+                  GlassDropdown<String>(
+                    value:
                         AppConstants.groqSupportedModels.contains(
                           selectedGroqModel,
                         )
                         ? selectedGroqModel
                         : AppConstants.groqDefaultModel,
-                    isExpanded: true,
-                    dropdownColor: const Color(0xFF1E1E23),
-                    icon: const Icon(
-                      Icons.keyboard_arrow_down,
-                      color: Colors.white24,
-                      size: _iconSize,
-                    ),
-                    borderRadius: const BorderRadius.all(Radius.circular(8)),
-                    style: inputTextStyle,
-                    decoration: const InputDecoration(
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                    ),
-                    items: AppConstants.groqSupportedModels.map((model) {
-                      final name =
-                          AppConstants.groqModelDisplayNames[model] ?? model;
-
-                      return DropdownMenuItem<String>(
-                        value: model,
-                        child: Text(
-                          name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: _fontSize),
+                    items: [
+                      for (final model in AppConstants.groqSupportedModels)
+                        GlassDropdownItem(
+                          value: model,
+                          label:
+                              AppConstants.groqModelDisplayNames[model] ??
+                              model,
                         ),
-                      );
-                    }).toList(),
-                    onChanged: _handleModelChanged,
+                    ],
+                    onChanged: onGroqModelChanged,
                   ),
                 ],
               ),

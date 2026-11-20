@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/ui/features/recording/recording.dart';
 import 'package:flutter_client/ui/shared/widgets/transcribed_text_area.dart';
 import 'package:provider/provider.dart';

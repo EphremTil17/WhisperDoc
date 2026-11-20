@@ -1,5 +1,6 @@
 // ignore_for_file: avoid-late-keyword, prefer-match-file-name, no-magic-number, no-empty-block
 import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
@@ -22,13 +23,11 @@ void main() {
     when(() => session.initialize()).thenAnswer((_) async {});
     when(() => session.loadIdToken()).thenAnswer((_) async => storedToken);
     when(() => session.loadRefreshToken()).thenAnswer((_) async => 'refresh');
-    when(
-      () => session.extractUser(any()),
-    ).thenReturn({'id': 'user-1', 'email': 'user@example.com'});
+    when(() => session.extractUser(any()))
+        .thenReturn({'id': 'user-1', 'email': 'user@example.com'});
     when(() => session.clearSession()).thenAnswer((_) async {});
-    when(
-      () => oidc.discover(),
-    ).thenAnswer((_) async => {'token_endpoint': 'https://idp/token'});
+    when(() => oidc.discover())
+        .thenAnswer((_) async => {'token_endpoint': 'https://idp/token'});
     auth = AuthService(oidc: oidc, session: session);
   });
 

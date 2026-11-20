@@ -85,36 +85,40 @@ This is the cleaned and polished sentence.
       );
     });
 
-    test('normalizes typographic punctuation to ASCII before TextSanitizer', () {
-      // Chat models emit curly quotes: "don’t" with \u2019
-      const output = 'They don’t know what they’re doing — it’s a test… right?';
-      final guarded = TransformOutputGuard.normalize(
-        output,
-        input: 'They do not know what they are doing. It is a test right?',
-      );
+    test(
+      'normalizes typographic punctuation to ASCII before TextSanitizer',
+      () {
+        // Chat models emit curly quotes: "don’t" with \u2019
+        const output =
+            'They don’t know what they’re doing — it’s a test… right?';
+        final guarded = TransformOutputGuard.normalize(
+          output,
+          input: 'They do not know what they are doing. It is a test right?',
+        );
 
-      expect(guarded, isNotNull);
-      final containsDont = contains("don't");
-      final containsTheyre = contains("they're");
-      final containsIts = contains("it's");
+        expect(guarded, isNotNull);
+        final containsDont = contains("don't");
+        final containsTheyre = contains("they're");
+        final containsIts = contains("it's");
 
-      // Verify straight apostrophe and hyphen
-      expect(guarded, containsDont);
-      expect(guarded, containsTheyre);
-      expect(guarded, containsIts);
-      expect(guarded, contains('-'));
-      expect(guarded, contains('...'));
+        // Verify straight apostrophe and hyphen
+        expect(guarded, containsDont);
+        expect(guarded, containsTheyre);
+        expect(guarded, containsIts);
+        expect(guarded, contains('-'));
+        expect(guarded, contains('...'));
 
-      // Crucial integration check: TextSanitizer must NOT strip the normalized apostrophes!
-      final guardedText = guarded;
-      if (guardedText == null) {
-        fail('guarded output must not be null');
-      }
-      final sanitized = TextSanitizer.sanitize(guardedText);
-      expect(sanitized, containsDont);
-      expect(sanitized, containsTheyre);
-      expect(sanitized, containsIts);
-    });
+        // Crucial integration check: TextSanitizer must NOT strip the normalized apostrophes!
+        final guardedText = guarded;
+        if (guardedText == null) {
+          fail('guarded output must not be null');
+        }
+        final sanitized = TextSanitizer.sanitize(guardedText);
+        expect(sanitized, containsDont);
+        expect(sanitized, containsTheyre);
+        expect(sanitized, containsIts);
+      },
+    );
 
     test('rejects outputs below minimum length ratio (< 0.3)', () {
       const longInput =

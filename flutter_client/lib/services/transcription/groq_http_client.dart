@@ -7,6 +7,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+
 import 'groq_error.dart';
 
 /// Low-level HTTP client for the Groq Audio Transcriptions API.

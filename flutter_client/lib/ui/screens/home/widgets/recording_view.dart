@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';

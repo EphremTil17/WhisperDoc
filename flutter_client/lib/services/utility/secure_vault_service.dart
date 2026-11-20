@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' show Random;
 import 'dart:typed_data';
+
 import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -156,13 +157,11 @@ class SecureVaultService {
         return deviceId;
       }
       _logger.warning('Device ID was empty, using persisted fallback');
-
-      return _getOrCreateFallbackDeviceId();
     } catch (e) {
       _logger.warning('Failed to get device ID, using persisted fallback');
-
-      return _getOrCreateFallbackDeviceId();
     }
+
+    return _getOrCreateFallbackDeviceId();
   }
 
   String _generateSalt() {

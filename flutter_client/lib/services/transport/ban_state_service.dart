@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 /// Ban state tracking service for handling backend 1008 close codes.

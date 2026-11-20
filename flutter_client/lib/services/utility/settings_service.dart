@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
@@ -54,7 +55,7 @@ class SettingsService extends ChangeNotifier {
   SecureVaultService? _vault;
   bool _isInitialized = false;
 
-  SettingsService({SecureVaultService? vault}) : _vault = vault;
+  SettingsService({this._vault});
 
   String _serverUri = _defaultServerUri;
   String _globalHotkey = _defaultGlobalHotkey;

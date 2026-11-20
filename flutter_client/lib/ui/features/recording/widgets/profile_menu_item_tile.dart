@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/logic/mappers/dictation_profile_ui_mapper.dart';
 import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
 

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/transcription/wav_encoder.dart';
 

@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+
 import 'dart:async';
 
 /// Ban countdown overlay widget displayed when IP is banned by the backend.

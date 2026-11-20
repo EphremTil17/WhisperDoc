@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 import 'package:flutter_client/ui/shared/widgets/profile_hub_avatar.dart';
 import 'package:provider/provider.dart';

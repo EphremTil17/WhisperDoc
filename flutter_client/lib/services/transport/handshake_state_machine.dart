@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 /// Handshake state machine enforcing protocol sequence.

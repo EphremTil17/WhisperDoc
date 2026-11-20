@@ -1,5 +1,6 @@
 // ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block, prefer-moving-to-variable
 import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/services/hardware/audio_device_monitor.dart';
@@ -70,15 +71,13 @@ void main() {
         StreamController<Map<String, dynamic>>.broadcast();
     deviceChangeController = StreamController<void>.broadcast();
     final mockDeviceMonitor = _MockAudioDeviceMonitor();
-    when(
-      () => mockDeviceMonitor.changes,
-    ).thenAnswer((_) => deviceChangeController.stream);
+    when(() => mockDeviceMonitor.changes)
+        .thenAnswer((_) => deviceChangeController.stream);
 
     // Default stubs
     when(() => mockAudioService.isRecording).thenReturn(false);
-    when(
-      () => mockAudioService.inputStatus,
-    ).thenReturn(AudioInputStatus.available);
+    when(() => mockAudioService.inputStatus)
+        .thenReturn(AudioInputStatus.available);
     when(
       () => mockAudioService.evaluateInputStatus(
         targetDeviceId: any(named: 'targetDeviceId'),
@@ -88,12 +87,10 @@ void main() {
     when(() => mockWsService.hasValidCredentials).thenReturn(true);
     when(() => mockWsService.ensureConnected()).thenAnswer((_) async => true);
     when(() => mockWsService.connect()).thenAnswer((_) async => true);
-    when(
-      () => mockWsService.onMessage,
-    ).thenAnswer((_) => mockWsMessageController.stream);
-    when(
-      () => mockAutomationService.runAutomation(any()),
-    ).thenAnswer((_) async {});
+    when(() => mockWsService.onMessage)
+        .thenAnswer((_) => mockWsMessageController.stream);
+    when(() => mockAutomationService.runAutomation(any()))
+        .thenAnswer((_) async {});
     when(
       () => mockHistoryService.saveTranscription(
         text: any(named: 'text'),
@@ -103,21 +100,18 @@ void main() {
     when(() => mockHistoryService.getHistory()).thenAnswer((_) async => []);
     when(() => mockHistoryService.clearAll()).thenAnswer((_) async {});
     when(() => mockSettingsService.incognitoMode).thenReturn(false);
-    when(
-      () => mockSettingsService.setIncognitoMode(any()),
-    ).thenAnswer((_) async {});
+    when(() => mockSettingsService.setIncognitoMode(any()))
+        .thenAnswer((_) async {});
     when(() => mockSettingsService.addListener(any())).thenReturn(null);
     when(() => mockSettingsService.removeListener(any())).thenReturn(null);
     when(() => mockAudioCueService.playStartCue()).thenReturn(null);
     when(() => mockAudioCueService.playStopCue()).thenReturn(null);
-    when(
-      () => mockAudioService.amplitudeStream,
-    ).thenAnswer((_) => const Stream<double>.empty());
+    when(() => mockAudioService.amplitudeStream)
+        .thenAnswer((_) => const Stream<double>.empty());
     // Groq mode defaults to off (backend mode)
     when(() => mockSettingsService.isGroqMode).thenReturn(false);
-    when(
-      () => mockSettingsService.dictationProfile,
-    ).thenReturn(DictationProfile.raw);
+    when(() => mockSettingsService.dictationProfile)
+        .thenReturn(DictationProfile.raw);
     when(() => mockGroqService.hasValidCredentials).thenReturn(false);
     when(() => mockGroqService.status).thenReturn(GroqTranscriptionStatus.idle);
     when(() => mockGroqService.addListener(any())).thenReturn(null);
@@ -188,9 +182,8 @@ void main() {
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
 
       await controller.toggleRecording();
       await Future.delayed(
@@ -209,9 +202,8 @@ void main() {
     });
 
     test('startRecording connects to WebSocket if disconnected', () async {
-      when(
-        () => mockWsService.status,
-      ).thenReturn(ConnectionStatus.disconnected);
+      when(() => mockWsService.status)
+          .thenReturn(ConnectionStatus.disconnected);
       when(() => mockWsService.ensureConnected()).thenAnswer((_) async => true);
       when(
         () => mockAudioService.startRecording(
@@ -219,9 +211,8 @@ void main() {
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
 
       await controller.startRecording();
       await Future.delayed(Duration.zero);
@@ -239,9 +230,8 @@ void main() {
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
       when(() => mockAudioCueService.playStartCue()).thenReturn(null);
 
       await controller.startRecording();
@@ -255,21 +245,18 @@ void main() {
     });
 
     test('startRecording handles connection failure gracefully', () async {
-      when(
-        () => mockWsService.status,
-      ).thenReturn(ConnectionStatus.disconnected);
-      when(
-        () => mockWsService.ensureConnected(),
-      ).thenAnswer((_) async => false);
+      when(() => mockWsService.status)
+          .thenReturn(ConnectionStatus.disconnected);
+      when(() => mockWsService.ensureConnected())
+          .thenAnswer((_) async => false);
       when(
         () => mockAudioService.startRecording(
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
       when(() => mockAudioCueService.playStartCue()).thenReturn(null);
       when(() => mockAudioService.stopRecording()).thenAnswer((_) async {});
 
@@ -295,9 +282,8 @@ void main() {
       // Buffer-cap path + hotkey can both ask to stop mid-shutdown.
       final recorderStopped = Completer<void>();
       when(() => mockAudioService.isRecording).thenReturn(true);
-      when(
-        () => mockAudioService.stopRecording(),
-      ).thenAnswer((_) => recorderStopped.future);
+      when(() => mockAudioService.stopRecording())
+          .thenAnswer((_) => recorderStopped.future);
       when(() => mockWsService.sendEndSignal()).thenReturn(null);
 
       final first = controller.stopRecording();
@@ -319,9 +305,8 @@ void main() {
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) => captureStarted.future);
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
 
       final first = controller.startRecording();
       final second = controller.startRecording();
@@ -351,9 +336,8 @@ void main() {
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
 
       await controller.startRecording();
 
@@ -398,9 +382,8 @@ void main() {
 
     test('re-checks a stale degraded status before refusing', () async {
       // Status went stale while the mic was unplugged; it is back now.
-      when(
-        () => mockAudioService.inputStatus,
-      ).thenReturn(AudioInputStatus.noDevice);
+      when(() => mockAudioService.inputStatus)
+          .thenReturn(AudioInputStatus.noDevice);
       when(
         () => mockAudioService.evaluateInputStatus(
           targetDeviceId: any(named: 'targetDeviceId'),
@@ -412,9 +395,8 @@ void main() {
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
 
       await controller.startRecording();
 
@@ -430,18 +412,16 @@ void main() {
     test('missing saved microphone records from the system default', () async {
       when(() => mockSettingsService.microphoneId).thenReturn('stale-id');
       when(() => mockSettingsService.microphoneLabel).thenReturn('Old Mic');
-      when(
-        () => mockAudioService.inputStatus,
-      ).thenReturn(AudioInputStatus.selectedUnavailable);
+      when(() => mockAudioService.inputStatus)
+          .thenReturn(AudioInputStatus.selectedUnavailable);
       when(
         () => mockAudioService.startRecording(
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
       ).thenAnswer((_) async {});
-      when(
-        () => mockAudioService.audioStream,
-      ).thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
 
       await controller.startRecording();
 
@@ -494,9 +474,8 @@ void main() {
       () async {
         // Status remains healthy (canRecord) — a transient error must not be
         // reported as a missing microphone.
-        when(
-          () => mockAudioService.inputStatus,
-        ).thenReturn(AudioInputStatus.available);
+        when(() => mockAudioService.inputStatus)
+            .thenReturn(AudioInputStatus.available);
         when(
           () => mockAudioService.startRecording(
             deviceId: any(named: 'deviceId'),
@@ -542,9 +521,8 @@ void main() {
     test(
       'raw profile bypasses transform service and pastes raw text directly',
       () async {
-        when(
-          () => mockSettingsService.dictationProfile,
-        ).thenReturn(DictationProfile.raw);
+        when(() => mockSettingsService.dictationProfile)
+            .thenReturn(DictationProfile.raw);
 
         mockWsMessageController.add({
           'event': 'transcription',
@@ -572,9 +550,8 @@ void main() {
     test(
       'clean profile invokes transform service and pastes polished text',
       () async {
-        when(
-          () => mockSettingsService.dictationProfile,
-        ).thenReturn(DictationProfile.clean);
+        when(() => mockSettingsService.dictationProfile)
+            .thenReturn(DictationProfile.clean);
         when(
           () => mockTransformService.transform(
             'um raw transcription with fillers you know',
@@ -614,9 +591,8 @@ void main() {
     test(
       'GroqError in transform fails open to raw text and emits error stream',
       () async {
-        when(
-          () => mockSettingsService.dictationProfile,
-        ).thenReturn(DictationProfile.clean);
+        when(() => mockSettingsService.dictationProfile)
+            .thenReturn(DictationProfile.clean);
         when(() => mockTransformService.transform(any(), any())).thenThrow(
           const GroqError(
             type: GroqErrorType.rateLimited,
@@ -635,9 +611,8 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         // Fails open: pastes raw text
-        verify(
-          () => mockAutomationService.runAutomation('Raw text fallback.'),
-        ).called(1);
+        verify(() => mockAutomationService.runAutomation('Raw text fallback.'))
+            .called(1);
         verify(
           () => mockHistoryService.saveTranscription(
             text: 'Raw text fallback.',
@@ -659,14 +634,12 @@ void main() {
     test(
       'isTranscribing lockout prevents startRecording during transform',
       () async {
-        when(
-          () => mockSettingsService.dictationProfile,
-        ).thenReturn(DictationProfile.clean);
+        when(() => mockSettingsService.dictationProfile)
+            .thenReturn(DictationProfile.clean);
 
         final completer = Completer<String>();
-        when(
-          () => mockTransformService.transform(any(), any()),
-        ).thenAnswer((_) => completer.future);
+        when(() => mockTransformService.transform(any(), any()))
+            .thenAnswer((_) => completer.future);
 
         mockWsMessageController.add({
           'event': 'transcription',
@@ -718,12 +691,10 @@ void main() {
 
     test('isSessionActive reflects transcribing lifecycle', () async {
       final completer = Completer<String>();
-      when(
-        () => mockSettingsService.dictationProfile,
-      ).thenReturn(DictationProfile.clean);
-      when(
-        () => mockTransformService.transform(any(), any()),
-      ).thenAnswer((_) => completer.future);
+      when(() => mockSettingsService.dictationProfile)
+          .thenReturn(DictationProfile.clean);
+      when(() => mockTransformService.transform(any(), any()))
+          .thenAnswer((_) => completer.future);
 
       mockWsMessageController.add({
         'event': 'transcription',

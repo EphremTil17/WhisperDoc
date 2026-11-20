@@ -275,37 +275,34 @@ void main() {
       },
     );
 
-    test(
-      'profile with empty or whitespace systemPrompt throws GroqError.badRequest',
-      () async {
-        final mockProfile = _MockDictationProfileSpec();
-        when(() => mockProfile.requiresLlm).thenReturn(true);
-        when(() => mockProfile.systemPrompt).thenReturn('   \n  ');
+    test('profile with empty or whitespace systemPrompt throws GroqError.badRequest', () async {
+      final mockProfile = _MockDictationProfileSpec();
+      when(() => mockProfile.requiresLlm).thenReturn(true);
+      when(() => mockProfile.systemPrompt).thenReturn('   \n  ');
 
-        expect(
-          () => service.transform('Input text', mockProfile),
-          throwsA(
-            isA<GroqError>()
-                .having((e) => e.type, 'type', GroqErrorType.badRequest)
-                .having(
-                  (e) => e.message,
-                  'message',
-                  contains('no system prompt'),
-                ),
-          ),
-        );
+      expect(
+        () => service.transform('Input text', mockProfile),
+        throwsA(
+          isA<GroqError>()
+              .having((e) => e.type, 'type', GroqErrorType.badRequest)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('no system prompt'),
+              ),
+        ),
+      );
 
-        verifyNever(
-          () => mockChatClient.complete(
-            apiKey: any(named: 'apiKey'),
-            systemPrompt: any(named: 'systemPrompt'),
-            userContent: any(named: 'userContent'),
-            maxCompletionTokens: any(named: 'maxCompletionTokens'),
-            timeout: any(named: 'timeout'),
-          ),
-        );
-      },
-    );
+      verifyNever(
+        () => mockChatClient.complete(
+          apiKey: any(named: 'apiKey'),
+          systemPrompt: any(named: 'systemPrompt'),
+          userContent: any(named: 'userContent'),
+          maxCompletionTokens: any(named: 'maxCompletionTokens'),
+          timeout: any(named: 'timeout'),
+        ),
+      );
+    });
 
     test('rejects truncated output when finish_reason is length', () async {
       when(

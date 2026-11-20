@@ -94,18 +94,18 @@ class AudioService extends ChangeNotifier {
       throw Exception('Microphone permission denied');
     }
 
-    final config = deviceId != null
-        ? RecordConfig(
-            encoder: AudioEncoder.pcm16bits,
-            sampleRate: _sampleRate,
-            numChannels: _channelCount,
-            device: InputDevice(id: deviceId, label: deviceLabel ?? ''),
-          )
-        : const RecordConfig(
-            encoder: AudioEncoder.pcm16bits,
-            sampleRate: _sampleRate,
-            numChannels: _channelCount,
-          );
+    final config = RecordConfig(
+      encoder: AudioEncoder.pcm16bits,
+      sampleRate: _sampleRate,
+      numChannels: _channelCount,
+      device: deviceId != null
+          ? InputDevice(id: deviceId, label: deviceLabel ?? '')
+          : null,
+      // If the device disappears mid-recording, continue on the system default
+      // (the same selected-to-default fallback used when starting). record 7
+      // otherwise pauses, which would silently stall the dictation.
+      audioRouteChange: AudioRouteChangeMode.follow,
+    );
 
     try {
       final stream = await _audioRecorder.startStream(config);

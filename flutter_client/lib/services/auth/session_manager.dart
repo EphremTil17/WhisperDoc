@@ -1,4 +1,5 @@
 import 'package:jwt_decoder/jwt_decoder.dart';
+
 import '../utility/secure_vault_service.dart';
 
 /// Handles session persistence and token metadata extraction.
@@ -11,7 +12,7 @@ class SessionManager {
   /// full PBKDF2 key derivation on initialize.
   final SecureVaultService _vault;
 
-  SessionManager({required SecureVaultService vault}) : _vault = vault;
+  SessionManager({required this._vault});
 
   Future<void> initialize() async {
     await _vault.initialize();

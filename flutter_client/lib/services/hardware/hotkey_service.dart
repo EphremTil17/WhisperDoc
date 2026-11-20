@@ -9,6 +9,15 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 class HotkeyService {
   static final HotkeyService _instance = HotkeyService._internal();
 
+  /// GetMessageW with its raw return. package:win32 maps the BOOL to `bool`,
+  /// which folds the -1 error return into `true`; the message loop must stop
+  /// on errors instead of spinning.
+  static final _getMessage = DynamicLibrary.open('user32.dll')
+      .lookupFunction<
+        Int32 Function(Pointer<MSG>, Pointer, Uint32, Uint32),
+        int Function(Pointer<MSG>, Pointer, int, int)
+      >('GetMessageW');
+
   // Isolate state
   int? _isolateThreadId;
   Isolate? _isolate;
@@ -98,8 +107,13 @@ class HotkeyService {
 
     if (threadId != null) {
       // Post WM_QUIT to wake up the blocking GetMessage loop
-      final result = PostThreadMessage(threadId, WM_QUIT, 0, 0);
-      if (result == 0) {
+      final posted = PostThreadMessage(
+        threadId,
+        WM_QUIT,
+        const WPARAM(0),
+        const LPARAM(0),
+      ).value;
+      if (!posted) {
         // PostThreadMessage failed, force kill
         _isolate?.kill(priority: Isolate.immediate);
         if (!exitCompleter.isCompleted) exitCompleter.complete();
@@ -135,15 +149,14 @@ class HotkeyService {
     try {
       // 1. Register Hotkey
       // This function call creates the message queue for the thread if it doesn't exist
-      final result = RegisterHotKey(
-        NULL,
+      final Win32Result(value: registered, :error) = RegisterHotKey(
+        null,
         config.id,
-        config.modifiers,
+        HOT_KEY_MODIFIERS(config.modifiers),
         config.vKey,
       );
 
-      if (result == 0) {
-        final error = GetLastError();
+      if (!registered) {
         config.sendPort.send('ERROR: Failed to register hotkey (Error $error)');
 
         return;
@@ -160,7 +173,7 @@ class HotkeyService {
       // Returns > 0 for normal messages
       // Returns 0 for WM_QUIT
       // Returns -1 for error
-      while (GetMessage(msg, NULL, 0, 0) > 0) {
+      while (_getMessage(msg, nullptr, 0, 0) > 0) {
         if (msg.ref.message == WM_HOTKEY) {
           config.sendPort.send('HOTKEY');
         }
@@ -170,7 +183,7 @@ class HotkeyService {
       }
 
       // 4. Cleanup
-      UnregisterHotKey(NULL, config.id);
+      UnregisterHotKey(null, config.id);
       free(msg);
     } catch (e) {
       config.sendPort.send('ERROR: Isolate Crash: $e');

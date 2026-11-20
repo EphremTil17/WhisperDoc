@@ -110,3 +110,7 @@ dcm:
     - prefer-multi-bloc-provider
     - prefer-sealed-bloc-events
     - prefer-sealed-bloc-state
+analyzer:
+  exclude:
+    - build/**
+    - windows/**

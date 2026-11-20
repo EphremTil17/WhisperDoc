@@ -30,15 +30,12 @@ void main() {
       );
 
       mockVault = _MockSecureVaultService();
-      when(
-        () => mockVault.initialize(),
-      ).thenAnswer((_) => Future<void>.value());
-      when(
-        () => mockVault.retrieveCredential(any<String>()),
-      ).thenAnswer((_) async => null);
-      when(
-        () => mockVault.storeCredential(any<String>(), any<String>()),
-      ).thenAnswer((_) => Future<void>.value());
+      when(() => mockVault.initialize())
+          .thenAnswer((_) => Future<void>.value());
+      when(() => mockVault.retrieveCredential(any<String>()))
+          .thenAnswer((_) async => null);
+      when(() => mockVault.storeCredential(any<String>(), any<String>()))
+          .thenAnswer((_) => Future<void>.value());
 
       SharedPreferences.setMockInitialValues({
         'transcription_mode': 'groq',
@@ -106,20 +103,17 @@ void main() {
       expect(paddedSettings.groqModel, 'whisper-large-v3');
     });
 
-    test(
-      'normalizes unsupported setGroqModel input to groqDefaultModel',
-      () async {
-        // Start with large-v3
-        expect(settings.groqModel, 'whisper-large-v3');
+    test('normalizes unsupported setGroqModel input to groqDefaultModel', () async {
+      // Start with large-v3
+      expect(settings.groqModel, 'whisper-large-v3');
 
-        // Attempt to set an unknown model -> should normalize to default (turbo)
-        await settings.setGroqModel('unknown-model-xyz');
+      // Attempt to set an unknown model -> should normalize to default (turbo)
+      await settings.setGroqModel('unknown-model-xyz');
 
-        expect(settings.groqModel, AppConstants.groqDefaultModel);
-        final prefs = await SharedPreferences.getInstance();
-        expect(prefs.getString('groq_model'), AppConstants.groqDefaultModel);
-      },
-    );
+      expect(settings.groqModel, AppConstants.groqDefaultModel);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('groq_model'), AppConstants.groqDefaultModel);
+    });
 
     test('defaults dictationProfile to raw when not persisted', () {
       expect(settings.dictationProfile, DictationProfile.raw);
@@ -139,19 +133,16 @@ void main() {
       },
     );
 
-    test(
-      'reverts persisted dictationProfile to raw when loaded in WhisperDoc backend mode',
-      () async {
-        SharedPreferences.setMockInitialValues({
-          'transcription_mode': 'whisper',
-          'dictation_profile': 'professional',
-        });
-        final backendSettings = SettingsService(vault: mockVault);
-        await backendSettings.load();
+    test('reverts persisted dictationProfile to raw when loaded in WhisperDoc backend mode', () async {
+      SharedPreferences.setMockInitialValues({
+        'transcription_mode': 'whisper',
+        'dictation_profile': 'professional',
+      });
+      final backendSettings = SettingsService(vault: mockVault);
+      await backendSettings.load();
 
-        expect(backendSettings.dictationProfile, DictationProfile.raw);
-      },
-    );
+      expect(backendSettings.dictationProfile, DictationProfile.raw);
+    });
 
     test(
       'falls back to raw when unknown dictation_profile is stored',
@@ -192,112 +183,103 @@ void main() {
       expect(notified, isFalse);
     });
 
-    test(
-      'saveCustomProfile adds profiles up to 3 slots and nextFreeCustomSlot reflects availability',
-      () async {
-        expect(settings.nextFreeCustomSlot(), 'custom1');
-        expect(settings.customProfiles, isEmpty);
+    test('saveCustomProfile adds profiles up to 3 slots and nextFreeCustomSlot reflects availability', () async {
+      expect(settings.nextFreeCustomSlot(), 'custom1');
+      expect(settings.customProfiles, isEmpty);
 
-        const p1 = CustomProfile(
-          storageKey: 'custom1',
-          name: 'Custom 1',
-          userPrompt: 'Prompt 1',
-        );
-        await settings.saveCustomProfile(p1);
+      const p1 = CustomProfile(
+        storageKey: 'custom1',
+        name: 'Custom 1',
+        userPrompt: 'Prompt 1',
+      );
+      await settings.saveCustomProfile(p1);
 
-        expect(settings.customProfiles.length, 1);
-        expect(settings.customProfiles.first, equals(p1));
-        expect(settings.nextFreeCustomSlot(), 'custom2');
+      expect(settings.customProfiles.length, 1);
+      expect(settings.customProfiles.first, equals(p1));
+      expect(settings.nextFreeCustomSlot(), 'custom2');
 
-        const p2 = CustomProfile(
-          storageKey: 'custom2',
-          name: 'Custom 2',
-          userPrompt: 'Prompt 2',
-        );
-        await settings.saveCustomProfile(p2);
-        expect(settings.nextFreeCustomSlot(), 'custom3');
+      const p2 = CustomProfile(
+        storageKey: 'custom2',
+        name: 'Custom 2',
+        userPrompt: 'Prompt 2',
+      );
+      await settings.saveCustomProfile(p2);
+      expect(settings.nextFreeCustomSlot(), 'custom3');
 
-        const p3 = CustomProfile(
-          storageKey: 'custom3',
-          name: 'Custom 3',
-          userPrompt: 'Prompt 3',
-        );
-        await settings.saveCustomProfile(p3);
-        expect(settings.customProfiles.length, CustomProfile.slotKeys.length);
-        expect(settings.nextFreeCustomSlot(), isNull);
+      const p3 = CustomProfile(
+        storageKey: 'custom3',
+        name: 'Custom 3',
+        userPrompt: 'Prompt 3',
+      );
+      await settings.saveCustomProfile(p3);
+      expect(settings.customProfiles.length, CustomProfile.slotKeys.length);
+      expect(settings.nextFreeCustomSlot(), isNull);
 
-        // Attempting to add an invalid slot key throws ArgumentError
-        const p4 = CustomProfile(
-          storageKey: 'custom4',
-          name: 'Custom 4',
-          userPrompt: 'Prompt 4',
-        );
-        expect(() => settings.saveCustomProfile(p4), throwsArgumentError);
-      },
-    );
+      // Attempting to add an invalid slot key throws ArgumentError
+      const p4 = CustomProfile(
+        storageKey: 'custom4',
+        name: 'Custom 4',
+        userPrompt: 'Prompt 4',
+      );
+      expect(() => settings.saveCustomProfile(p4), throwsArgumentError);
+    });
 
-    test(
-      'saveCustomProfile rejects blank name or blank prompt or prompt > 2000 chars',
-      () async {
-        expect(
-          () => settings.saveCustomProfile(
-            const CustomProfile(
-              storageKey: 'custom1',
-              name: '   ',
-              userPrompt: 'Valid prompt',
-            ),
+    test('saveCustomProfile rejects blank name or blank prompt or prompt > 2000 chars', () async {
+      expect(
+        () => settings.saveCustomProfile(
+          const CustomProfile(
+            storageKey: 'custom1',
+            name: '   ',
+            userPrompt: 'Valid prompt',
           ),
-          throwsArgumentError,
-        );
+        ),
+        throwsArgumentError,
+      );
 
-        expect(
-          () => settings.saveCustomProfile(
-            const CustomProfile(
-              storageKey: 'custom1',
-              name: 'Valid Name',
-              userPrompt: '   \n  \t  ',
-            ),
+      expect(
+        () => settings.saveCustomProfile(
+          const CustomProfile(
+            storageKey: 'custom1',
+            name: 'Valid Name',
+            userPrompt: '   \n  \t  ',
           ),
-          throwsArgumentError,
-        );
+        ),
+        throwsArgumentError,
+      );
 
-        final overLengthPrompt =
-            'a' * (AppConstants.customProfileMaxPromptLength + 1);
-        expect(
-          () => settings.saveCustomProfile(
-            CustomProfile(
-              storageKey: 'custom1',
-              name: 'Valid Name',
-              userPrompt: overLengthPrompt,
-            ),
+      final overLengthPrompt =
+          'a' * (AppConstants.customProfileMaxPromptLength + 1);
+      expect(
+        () => settings.saveCustomProfile(
+          CustomProfile(
+            storageKey: 'custom1',
+            name: 'Valid Name',
+            userPrompt: overLengthPrompt,
           ),
-          throwsArgumentError,
-        );
-      },
-    );
+        ),
+        throwsArgumentError,
+      );
+    });
 
-    test(
-      'saveCustomProfile updates existing profile in place without consuming new slots',
-      () async {
-        const original = CustomProfile(
-          storageKey: 'custom1',
-          name: 'Old Name',
-          userPrompt: 'Old Prompt',
-        );
-        await settings.saveCustomProfile(original);
+    test('saveCustomProfile updates existing profile in place without consuming new slots', () async {
+      const original = CustomProfile(
+        storageKey: 'custom1',
+        name: 'Old Name',
+        userPrompt: 'Old Prompt',
+      );
+      await settings.saveCustomProfile(original);
 
-        const updated = CustomProfile(
-          storageKey: 'custom1',
-          name: 'New Name',
-          userPrompt: 'New Prompt',
-        );
-        await settings.saveCustomProfile(updated);
+      const updated = CustomProfile(
+        storageKey: 'custom1',
+        name: 'New Name',
+        userPrompt: 'New Prompt',
+      );
+      await settings.saveCustomProfile(updated);
 
-        expect(settings.customProfiles.length, 1);
-        expect(settings.customProfiles.first.name, 'New Name');
-        expect(settings.customProfiles.first.userPrompt, 'New Prompt');
-      },
-    );
+      expect(settings.customProfiles.length, 1);
+      expect(settings.customProfiles.first.name, 'New Name');
+      expect(settings.customProfiles.first.userPrompt, 'New Prompt');
+    });
 
     test('deleteCustomProfile frees the slot', () async {
       await settings.saveCustomProfile(
@@ -346,25 +328,21 @@ void main() {
       },
     );
 
-    test(
-      'loading with stored custom key resolves to CustomProfile when in Groq mode',
-      () async {
-        SharedPreferences.setMockInitialValues({
-          'transcription_mode': 'groq',
-          'dictation_profile': 'custom1',
-          'custom_profiles_json':
-              '[{"storageKey":"custom1","name":"Loaded Profile","userPrompt":"Loaded Prompt"}]',
-        });
+    test('loading with stored custom key resolves to CustomProfile when in Groq mode', () async {
+      SharedPreferences.setMockInitialValues({
+        'transcription_mode': 'groq',
+        'dictation_profile': 'custom1',
+        'custom_profiles_json': '[{"storageKey":"custom1","name":"Loaded Profile","userPrompt":"Loaded Prompt"}]',
+      });
 
-        final loadedSettings = SettingsService(vault: mockVault);
-        await loadedSettings.load();
+      final loadedSettings = SettingsService(vault: mockVault);
+      await loadedSettings.load();
 
-        expect(loadedSettings.customProfiles.length, 1);
-        expect(loadedSettings.dictationProfile.storageKey, 'custom1');
-        expect(loadedSettings.dictationProfile.label, 'Loaded Profile');
-        expect(loadedSettings.dictationProfile.requiresLlm, isTrue);
-      },
-    );
+      expect(loadedSettings.customProfiles.length, 1);
+      expect(loadedSettings.dictationProfile.storageKey, 'custom1');
+      expect(loadedSettings.dictationProfile.label, 'Loaded Profile');
+      expect(loadedSettings.dictationProfile.requiresLlm, isTrue);
+    });
 
     test(
       'switching transcription mode to whisper reverts dictationProfile to raw',
@@ -378,16 +356,13 @@ void main() {
       },
     );
 
-    test(
-      'setDictationProfile enforces raw profile when in WhisperDoc backend mode',
-      () async {
-        await settings.setTranscriptionMode('whisper');
-        expect(settings.isGroqMode, isFalse);
+    test('setDictationProfile enforces raw profile when in WhisperDoc backend mode', () async {
+      await settings.setTranscriptionMode('whisper');
+      expect(settings.isGroqMode, isFalse);
 
-        await settings.setDictationProfile(DictationProfile.professional);
-        expect(settings.dictationProfile, DictationProfile.raw);
-      },
-    );
+      await settings.setDictationProfile(DictationProfile.professional);
+      expect(settings.dictationProfile, DictationProfile.raw);
+    });
 
     test(
       'loading with stored custom key falls back to Raw when slot not present',

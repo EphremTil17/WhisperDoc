@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
 /// Reusable compact segmented toggle chip with glassmorphic crimson accent styling.

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';

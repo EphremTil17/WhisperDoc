@@ -17,10 +17,9 @@ class ProfileController extends ChangeNotifier {
   UpdateUIDescriptor get updateUI => UpdateMapper.map(_updateService.status);
 
   ProfileController({
-    required AuthService authService,
-    required UpdateService updateService,
-  }) : _authService = authService,
-       _updateService = updateService {
+    required this._authService,
+    required this._updateService,
+  }) {
     _authService.addListener(notifyListeners);
     _updateService.addListener(notifyListeners);
   }

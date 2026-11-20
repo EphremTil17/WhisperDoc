@@ -1,6 +1,7 @@
 // ignore_for_file: avoid-late-keyword, prefer-match-file-name
 import 'dart:ui';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_editor_dialog.dart';
+
 import '../../../orchestrators/profile_action_button_orchestrator.dart';
 
 class _MockSettingsService extends Mock
@@ -34,9 +36,8 @@ void main() {
     when(() => mockSettings.cachedGroqApiKey).thenReturn('gsk_test123');
     when(() => mockSettings.customProfiles).thenReturn([]);
     when(() => mockSettings.nextFreeCustomSlot()).thenReturn('custom1');
-    when(
-      () => mockSettings.setDictationProfile(any()),
-    ).thenAnswer((_) => Future<void>.value());
+    when(() => mockSettings.setDictationProfile(any()))
+        .thenAnswer((_) => Future<void>.value());
 
     when(() => mockController.isRecording).thenReturn(false);
     when(() => mockController.isTranscribing).thenReturn(false);
@@ -53,9 +54,8 @@ void main() {
   testWidgets(
     'renders rectangular button with fixed width and active profile',
     (tester) async {
-      when(
-        () => mockSettings.dictationProfile,
-      ).thenReturn(DictationProfile.clean);
+      when(() => mockSettings.dictationProfile)
+          .thenReturn(DictationProfile.clean);
 
       final orchestrator = createOrchestrator(tester);
       await orchestrator.pumpButton();
@@ -92,9 +92,8 @@ void main() {
       // Select 'Technical'
       await orchestrator.selectProfile('Zero-omission spec');
 
-      verify(
-        () => mockSettings.setDictationProfile(DictationProfile.technical),
-      ).called(1);
+      verify(() => mockSettings.setDictationProfile(DictationProfile.technical))
+          .called(1);
 
       // Menu should be closed
       expect(find.text('Zero-omission spec'), findsNothing);
@@ -222,9 +221,8 @@ void main() {
   testWidgets(
     'switching to Raw after other profiles does not throw any assertion',
     (tester) async {
-      when(
-        () => mockSettings.dictationProfile,
-      ).thenReturn(DictationProfile.professional);
+      when(() => mockSettings.dictationProfile)
+          .thenReturn(DictationProfile.professional);
 
       final orchestrator = createOrchestrator(tester);
       await orchestrator.openMenu(buttonLabel: 'Pro');
@@ -234,9 +232,8 @@ void main() {
       await tester.tap(verbatimTile);
       await tester.pumpAndSettle();
 
-      verify(
-        () => mockSettings.setDictationProfile(DictationProfile.raw),
-      ).called(1);
+      verify(() => mockSettings.setDictationProfile(DictationProfile.raw))
+          .called(1);
       expect(verbatimTile, findsNothing);
     },
   );

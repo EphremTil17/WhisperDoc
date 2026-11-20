@@ -644,7 +644,18 @@ class $$TranscriptionEntriesTableTableManager
                 isIncognito: isIncognito,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable<$TranscriptionEntriesTable, TranscriptionEntry>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $TranscriptionEntriesTable,
+                    TranscriptionEntry
+                  >(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
         ),

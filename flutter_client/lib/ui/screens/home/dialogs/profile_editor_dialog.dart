@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
@@ -203,8 +204,7 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
               decoration: InputDecoration(
                 isDense: true,
                 counterText: '',
-                hintText:
-                    "Describe how the transcript should be rewritten, e.g. 'Rewrite into clean bullet points with zero conversational filler.'",
+                hintText: "Describe how the transcript should be rewritten, e.g. 'Rewrite into clean bullet points with zero conversational filler.'",
                 hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
                 filled: true,
                 fillColor: fieldFillColor,

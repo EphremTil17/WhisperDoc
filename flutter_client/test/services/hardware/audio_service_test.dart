@@ -128,9 +128,8 @@ void main() {
       'sets noDevice and rethrows when the stream fails with no devices',
       () async {
         when(() => mockRecorder.hasPermission()).thenAnswer((_) async => true);
-        when(
-          () => mockRecorder.startStream(any()),
-        ).thenThrow(Exception('No audio recording device'));
+        when(() => mockRecorder.startStream(any()))
+            .thenThrow(Exception('No audio recording device'));
         when(() => mockRecorder.listInputDevices()).thenAnswer((_) async => []);
         final audioService = AudioService(audioRecorder: mockRecorder);
 
@@ -144,9 +143,8 @@ void main() {
       () async {
         // A busy or transient device must not be reported as missing.
         when(() => mockRecorder.hasPermission()).thenAnswer((_) async => true);
-        when(
-          () => mockRecorder.startStream(any()),
-        ).thenThrow(Exception('Device in use'));
+        when(() => mockRecorder.startStream(any()))
+            .thenThrow(Exception('Device in use'));
         when(() => mockRecorder.listInputDevices()).thenAnswer(
           (_) async => const [InputDevice(id: 'dev-1', label: 'Mic 1')],
         );

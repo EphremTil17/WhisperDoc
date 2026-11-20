@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+
 import 'groq_error.dart';
 
 /// Low-level HTTP client for Groq Chat Completions API.

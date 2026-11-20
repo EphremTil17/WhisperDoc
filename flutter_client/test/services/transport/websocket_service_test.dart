@@ -1,6 +1,7 @@
 // ignore_for_file: avoid-dynamic, no-empty-block
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -54,7 +55,7 @@ class _StubAuthService extends ChangeNotifier implements AuthService {
 
 class _StubSettingsService extends ChangeNotifier implements SettingsService {
   // Fields
-  String _serverUri;
+  String _serverUri = 'ws://localhost';
   final String? _apiKey;
 
   // Getters — must precede constructors per DCM member-ordering
@@ -74,9 +75,7 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
   bool get isGroqMode => false;
 
   // Constructor
-  _StubSettingsService({String serverUri = 'ws://localhost', String? apiKey})
-    : _serverUri = serverUri,
-      _apiKey = apiKey;
+  _StubSettingsService({this._apiKey});
 
   // Methods
   void changeUri(String newUri) {
@@ -200,82 +199,71 @@ void main() {
   // changes should.
 
   group('ConfigurationManager contract', () {
-    test(
-      'already-authenticated startup seeds fingerprint and skips first benign auth pulse',
-      () {
-        final auth = _StubAuthService();
-        auth.setAuthenticated(true, userId: 'user123');
+    test('already-authenticated startup seeds fingerprint and skips first benign auth pulse', () {
+      final auth = _StubAuthService();
+      auth.setAuthenticated(true, userId: 'user123');
 
-        final settings = _StubSettingsService();
-        final cm = ConfigurationManager(auth, settings);
+      final settings = _StubSettingsService();
+      final cm = ConfigurationManager(auth, settings);
 
-        int reconnectFires = 0;
-        int autoConnectFires = 0;
+      int reconnectFires = 0;
+      int autoConnectFires = 0;
 
-        cm.startObserving(
-          onReconnectNeeded: () => reconnectFires++,
-          onAutoConnectDesired: () => autoConnectFires++,
-        );
+      cm.startObserving(
+        onReconnectNeeded: () => reconnectFires++,
+        onAutoConnectDesired: () => autoConnectFires++,
+      );
 
-        expect(reconnectFires, 0, reason: 'startup seeding must not reconnect');
-        expect(autoConnectFires, 1, reason: 'launch should still auto-connect');
+      expect(reconnectFires, 0, reason: 'startup seeding must not reconnect');
+      expect(autoConnectFires, 1, reason: 'launch should still auto-connect');
 
-        auth.notifyListeners();
-        expect(
-          reconnectFires,
-          0,
-          reason:
-              'same authenticated identity should not reconnect on first auth pulse',
-        );
+      auth.notifyListeners();
+      expect(
+        reconnectFires,
+        0,
+        reason: 'same authenticated identity should not reconnect on first auth pulse',
+      );
 
-        cm.stopObserving();
-      },
-    );
+      cm.stopObserving();
+    });
 
-    test(
-      'onReconnectNeeded fires on OIDC identity change, not on every auth pulse',
-      () {
-        final auth = _StubAuthService();
-        final settings = _StubSettingsService();
-        final cm = ConfigurationManager(auth, settings);
+    test('onReconnectNeeded fires on OIDC identity change, not on every auth pulse', () {
+      final auth = _StubAuthService();
+      final settings = _StubSettingsService();
+      final cm = ConfigurationManager(auth, settings);
 
-        int reconnectFires = 0;
-        cm.startObserving(
-          onReconnectNeeded: () => reconnectFires++,
-          onAutoConnectDesired: () {},
-        );
+      int reconnectFires = 0;
+      cm.startObserving(
+        onReconnectNeeded: () => reconnectFires++,
+        onAutoConnectDesired: () {},
+      );
 
-        // First sign-in: identity state changes (null → user123)
-        auth.setAuthenticated(true, userId: 'user123');
-        expect(reconnectFires, 1, reason: 'Identity state changed: sign-in');
+      // First sign-in: identity state changes (null → user123)
+      auth.setAuthenticated(true, userId: 'user123');
+      expect(reconnectFires, 1, reason: 'Identity state changed: sign-in');
 
-        // Silent refresh with same identity: no reconnect
-        auth.notifyListeners();
-        expect(
-          reconnectFires,
-          1,
-          reason: 'Same identity, should not reconnect',
-        );
+      // Silent refresh with same identity: no reconnect
+      auth.notifyListeners();
+      expect(reconnectFires, 1, reason: 'Same identity, should not reconnect');
 
-        // Identity swap (different user): reconnect
-        auth.setAuthenticated(true, userId: 'user456');
-        expect(
-          reconnectFires,
-          _WebSocketServiceTest.identityChangeCount,
-          reason: 'Identity changed: user123 → user456',
-        );
+      // Identity swap (different user): reconnect
+      auth.setAuthenticated(true, userId: 'user456');
+      expect(
+        reconnectFires,
+        _WebSocketServiceTest.identityChangeCount,
+        reason: 'Identity changed: user123 → user456',
+      );
 
-        // Sign-out: auth state changes
-        auth.setAuthenticated(false);
-        expect(
-          reconnectFires,
-          _WebSocketServiceTest.signOutReconnectCount,
-          reason: 'Sign-out: auth state changed',
-        );
+      // Sign-out: auth state changes
+      auth.setAuthenticated(false);
+      expect(
+        reconnectFires,
+        _WebSocketServiceTest.signOutReconnectCount,
+        reason: 'Sign-out: auth state changed',
+      );
 
-        cm.stopObserving();
-      },
-    );
+      cm.stopObserving();
+    });
 
     // Regression: the original fix narrowed the guard from
     // (connected || connecting) to only (connected), silently dropping config
@@ -288,46 +276,43 @@ void main() {
     //   2. connect() fails (no credentials in this stub) → returns false.
     //   3. The .then fallback arms the backoff timer so the app does not go
     //      silently idle — this is intentional, not a regression.
-    test(
-      'pending config change fires immediate reconnect then falls back to timer on failure',
-      () async {
-        final svc =
-            _ServiceFactory.make(); // no API key → immediate connect() will fail
+    test('pending config change fires immediate reconnect then falls back to timer on failure', () async {
+      final svc =
+          _ServiceFactory.make(); // no API key → immediate connect() will fail
 
-        svc.forceConnectedForTesting();
-        svc.pendingConfigChangeForTesting = true;
-        final statuses = <ConnectionStatus>[];
-        svc.onStatusChanged.listen(statuses.add);
+      svc.forceConnectedForTesting();
+      svc.pendingConfigChangeForTesting = true;
+      final statuses = <ConnectionStatus>[];
+      svc.onStatusChanged.listen(statuses.add);
 
-        svc.processCloseForTesting(null, null);
-        await Future<void>.delayed(Duration.zero);
+      svc.processCloseForTesting(null, null);
+      await Future<void>.delayed(Duration.zero);
 
-        // Step 1: immediate connect() was attempted — status hit 'connecting'.
-        expect(
-          statuses,
-          contains(ConnectionStatus.connecting),
-          reason:
-              'config-driven reconnect must fire connect() immediately, '
-              'not wait for the backoff timer',
-        );
-        // Step 2: connect() failed (no credentials) → fallback timer is now armed.
-        expect(
-          svc.reconnectionManagerForTesting.isScheduled,
-          isTrue,
-          reason:
-              'when the immediate config-change reconnect fails, the backoff '
-              'timer must be armed so the app does not go silently idle',
-        );
-        // The pending flag must always be consumed exactly once.
-        expect(
-          svc.pendingConfigChangeForTesting,
-          isFalse,
-          reason: 'flag must be consumed, not left dangling',
-        );
+      // Step 1: immediate connect() was attempted — status hit 'connecting'.
+      expect(
+        statuses,
+        contains(ConnectionStatus.connecting),
+        reason:
+            'config-driven reconnect must fire connect() immediately, '
+            'not wait for the backoff timer',
+      );
+      // Step 2: connect() failed (no credentials) → fallback timer is now armed.
+      expect(
+        svc.reconnectionManagerForTesting.isScheduled,
+        isTrue,
+        reason:
+            'when the immediate config-change reconnect fails, the backoff '
+            'timer must be armed so the app does not go silently idle',
+      );
+      // The pending flag must always be consumed exactly once.
+      expect(
+        svc.pendingConfigChangeForTesting,
+        isFalse,
+        reason: 'flag must be consumed, not left dangling',
+      );
 
-        svc.dispose();
-      },
-    );
+      svc.dispose();
+    });
   });
 
   // --- Regression: close code 4001 must not schedule reconnect -------------
@@ -375,20 +360,17 @@ void main() {
       },
     );
 
-    test(
-      'non-intentional server close (code null) does not loop when already disconnected',
-      () async {
-        // Guard: a plain unexpected close from a non-connected state must not
-        // schedule a reconnect (wasActive=false).
-        final svc = _ServiceFactory.make();
+    test('non-intentional server close (code null) does not loop when already disconnected', () async {
+      // Guard: a plain unexpected close from a non-connected state must not
+      // schedule a reconnect (wasActive=false).
+      final svc = _ServiceFactory.make();
 
-        svc.processCloseForTesting(null, null);
-        await Future<void>.delayed(Duration.zero);
+      svc.processCloseForTesting(null, null);
+      await Future<void>.delayed(Duration.zero);
 
-        expect(svc.status, ConnectionStatus.disconnected);
-        svc.dispose();
-      },
-    );
+      expect(svc.status, ConnectionStatus.disconnected);
+      svc.dispose();
+    });
   });
 
   // --- Regression: HandshakeState.failed persists through disconnect --------
@@ -397,33 +379,30 @@ void main() {
   // This group verifies the behaviour through the WebSocketService surface.
 
   group('WebSocketService auth failure state', () {
-    test(
-      'handshake state is failed after _handleAuthError and before next connect',
-      () async {
-        final svc = _ServiceFactory.make(apiKey: 'test-key');
-        svc.forceConnectedForTesting();
+    test('handshake state is failed after _handleAuthError and before next connect', () async {
+      final svc = _ServiceFactory.make(apiKey: 'test-key');
+      svc.forceConnectedForTesting();
 
-        // Drive _handleAuthError via processCloseForTesting with code 1008 and
-        // a non-ban message.  _lastHandshakeError is null at this point, so the
-        // 1008 branch calls _handleAuthError(reason).
-        svc.processCloseForTesting(
-          _WebSocketServiceTest.unauthorizedCloseCode,
-          'Unauthorized',
-        );
+      // Drive _handleAuthError via processCloseForTesting with code 1008 and
+      // a non-ban message.  _lastHandshakeError is null at this point, so the
+      // 1008 branch calls _handleAuthError(reason).
+      svc.processCloseForTesting(
+        _WebSocketServiceTest.unauthorizedCloseCode,
+        'Unauthorized',
+      );
 
-        await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-        expect(
-          svc.handshakeState.state,
-          HandshakeState.failed,
-          reason:
-              'HandshakeState.failed must survive the disconnect so the UI can '
-              'show the real error instead of the generic disconnected message',
-        );
+      expect(
+        svc.handshakeState.state,
+        HandshakeState.failed,
+        reason:
+            'HandshakeState.failed must survive the disconnect so the UI can '
+            'show the real error instead of the generic disconnected message',
+      );
 
-        svc.dispose();
-      },
-    );
+      svc.dispose();
+    });
   });
 
   // --- Regression: mid-handshake config change must not flush stale audio ---
@@ -434,95 +413,87 @@ void main() {
   // in _handleRawMessage, gated on !_pendingConfigChange.
 
   group('WebSocketService mid-handshake config-change ordering', () {
-    test(
-      'buffered audio is cleared and new audio stays off the stale channel when config changed mid-handshake',
-      () async {
-        final svc = _ServiceFactory.make(apiKey: 'test-key');
-        final channel = _FakeWebSocketChannel();
-        svc.channelForTesting = channel;
+    test('buffered audio is cleared and new audio stays off the stale channel when config changed mid-handshake', () async {
+      final svc = _ServiceFactory.make(apiKey: 'test-key');
+      final channel = _FakeWebSocketChannel();
+      svc.channelForTesting = channel;
 
-        final audioBuffer = svc.audioBufferForTesting;
-        final sent = channel.sent;
+      final audioBuffer = svc.audioBufferForTesting;
+      final sent = channel.sent;
 
-        // Seed the buffer — simulates audio captured while the handshake was
-        // in-flight (e.g. user started recording before connection completed).
-        svc.bufferAudioForTesting(Uint8List.fromList([1, 2, 3, 4]));
-        expect(audioBuffer.isEmpty, isFalse);
+      // Seed the buffer — simulates audio captured while the handshake was
+      // in-flight (e.g. user started recording before connection completed).
+      svc.bufferAudioForTesting(Uint8List.fromList([1, 2, 3, 4]));
+      expect(audioBuffer.isEmpty, isFalse);
 
-        // Simulate a config/identity change that arrived during the handshake.
-        svc.pendingConfigChangeForTesting = true;
+      // Simulate a config/identity change that arrived during the handshake.
+      svc.pendingConfigChangeForTesting = true;
 
-        // Drive the authenticated event through _handleRawMessage.
-        // Without a real socket _channel is null, so if the old code ran
-        // flush(_channel!) it would throw a null-check failure here.
-        svc.receiveAuthenticatedForTesting();
+      // Drive the authenticated event through _handleRawMessage.
+      // Without a real socket _channel is null, so if the old code ran
+      // flush(_channel!) it would throw a null-check failure here.
+      svc.receiveAuthenticatedForTesting();
 
-        expect(
-          audioBuffer.isEmpty,
-          isTrue,
-          reason:
-              'buffer must be cleared, not flushed to the stale channel, '
-              'when a config change is pending at authentication time',
-        );
-        expect(
-          sent,
-          isEmpty,
-          reason: 'no buffered audio should be flushed to the stale socket',
-        );
+      expect(
+        audioBuffer.isEmpty,
+        isTrue,
+        reason:
+            'buffer must be cleared, not flushed to the stale channel, '
+            'when a config change is pending at authentication time',
+      );
+      expect(
+        sent,
+        isEmpty,
+        reason: 'no buffered audio should be flushed to the stale socket',
+      );
 
-        // Fresh chunks arriving during the brief shutdown window must also stay
-        // off the stale channel and be held locally for the replacement connect.
-        svc.sendAudioChunk(Uint8List.fromList([9, 9]));
-        expect(
-          sent,
-          isEmpty,
-          reason:
-              'live audio must not slip onto the stale socket during rollover',
-        );
-        expect(
-          audioBuffer.isEmpty,
-          isFalse,
-          reason:
-              'fresh audio should be buffered locally for the reconnect path',
-        );
+      // Fresh chunks arriving during the brief shutdown window must also stay
+      // off the stale channel and be held locally for the replacement connect.
+      svc.sendAudioChunk(Uint8List.fromList([9, 9]));
+      expect(
+        sent,
+        isEmpty,
+        reason:
+            'live audio must not slip onto the stale socket during rollover',
+      );
+      expect(
+        audioBuffer.isEmpty,
+        isFalse,
+        reason: 'fresh audio should be buffered locally for the reconnect path',
+      );
 
-        svc.dispose();
-      },
-    );
+      svc.dispose();
+    });
 
-    test(
-      'buffered audio is flushed normally when no config change is pending',
-      () async {
-        final svc = _ServiceFactory.make(apiKey: 'test-key');
-        final channel = _FakeWebSocketChannel();
-        svc.channelForTesting = channel;
+    test('buffered audio is flushed normally when no config change is pending', () async {
+      final svc = _ServiceFactory.make(apiKey: 'test-key');
+      final channel = _FakeWebSocketChannel();
+      svc.channelForTesting = channel;
 
-        final audioBuffer = svc.audioBufferForTesting;
-        final sent = channel.sent;
+      final audioBuffer = svc.audioBufferForTesting;
+      final sent = channel.sent;
 
-        svc.bufferAudioForTesting(Uint8List.fromList([10, 20, 30]));
-        expect(audioBuffer.isEmpty, isFalse);
+      svc.bufferAudioForTesting(Uint8List.fromList([10, 20, 30]));
+      expect(audioBuffer.isEmpty, isFalse);
 
-        // No pending config change — authenticated path should flush immediately.
-        svc.receiveAuthenticatedForTesting();
+      // No pending config change — authenticated path should flush immediately.
+      svc.receiveAuthenticatedForTesting();
 
-        expect(
-          audioBuffer.isEmpty,
-          isTrue,
-          reason:
-              'flush() must clear the buffer on the normal authenticated path',
-        );
-        expect(
-          sent,
-          hasLength(1),
-          reason:
-              'happy-path authentication should flush the queued audio chunk',
-        );
-        expect(sent.single, isA<Uint8List>());
+      expect(
+        audioBuffer.isEmpty,
+        isTrue,
+        reason:
+            'flush() must clear the buffer on the normal authenticated path',
+      );
+      expect(
+        sent,
+        hasLength(1),
+        reason: 'happy-path authentication should flush the queued audio chunk',
+      );
+      expect(sent.single, isA<Uint8List>());
 
-        svc.dispose();
-      },
-    );
+      svc.dispose();
+    });
   });
 
   // --- Server errors are routed by error_code, not numeric code or text ----
