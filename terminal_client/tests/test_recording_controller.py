@@ -55,7 +55,12 @@ def _make_controller():
         mock_audio.stop_capture = MagicMock()
         mock_audio.stop_stream = MagicMock()
 
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Synchronous tests never schedule work on the loop (AudioService is
+            # mocked), and since pytest-asyncio 1.5 no loop outlives an async test.
+            loop = MagicMock(spec=asyncio.AbstractEventLoop)
         from whisper_shell.controllers.recording_controller import RecordingController
 
         return RecordingController(loop)

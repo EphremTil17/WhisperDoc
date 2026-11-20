@@ -8,20 +8,20 @@ version = "3.1.0"
 description = "WhisperDoc backend service with pluggable Whisper and Parakeet ASR engines."
 requires-python = ">=3.12"
 dependencies = [
-    "cachetools~=7.0.5",
-    "fastapi~=0.138.2",
-    "loguru~=0.7.3",
+    "cachetools~=8.0.2",
+    "fastapi~=0.165.0",
+    "loguru~=0.8.0",
     "pyjwt[crypto]~=2.15",
-    "python-multipart~=0.0.30",
-    "requests~=2.33.0",
-    'uvloop~=0.22.1; sys_platform != "win32"',
-    "uvicorn~=0.42.0",
-    "websockets~=16.0",
+    "python-multipart~=0.0.34",
+    "requests~=2.34.2",
+    'uvloop~=0.23.0; sys_platform != "win32"',
+    "uvicorn~=0.54.0",  # >=0.52 is required for websockets 17
+    "websockets~=17.4",
 ]
 
 [project.optional-dependencies]
 whisper = [
-    "ctranslate2~=4.7.1",
+    "ctranslate2~=4.9.0",
     "faster-whisper~=1.2.1",
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
@@ -30,8 +30,8 @@ whisper = [
 dev = [
     "ruff",
     "pyright",
-    "pytest==9.0.3",  # GHSA-6w46-j5rx-g56g (insecure /tmp/pytest-of-* perms)
-    "pytest-asyncio==1.3.0",
+    "pytest==9.2.0",  # >=9.0.3 for GHSA-6w46-j5rx-g56g (insecure /tmp/pytest-of-* perms)
+    "pytest-asyncio==1.5.0",
     "pytest-cov>=6.0",
     # Starlette 1.x TestClient uses httpx2 (httpx is deprecated for it).
     "httpx2>=2.12.0",  # GHSA-8xx6-hgc6-gc2m, GHSA-h4x7-gw46-3wm6, GHSA-pf96-p4fj-6566, GHSA-f2fp-rgf2-35cp
@@ -66,6 +66,11 @@ constraint-dependencies = [
     "setuptools>=84.1.0",        # GHSA-h35f-9h28-mq5c, GHSA-xmj3-9gf7-h52w (Low)
     "httpcore2>=2.10.0",         # GHSA-7mj9-2mp8-4m2p (WSS sent without TLS via SOCKS)
     "pygments>=2.20.0",          # GHSA-qfpq-jrcy-v2v9 (Low)
+    # Compatibility ceiling, not a CVE floor: faster-whisper 1.2.1 decodes audio
+    # with av.open(..., metadata_errors=...), which PyAV 19.0 removed, so every
+    # transcription fails with a TypeError on PyAV 19.
+    # TODO: drop once a faster-whisper release supports PyAV 19.
+    "av<19",
 ]
 
 [tool.pyright]
@@ -88,6 +93,7 @@ reportMissingTypeStubs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 target-version = "py312"

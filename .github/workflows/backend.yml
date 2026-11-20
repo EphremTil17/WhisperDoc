@@ -32,7 +32,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.10.12"
+          version: "0.13.9"
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -44,6 +44,7 @@ jobs:
           uv sync --locked --group dev --extra whisper
           --no-install-package nvidia-cublas-cu12
           --no-install-package nvidia-cudnn-cu12
+          --no-install-package nvidia-cuda-nvrtc-cu12
 
       - name: Pyright
         run: uv run --no-sync pyright
@@ -68,7 +69,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.10.12"
+          version: "0.13.9"
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -156,6 +157,15 @@ jobs:
           fi
           docker exec wd-e2e sh -c 'touch /tmp/probe'
           echo "ok: root filesystem read-only, /tmp writable"
+          # This runner reaches the container through the trusted Docker bridge,
+          # so uvicorn must take the rightmost hop, not the client-forged leftmost.
+          curl -fsS -o /dev/null -H "X-Forwarded-For: 198.51.100.7, 203.0.113.9" "$API/health?xff-probe"
+          sleep 1
+          line=$(docker logs wd-e2e 2>&1 | grep 'xff-probe' | tail -n 1)
+          case "$line" in
+            *203.0.113.9*) echo "ok: forwarded client resolved to the rightmost hop" ;;
+            *) echo "::error::Unexpected forwarded client: $line"; exit 1 ;;
+          esac
 
       - name: Live API and WebSocket tests
         working-directory: backend
