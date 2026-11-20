@@ -7,6 +7,7 @@ import 'package:flutter_client/services/hardware/hotkey_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
+import 'package:flutter_client/services/auth/session_manager.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
@@ -37,7 +38,9 @@ class ServiceLocator {
     await audioCueService.initialize();
     getIt.registerSingleton<AudioCueService>(audioCueService);
 
-    final authService = AuthService();
+    final authService = AuthService(
+      session: SessionManager(vault: settingsService.vault),
+    );
     await authService.initialize();
     getIt.registerSingleton<AuthService>(authService);
 

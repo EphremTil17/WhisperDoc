@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math' show Random;
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
@@ -60,8 +61,10 @@ class SecureVaultService {
       // 2. Get device hardware ID
       final deviceId = await _getDeviceId();
 
-      // 3. Derive encryption key using PBKDF2
-      _encryptionKey = _deriveKey(deviceId, salt);
+      // 3. Derive encryption key using PBKDF2. 100k HMAC rounds in pure Dart
+      // take long enough to stall frames, so run them on a worker isolate.
+      final keySalt = salt;
+      _encryptionKey = await Isolate.run(() => _deriveKey(deviceId, keySalt));
 
       _isInitialized = true;
       _logger.info('SecureVaultService initialized successfully');
@@ -213,7 +216,7 @@ class SecureVaultService {
     return generated;
   }
 
-  String _deriveKey(String deviceId, String salt) {
+  static String _deriveKey(String deviceId, String salt) {
     // PBKDF2-HMAC-SHA256 key derivation
     final password = utf8.encode(deviceId);
     final saltBytes = base64Decode(salt);
@@ -242,7 +245,7 @@ class SecureVaultService {
     return base64Encode(derivedKey);
   }
 
-  List<int> _pbkdf2Block({
+  static List<int> _pbkdf2Block({
     required Hmac prf,
     required List<int> salt,
     required int blockIndex,

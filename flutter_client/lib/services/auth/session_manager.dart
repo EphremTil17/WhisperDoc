@@ -7,7 +7,11 @@ class SessionManager {
   static const String _vaultAccessTokenKey = 'oidc_access_token';
   static const String _vaultRefreshTokenKey = 'oidc_refresh_token';
 
-  final SecureVaultService _vault = SecureVaultService();
+  /// The app-wide vault. Shared rather than owned: each vault instance runs a
+  /// full PBKDF2 key derivation on initialize.
+  final SecureVaultService _vault;
+
+  SessionManager({required SecureVaultService vault}) : _vault = vault;
 
   Future<void> initialize() async {
     await _vault.initialize();

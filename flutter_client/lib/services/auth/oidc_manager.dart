@@ -9,6 +9,8 @@ import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 /// Handles low-level OIDC protocol logic (PKCE, Discovery, Token Exchange).
 class OidcManager {
   static const int _httpOk = 200;
+  static const int _httpBadRequest = 400; // OAuth invalid_grant
+  static const int _httpUnauthorized = 401; // OAuth invalid_client
 
   static Uri get _configuredIssuerUri =>
       _normalizeUri(Uri.parse(AppConstants.oidcIssuer));
@@ -24,7 +26,9 @@ class OidcManager {
       expectedOrigin: _issuerOrigin,
     );
 
-    final response = await http.get(discoveryUri);
+    final response = await http
+        .get(discoveryUri)
+        .timeout(AppConstants.oidcHttpTimeout);
     if (response.statusCode != _httpOk) {
       throw Exception('Failed to discover OIDC endpoints: ${response.body}');
     }
@@ -108,13 +112,19 @@ class OidcManager {
       throw ArgumentError('Either code or refreshToken must be provided');
     }
 
-    final response = await http.post(
-      Uri.parse(tokenEndpoint),
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body,
-    );
+    final response = await http
+        .post(
+          Uri.parse(tokenEndpoint),
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body,
+        )
+        .timeout(AppConstants.oidcHttpTimeout);
 
-    if (response.statusCode != _httpOk) {
+    final status = response.statusCode;
+    if (status == _httpBadRequest || status == _httpUnauthorized) {
+      throw OidcRejectedException(status, response.body);
+    }
+    if (status != _httpOk) {
       throw Exception('Token exchange failed: ${response.body}');
     }
 
@@ -245,4 +255,17 @@ class OidcManager {
 
     return value;
   }
+}
+
+/// The identity provider definitively refused a token request (e.g. an
+/// expired or revoked refresh token). Network failures, timeouts, and provider
+/// outages surface as other exception types and are safe to retry.
+class OidcRejectedException implements Exception {
+  final int statusCode;
+  final String body;
+
+  const OidcRejectedException(this.statusCode, this.body);
+
+  @override
+  String toString() => 'OIDC token request rejected ($statusCode): $body';
 }

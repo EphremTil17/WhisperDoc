@@ -54,6 +54,10 @@ class AppConstants {
   static const double windowHeight = 600;
 
   // === OIDC / Identity Configuration ===
+  /// Upper bound for each OIDC HTTP call (discovery, token exchange). Without
+  /// it a stalled connection can hang a token refresh indefinitely.
+  static const Duration oidcHttpTimeout = Duration(seconds: 10);
+
   /// Redirect URI for OAuth callbacks.
   /// Pulls from --dart-define OIDC_REDIRECT_URI
   static const String oidcRedirectUri = String.fromEnvironment(

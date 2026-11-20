@@ -11,8 +11,12 @@ class AuthService extends ChangeNotifier {
   static const _stateLength = 16;
 
   final LoggingService _logger = LoggingService();
-  final OidcManager _oidc = OidcManager();
-  final SessionManager _session = SessionManager();
+  final OidcManager _oidc;
+  final SessionManager _session;
+
+  AuthService({required SessionManager session, OidcManager? oidc})
+    : _session = session,
+      _oidc = oidc ?? OidcManager();
 
   bool _isInitialized = false;
   bool _isAuthenticating = false;
@@ -94,15 +98,28 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Refreshes the session; concurrent callers share one in-flight request.
+  ///
+  /// Signs out only when the session is definitively unusable (no refresh
+  /// token, or the provider rejects it). Network failures and timeouts keep
+  /// the session so the next connection attempt retries instead of forcing
+  /// the user through a full sign-in.
   Future<bool> silentRefresh() async {
-    final existingCompleter = _refreshCompleter;
-    if (existingCompleter != null) {
+    final inFlight = _refreshCompleter;
+    if (inFlight != null) {
       _logger.info('Silent refresh already in progress, waiting...');
 
-      return existingCompleter.future;
+      return inFlight.future;
     }
-    _refreshCompleter = Completer<bool>();
+    final completer = _refreshCompleter = Completer<bool>();
+    final success = await _refreshTokens();
+    _refreshCompleter = null;
+    completer.complete(success);
 
+    return success;
+  }
+
+  Future<bool> _refreshTokens() async {
     try {
       _logger.info('Attempting OIDC silent refresh...');
       final refreshToken = await _session.loadRefreshToken();
@@ -111,7 +128,6 @@ class AuthService extends ChangeNotifier {
           'Silent refresh aborted: No refresh token found in vault. Signing out user.',
         );
         await signOut();
-        _refreshCompleter?.complete(false);
 
         return false;
       }
@@ -135,17 +151,17 @@ class AuthService extends ChangeNotifier {
         'Silent refresh successful for ${_formatPrincipal(_currentUser)}',
       );
       notifyListeners();
-      _refreshCompleter?.complete(true);
 
       return true;
-    } catch (e) {
-      _logger.error('Silent refresh failed. Signing out user.', error: e);
+    } on OidcRejectedException catch (e) {
+      _logger.warning('Refresh token rejected by identity provider: $e');
       await signOut();
-      _refreshCompleter?.complete(false);
 
       return false;
-    } finally {
-      _refreshCompleter = null;
+    } catch (e) {
+      _logger.warning('Silent refresh failed transiently; keeping session: $e');
+
+      return false;
     }
   }
 
@@ -182,27 +198,23 @@ class AuthService extends ChangeNotifier {
     return 'sub=$sub';
   }
 
+  /// Restores the stored session without network IO so startup never waits on
+  /// the identity provider. An expired token refreshes in the background;
+  /// [getAccessToken] joins that in-flight refresh when a connection needs it.
   Future<void> _loadExistingSession() async {
     try {
-      _idToken = await _session.loadIdToken();
+      final storedToken = await _session.loadIdToken();
+      if (storedToken == null) return;
 
-      final storedToken = _idToken;
-      if (storedToken != null) {
-        if (_session.isExpired(storedToken)) {
-          _logger.warning(
-            'Stored OIDC session expired. Attempting silent refresh...',
-          );
-          final success = await silentRefresh();
-          if (!success) {
-            _logger.warning('Silent refresh failed. User must sign in again.');
-            await signOut();
-          }
-        } else {
-          _currentUser = _session.extractUser(storedToken);
-          _logger.info(
-            'Restored OIDC session for ${_formatPrincipal(_currentUser)}',
-          );
-        }
+      _idToken = storedToken;
+      _currentUser = _session.extractUser(storedToken);
+      if (_session.isExpired(storedToken)) {
+        _logger.info('Stored OIDC session expired; refreshing in background.');
+        unawaited(silentRefresh());
+      } else {
+        _logger.info(
+          'Restored OIDC session for ${_formatPrincipal(_currentUser)}',
+        );
       }
     } catch (e) {
       _logger.error('Failed to load existing session', error: e);
