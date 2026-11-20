@@ -12,7 +12,7 @@ dependencies = [
     "fastapi~=0.138.2",
     "loguru~=0.7.3",
     "orjson~=3.11.7",
-    "pyjwt[crypto]~=2.10",
+    "pyjwt[crypto]~=2.15",
     "python-multipart~=0.0.30",
     "requests~=2.33.0",
     'uvloop~=0.22.1; sys_platform != "win32"',
@@ -36,7 +36,7 @@ dev = [
     "pytest-asyncio==1.3.0",
     "pytest-cov>=6.0",
     # Starlette 1.x TestClient uses httpx2 (httpx is deprecated for it).
-    "httpx2>=2.0.0",
+    "httpx2>=2.12.0",  # GHSA-8xx6-hgc6-gc2m, GHSA-h4x7-gw46-3wm6, GHSA-pf96-p4fj-6566, GHSA-f2fp-rgf2-35cp
     "numpy",
 ]
 
@@ -51,15 +51,23 @@ exclude = ["tests*"]
 default-groups = ["dev"]
 environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
 # Floors for transitive dependencies carrying known CVEs. These packages are not
-# imported directly; they arrive via the web stack (starlette<-fastapi,
-# urllib3<-requests, cryptography<-pyjwt/torch).
+# imported directly; they arrive via the web stack (starlette/anyio<-fastapi,
+# urllib3/certifi<-requests, cryptography<-pyjwt), the Whisper extra
+# (filelock/fsspec/setuptools<-torch/huggingface-hub/ctranslate2), or the dev
+# test client (httpcore2<-httpx2).
 # We pin the floor to the first patched release and leave the ceiling to each
 # parent so the resolver still tracks the latest compatible version.
 constraint-dependencies = [
-    "starlette>=1.3.1",      # GHSA-82w8-qh3p-5jfq, GHSA-wqp7-x3pw-xc5r, GHSA-x746-7m8f-x49c, GHSA-86qp-5c8j-p5mr
-    "urllib3>=2.7.0",        # GHSA-qccp-gfcp-xxvc, GHSA-mf9v-mfxr-j63j
-    "cryptography>=48.0.1",  # GHSA-537c-gmf6-5ccf (bundled OpenSSL), GHSA-p423-j2cm-9vmq
-    "pygments>=2.20.0",      # GHSA-qfpq-jrcy-v2v9 (Low)
+    "starlette>=1.3.1",          # GHSA-82w8-qh3p-5jfq, GHSA-wqp7-x3pw-xc5r, GHSA-x746-7m8f-x49c, GHSA-86qp-5c8j-p5mr
+    "anyio>=4.14.2",             # GHSA-82r6-8w77-94w6 (TLSStream IDNA cert spoofing), GHSA-5p39-cfhj-2xmp
+    "urllib3>=2.8.0",            # GHSA-8988-9cw3-xx77, GHSA-vxq7-64xx-v4gw, GHSA-gh4c-6fx4-qh6g
+    "certifi>=2026.10.18",       # GHSA-6q48-6c7w-9gw2 (compromised emSign roots)
+    "cryptography>=50.0.0",      # GHSA-g6cj-pr64-35w5 (PKCS#7 Bleichenbacher oracle)
+    "filelock>=4.2.1",           # GHSA-v4x8-3wr5-3wq8, GHSA-69hj-f68j-2879, GHSA-8mx5-7m5m-r77g, +6 Low/Moderate
+    "fsspec>=2026.6.0",          # GHSA-27vj-qcqg-25rc (ReferenceFileSystem template injection RCE)
+    "setuptools>=84.1.0",        # GHSA-h35f-9h28-mq5c, GHSA-xmj3-9gf7-h52w (Low)
+    "httpcore2>=2.10.0",         # GHSA-7mj9-2mp8-4m2p (WSS sent without TLS via SOCKS)
+    "pygments>=2.20.0",          # GHSA-qfpq-jrcy-v2v9 (Low)
 ]
 
 [[tool.uv.index]]
