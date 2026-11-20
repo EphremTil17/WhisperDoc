@@ -46,8 +46,8 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
 3. **Build and Start**:
    ```bash
    # Build and start the backend service
-   sudo docker compose build whisper-backend
-   sudo docker compose up -d whisper-backend
+   sudo docker compose build backend
+   sudo docker compose up -d backend
    ```
 4. **Secure the .env file**
    ```bash
@@ -63,8 +63,9 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
    cp backend/.env.template .env
    chmod 600 .env   # Linux/Mac only
 
-   # Choose whisper or parakeet in .env.
-   # Parakeet also uses COMPOSE_PROFILES=parakeet; setup.sh configures it.
+   # Choose whisper or parakeet with ASR_ENGINE in .env. That is the only
+   # switch: COMPOSE_PROFILES=${ASR_ENGINE} starts the parakeet container
+   # only when the parakeet engine is selected.
    ```
 
 2. **Build and Start the Backend** (Docker handles all backend dependencies via native UV)
@@ -75,17 +76,20 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
    # For parakeet, first provision its digest-verified model:
    uv run --project backend python backend/tools/provision_parakeet.py
 
-   docker compose build whisper-backend
-   docker compose up -d whisper-backend
+   docker compose build backend
+   docker compose up -d backend
    ```
 
-   The Parakeet path requires these coordinated `.env`
-   values (the interactive `setup.sh` writes them together):
+   To use Parakeet, set the engine; the profile follows it:
 
    ```dotenv
    ASR_ENGINE=parakeet
-   COMPOSE_PROFILES=parakeet
+   COMPOSE_PROFILES=${ASR_ENGINE}
    ```
+
+   With `whisper`, only the `backend` container runs and holds the model.
+   With `parakeet`, `backend` is a model-free API and the `parakeet` container
+   runs the native model, so exactly one model is loaded either way.
 
 3. **(Optional) Local Backend Setup** - Linux/WSL recommended
 
@@ -114,10 +118,10 @@ For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
 
 ```bash
 # Run all tests inside the active container
-docker compose exec whisper-backend python -m pytest tests/
+docker compose exec backend python -m pytest tests/
 
 # To run a specific test file:
-docker compose exec whisper-backend python -m pytest tests/test_api.py
+docker compose exec backend python -m pytest tests/test_api.py
 ```
 
 **Run Locally:**
@@ -224,13 +228,13 @@ WhisperDoc is entirely configuration-driven via the `.env` file. These variables
 
 ```bash
 # View logs of the main backend service
-docker compose logs -f whisper-backend
+docker compose logs -f backend
 
 # Stop all services
 docker compose down
 
 # Rebuild and restart the backend after changes
-docker compose build whisper-backend && docker compose up -d --force-recreate whisper-backend
+docker compose build backend && docker compose up -d --force-recreate backend
 ```
 
 ## Performance

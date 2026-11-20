@@ -24,6 +24,12 @@ from security.sanitizer import Sanitizer
 # Max buffer size (in bytes) for 5 minutes of 16kHz, 16-bit mono audio
 MAX_BUFFER_SIZE = int(os.getenv("MAX_BUFFER_SIZE", "9600000"))
 
+# Output sanitization gate. Fail-safe parsing: any value other than "false"
+# keeps it on. Disable only for raw-output benchmarking.
+SANITIZE_TRANSCRIPTS = (
+    os.getenv("SANITIZE_TRANSCRIPTS", "true").strip().lower() != "false"
+)
+
 
 def get_client_host(websocket: WebSocket) -> str:
     client = websocket.client
@@ -112,6 +118,11 @@ class ConnectionManager:
         log.info(
             f"ConnectionManager initialized. Proxy-Ready. Max Connections: {MAX_CONNECTIONS}"
         )
+        if not SANITIZE_TRANSCRIPTS:
+            log.warning(
+                "Transcript sanitization DISABLED (SANITIZE_TRANSCRIPTS=false). "
+                "Raw model output is sent to clients; re-enable after benchmarking."
+            )
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -664,7 +675,9 @@ class ConnectionManager:
                 {
                     "start": s.start,
                     "end": s.end,
-                    "text": Sanitizer.sanitize(s.text),
+                    "text": Sanitizer.sanitize(s.text)
+                    if SANITIZE_TRANSCRIPTS
+                    else s.text,
                 }
                 for s in result.segments
             ]

@@ -261,7 +261,7 @@ The selected backend is configured with:
 
 ```dotenv
 ASR_ENGINE=parakeet
-COMPOSE_PROFILES=parakeet
+COMPOSE_PROFILES=${ASR_ENGINE}
 PARAKEET_ACCELERATOR=CUDA0
 PARAKEET_MODEL_FILE=tdt-0.6b-v2-f16.gguf
 ```
@@ -270,7 +270,7 @@ Provision the model before startup:
 
 ```bash
 uv run --project backend python backend/tools/provision_parakeet.py
-docker compose build whisper-backend
+docker compose build backend
 docker compose up -d
 ```
 

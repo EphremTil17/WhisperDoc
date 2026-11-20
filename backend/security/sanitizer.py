@@ -7,14 +7,17 @@ class Sanitizer:
     """
     Principal-level output sanitizer for the WhisperDoc backend.
 
-    Prevents Reflected Terminal Injection by neutralizing control characters,
-    ANSI escape sequences, and non-printable ASCII characters that could
-    be hallucinated by the model or embedded in malicious audio.
+    Prevents Reflected Terminal Injection by neutralizing ANSI escape
+    sequences and control characters that could be hallucinated by the model
+    or embedded in malicious audio. Printable Unicode (accents, symbols,
+    typographic punctuation) is preserved: it cannot drive a terminal, and
+    stripping it corrupts dictated text.
     """
 
-    # Whitelist: Basic printable ASCII (Space to ~) + safe whitespace
-    # This prevents ANSI \x1b, Null \x00, and other control characters < \x20
-    WHITELIST_REGEX = re.compile(r"[^\x20-\x7E\n\r\t]")
+    # C0 controls (except \t \n \r), DEL, and C1 controls. ESC (\x1b) and the
+    # 8-bit CSI introducer (\x9b) are covered, so any escape sequence the ANSI
+    # pattern below misses is still rendered inert.
+    CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
     # Comprehensive ANSI stripper covering CSI and OSC
     ANSI_ESCAPE_REGEX = re.compile(r"\x1b\[[0-9;]*[mGKH]|\x1b]0;[^\x07]*\x07")
@@ -31,15 +34,13 @@ class Sanitizer:
             # 1. Strip ANSI escape sequences explicitly
             cleaned = cls.ANSI_ESCAPE_REGEX.sub("", text)
 
-            # 2. Apply strict whitelist (printable ASCII + safe whitespace)
-            cleaned = cls.WHITELIST_REGEX.sub("", cleaned)
+            # 2. Remove remaining control characters
+            cleaned = cls.CONTROL_CHAR_REGEX.sub("", cleaned)
 
             # 3. Final cleaning
             cleaned = cleaned.strip()
 
             if cleaned != text:
-                # We log this as info rather than warning to avoid log-spamming
-                # if Whisper often produces tiny non-ASCII artifacts.
                 log.debug(
                     "Sanitizer neutralized control sequences in transcription output."
                 )

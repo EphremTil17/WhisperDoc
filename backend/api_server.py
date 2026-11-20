@@ -107,8 +107,10 @@ async def lifespan(app: FastAPI):
         log.success("System initialized successfully.")
 
     except Exception as e:
+        # Fail fast: exiting lets the container restart policy retry startup.
+        # Serving with manager=None left a live process that could never recover.
         log.error(f"Failed to initialize backend: {e}")
-        manager = None
+        raise
 
     yield  # Server runs here
 
@@ -178,16 +180,19 @@ async def global_exception_handler(request, exc):
 
 @app.get("/health")
 async def health_check():
-    """Opaque health check to prevent information disclosure."""
+    """Opaque health check to prevent information disclosure.
+
+    An unloaded model is healthy: engines load on demand, and Whisper unloads
+    itself after MODEL_TIMEOUT_SECONDS of idleness by design.
+    """
     if manager is None or manager.engine is None:
         return JSONResponse(status_code=503, content={"status": "uninitialized"})
 
-    engine_ready = manager.engine.is_loaded()
-    status_code = 200 if engine_ready else 503
     return JSONResponse(
-        status_code=status_code,
+        status_code=200,
         content={
-            "status": "online" if engine_ready else "degraded",
+            "status": "online",
+            "model": "loaded" if manager.engine.is_loaded() else "idle",
             "timestamp": int(time.time()),
         },
     )

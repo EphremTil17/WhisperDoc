@@ -1,6 +1,8 @@
 services:
-  whisper-backend:
-    # Engine-qualified tags keep Whisper and Parakeet API builds independent.
+  backend:
+    # API server for whichever engine ASR_ENGINE selects. With whisper it holds
+    # the model in-process; with parakeet it is model-free and calls the
+    # parakeet service below. Engine-qualified tags keep the builds independent.
     image: ${BACKEND_IMAGE_NAME:-whisperdoc-backend}:${WHISPER_DOC_VERSION:-latest}-${ASR_ENGINE:-whisper}
     build:
       context: ./backend
@@ -27,6 +29,9 @@ services:
       - PARAKEET_WARMUP_SECONDS=${PARAKEET_WARMUP_SECONDS:-10}
       - PARAKEET_MAX_AUDIO_SECONDS=${PARAKEET_MAX_AUDIO_SECONDS:-30}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Strip terminal escape/control characters from transcripts. Set false
+      # in .env only for raw-output benchmarking.
+      - SANITIZE_TRANSCRIPTS=${SANITIZE_TRANSCRIPTS:-true}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - WHISPER_DOC_API_KEY=${WHISPER_DOC_API_KEY:?No API KEY set. Configure WHISPER_DOC_API_KEY in .env.}
@@ -61,6 +66,9 @@ services:
 
   parakeet:
     image: ${PARAKEET_IMAGE:-ghcr.io/mudler/parakeet.cpp-server@sha256:dfbe0fa76a49386b5dd413392b74c89bc68fcac0a445dbb4efec083d7dc1acbf}
+    # Native parakeet.cpp model server, kept out of the API process so native
+    # memory faults cannot corrupt it (docs/PARAKEET_NEMO_TO_CPP_MIGRATION.md).
+    # Starts only when ASR_ENGINE=parakeet, via COMPOSE_PROFILES=${ASR_ENGINE}.
     profiles:
       - parakeet
     # GGML's default callback prints DEBUG-level CUDA graph warmup messages.

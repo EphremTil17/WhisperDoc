@@ -103,15 +103,9 @@ case $REPLY in
 esac
 
 set_env_key "ASR_ENGINE" "$ASR_ENGINE"
-case "$ASR_ENGINE" in
-    whisper)
-        COMPOSE_PROFILES=""
-        ;;
-    parakeet)
-        COMPOSE_PROFILES="parakeet"
-        ;;
-esac
-set_env_key "COMPOSE_PROFILES" "$COMPOSE_PROFILES"
+# Literal ${ASR_ENGINE}: Compose interpolates it, so the parakeet profile
+# follows the engine choice and the two can never disagree.
+set_env_key "COMPOSE_PROFILES" '${ASR_ENGINE}'
 install_backend_env "$ASR_ENGINE"
 if [[ "$ASR_ENGINE" == "parakeet" ]]; then
     echo -e "${CYAN}[MODEL]${NC} Provisioning the digest-verified Parakeet model..."
@@ -156,20 +150,20 @@ done
 # --- Build & Launch ---
 echo ""
 echo -e "${YELLOW}[STEP 5]${NC} Build and start backend? (Engine: ${CYAN}${ASR_ENGINE}${NC})"
-echo -e "  This will run: docker compose build whisper-backend && docker compose up -d whisper-backend"
+echo -e "  This will run: docker compose build backend && docker compose up -d backend"
 read -p "Proceed? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}[BUILD]${NC} Building image (Dockerfile.${ASR_ENGINE})..."
-    docker compose build whisper-backend
+    docker compose build backend
     echo -e "${YELLOW}[START]${NC} Starting backend service..."
-    docker compose up -d whisper-backend
+    docker compose up -d backend
     echo -e "${GREEN}[OK]${NC} Backend is running."
     echo ""
     echo -e "${GREEN}Setup complete!${NC}"
     echo "--------------------"
     echo -e "${YELLOW}Verify:${NC}"
-    echo "  docker compose logs -f whisper-backend"
+    echo "  docker compose logs -f backend"
     echo "  curl http://localhost:${API_PORT:-9989}/health"
 else
     echo ""
@@ -180,7 +174,7 @@ else
     echo "     - Set WHISPER_DOC_API_KEY to a secure value"
     echo "     - Review ASR_ENGINE=${ASR_ENGINE} if you want to switch engines later"
     echo "  2. Build and start the backend:"
-    echo "     docker compose build whisper-backend && docker compose up -d whisper-backend"
+    echo "     docker compose build backend && docker compose up -d backend"
     echo "  3. Check the server logs:"
-    echo "     docker compose logs -f whisper-backend"
+    echo "     docker compose logs -f backend"
 fi

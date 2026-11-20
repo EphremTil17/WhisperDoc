@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import threading
 import wave
 from unittest.mock import MagicMock, call, patch
 
@@ -63,6 +64,31 @@ def test_constructor_checks_health_and_runs_cuda_warmup(mocked_transport):
     assert get.call_args.kwargs["headers"] == {"Connection": "close"}
     assert post.call_args.kwargs["headers"] == {"Connection": "close"}
     assert post.call_args.kwargs["data"] == {"response_format": "json"}
+
+
+def test_is_loaded_does_not_block_while_warmup_holds_state_lock(mocked_transport):
+    engine = _engine()
+    lock_held = threading.Event()
+    release = threading.Event()
+
+    def hold_lock():
+        with engine._state_lock:
+            lock_held.set()
+            release.wait(timeout=5)
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    try:
+        assert lock_held.wait(timeout=5)
+        result: list[bool] = []
+        reader = threading.Thread(target=lambda: result.append(engine.is_loaded()))
+        reader.start()
+        reader.join(timeout=1)
+        assert not reader.is_alive(), "is_loaded() blocked on the warmup lock"
+        assert result == [True]
+    finally:
+        release.set()
+        holder.join()
 
 
 def test_transcribe_maps_single_segment_and_duration(mocked_transport, tmp_path):

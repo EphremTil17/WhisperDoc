@@ -1,8 +1,45 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from engine.base_engine import SegmentResult, TranscriptionResult
 from protocol.websocket_handler import ConnectionManager
+
+
+def _manager_with_result(text: str) -> tuple[ConnectionManager, AsyncMock]:
+    mock_engine = MagicMock()
+    mock_engine.transcribe.return_value = TranscriptionResult(
+        text=text,
+        segments=[SegmentResult(start=0.0, end=1.0, text=text)],
+        language="en",
+        processing_time=0.1,
+    )
+    manager = ConnectionManager(mock_engine, "1.0.0")
+    mock_ws = AsyncMock()
+    manager.active_connections[mock_ws] = {
+        "buffer": bytearray(b"fake_audio_data"),
+        "last_activity": 0,
+        "handshake_completed": True,
+        "id": "1234",
+        "incognito": False,
+    }
+    return manager, mock_ws
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [(True, "café red"), (False, "café \x1b[31mred")],
+)
+async def test_sanitize_transcripts_switch(enabled, expected):
+    manager, mock_ws = _manager_with_result("café \x1b[31mred")
+
+    with patch("protocol.websocket_handler.SANITIZE_TRANSCRIPTS", enabled):
+        await manager.transcribe_and_send(mock_ws)
+
+    payload = mock_ws.send_json.call_args.args[0]
+    assert payload["text"] == expected
+    assert payload["segments"][0]["text"] == expected
 
 
 @pytest.mark.asyncio

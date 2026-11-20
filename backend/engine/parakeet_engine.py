@@ -374,8 +374,10 @@ class ParakeetEngine(BaseEngine):
         log.success("ParakeetEngine: sidecar healthy and CUDA path warmed")
 
     def is_loaded(self) -> bool:
-        with self._state_lock:
-            return self._ready
+        # Lock-free on purpose: the event loop calls this, and warmup() holds
+        # _state_lock for up to the sidecar startup timeout. A bool read is
+        # atomic, and warmup() re-checks readiness under the lock anyway.
+        return self._ready
 
     def unload(self) -> None:
         # Docker Compose owns the native process and releases its VRAM when the
