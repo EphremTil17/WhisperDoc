@@ -11,6 +11,7 @@ Usage:
     python scripts/bump_version.py major       # e.g., 2.24.8 -> 3.0.0
     python scripts/bump_version.py 2.25.0      # Explicit version target
     python scripts/bump_version.py --current   # Prints active version
+    python scripts/bump_version.py --check     # Fails if any target drifted
     python scripts/bump_version.py patch --dry-run
 """
 
@@ -213,29 +214,43 @@ def perform_preflight_check(repo_root: Path) -> list[tuple[TargetRule, Path, str
     return valid_targets
 
 
+def plan_manifest_updates(
+    repo_root: Path,
+    next_version: str,
+) -> tuple[dict[Path, str], list[TargetRule]]:
+    """Compute new file contents for `next_version` and the rules that change them.
+
+    An empty rule list means every target already carries `next_version`.
+    """
+    validated = perform_preflight_check(repo_root)
+    updated_contents: dict[Path, str] = {}
+    changed_rules: list[TargetRule] = []
+    for rule, file_path, original_content in validated:
+        current_content = updated_contents.get(file_path, original_content)
+        replacement = rule.replacement_template.format(version=next_version)
+        new_content = re.sub(rule.pattern, replacement, current_content)
+        if new_content != current_content:
+            updated_contents[file_path] = new_content
+            changed_rules.append(rule)
+    return updated_contents, changed_rules
+
+
 def bump_manifest(
     repo_root: Path,
     next_version: str,
     dry_run: bool = False,
 ) -> None:
     """Atomically update all files in TARGET_MANIFEST."""
-    validated = perform_preflight_check(repo_root)
+    updated_contents, changed_rules = plan_manifest_updates(repo_root, next_version)
 
     print(
         f"\n🚀 {'[DRY RUN] ' if dry_run else ''}Bumping repository to v{next_version}:\n"
     )
-    updated_contents: dict[Path, str] = {}
-    for rule, file_path, original_content in validated:
-        current_content = updated_contents.get(file_path, original_content)
-        replacement = rule.replacement_template.format(version=next_version)
-        new_content = re.sub(rule.pattern, replacement, current_content)
-
-        if new_content == current_content:
+    for rule in TARGET_MANIFEST:
+        if rule in changed_rules:
+            print(f"  🟢 {rule.path}: Updated ({rule.description})")
+        else:
             print(f"  ⚪ {rule.path}: Already up to date ({rule.description})")
-            continue
-
-        updated_contents[file_path] = new_content
-        print(f"  🟢 {rule.path}: Updated ({rule.description})")
 
     if not dry_run:
         for file_path, content in updated_contents.items():
@@ -306,6 +321,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Print the current repository version and exit.",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero if any managed file disagrees with the current version.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Simulate the version bump and show changes without modifying files on disk.",
@@ -327,6 +347,26 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.current:
         print(f"WhisperDoc current version: {current_version_str}")
+        return 0
+
+    if args.check:
+        try:
+            _, drifted = plan_manifest_updates(repo_root, current_version_str)
+        except Exception as e:
+            print(f"❌ Pre-flight error: {e}", file=sys.stderr)
+            return 1
+        if drifted:
+            print(f"❌ Version drift from v{current_version_str}:", file=sys.stderr)
+            for rule in drifted:
+                print(f"  - {rule.path}: {rule.description}", file=sys.stderr)
+            print(
+                f"Run `python scripts/bump_version.py {current_version_str}` to resync.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"✅ All {len(TARGET_MANIFEST)} version targets match v{current_version_str}."
+        )
         return 0
 
     if not args.target:

@@ -152,6 +152,9 @@ The shared pre-commit config runs Ruff separately for `backend/` and
 `terminal_client/`, using each project's own `pyproject.toml`. The
 `ruff` hook runs with `--fix`, then `ruff format` runs after it. If
 files still need manual attention after auto-fixes, the commit fails.
+Read-only checks also reject merge markers, invalid YAML/TOML/JSON,
+private keys, files over 2 MB, and version drift between the files
+`scripts/bump_version.py` manages (`bump_version.py --check`).
 If you're actively developing in this repository, install these hooks.
 
 **API Endpoints:**
@@ -159,6 +162,32 @@ If you're actively developing in this repository, install these hooks.
 - `GET /health` - Check API status and model readiness
 - `POST /transcribe` - Upload audio file for transcription
 - `GET /ws` - WebSocket connection (JSON handshake with token required)
+
+## CI/CD
+
+GitHub Actions runs on every push. Each component's workflow runs only when that component changes.
+
+| Workflow | Runner | Checks |
+| -------- | ------ | ------ |
+| **Pre-commit** | Ubuntu | Every pre-commit hook on every file |
+| **Backend** | Ubuntu | Pyright and pytest. Then it builds the Whisper and Parakeet images and runs the Whisper image on CPU (`tiny.en`) with the production isolation flags. It transcribes `assets/jfk.flac`, asserts the 401 / 411 / 404 rejections and the read-only root filesystem, and runs the live API and WebSocket tests |
+| **Terminal client** | Windows | Pyright and pytest |
+| **Flutter client** | Windows | `dart format`, `flutter analyze`, `flutter test`, and a release build of the native runner |
+| **Release** | Windows | On a `vX.Y.Z` tag: checks versions, release notes, and mainline ancestry, builds the obfuscated installer, and creates a **draft** GitHub Release |
+
+**Cutting a release**: run `scripts/bump_version.py`, write `docs/release_notes/vX.Y.Z.md` and the changelog entry, commit, then push a signed tag:
+
+```bash
+git tag -s vX.Y.Z -m "Release vX.Y.Z - <theme>"
+git push origin mainline vX.Y.Z
+```
+
+Review the draft on the Releases page, then publish it. Installed clients learn about updates from `releases/latest`, which ignores drafts, so nobody is prompted until you publish.
+
+**Repository secrets** (Settings → Secrets and variables → Actions):
+
+- `FLUTTER_ENV_JSON` (required for releases): the full contents of `flutter_client/env.json`.
+- `SYMBOLS_PASSPHRASE` (optional): attaches the debug symbols as an encrypted `.7z`, so crash traces from CI builds can be deobfuscated.
 
 ## 🛡️ Architecture & Security Deep-Dive (Hardened v2.14.0)
 
@@ -274,7 +303,7 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
-- **Standalone Release Package**: Verified 64-bit production distribution installer packaged with Inno Setup ([win_x64_release/WhisperDoc_Setup_v3.0.0.exe](win_x64_release/WhisperDoc_Setup_v3.0.0.exe)).
+- **Standalone Release Package**: Verified 64-bit production distribution installer packaged with Inno Setup by the Release workflow and published on [GitHub Releases](https://github.com/EphremTil17/WhisperDoc/releases/latest).
 - **Client-Edge Dictation Profiles & LLM Transformation**: Contextual post-processing rewrites (Raw, Clean Polish, Professional, Casual, Technical) powered by high-speed Groq `qwen/qwen3.8-27b` inference (~260ms latency, zero CoT tokens). Works across both WhisperDoc backend and Groq transcription modes with fail-open fallback, ASCII typographic normalization, input-scaled timeouts, and zero-stalling latency SLA.
 - **Groq Cloud Direct Transcription**: Backend-independent speech-to-text with runtime model selection between `whisper-large-v3-turbo` (lowest latency) and `whisper-large-v3` (maximum depth and verbatim accuracy). Works as a standalone fallback when the backend is down, under maintenance, or by user preference. Free-tier compliant with local rate-limit tracking and conservative buffer guards.
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.

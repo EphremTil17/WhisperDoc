@@ -101,6 +101,30 @@ def test_bump_manifest_accumulates_rules_and_preserves_crlf(tmp_path, monkeypatc
     assert target.read_bytes() == b"Product: 2.25.2\r\nClient: 2.25.2\r\n"
 
 
+def test_check_passes_on_workspace():
+    """The committed repository must carry one version everywhere."""
+    assert bump_version.main(["--check"]) == 0
+
+
+def test_check_reports_drifted_targets(tmp_path, monkeypatch, capsys):
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "pyproject.toml").write_text('version = "2.0.0"\n')
+    (tmp_path / "client.txt").write_text("Client: 1.9.0\n")
+    rule = bump_version.TargetRule(
+        path="client.txt",
+        pattern=r"(?m)^(Client: )[^\r\n]*",
+        replacement_template=r"\g<1>{version}",
+        description="client version",
+    )
+    monkeypatch.setattr(bump_version, "TARGET_MANIFEST", [rule])
+    monkeypatch.setattr(bump_version, "find_repo_root", lambda: tmp_path)
+
+    assert bump_version.main(["--check"]) == 1
+    assert "client.txt" in capsys.readouterr().err
+    # --check never writes.
+    assert (tmp_path / "client.txt").read_text() == "Client: 1.9.0\n"
+
+
 def test_sync_lockfiles_reports_uv_failures(tmp_path, monkeypatch):
     (tmp_path / "backend").mkdir()
     monkeypatch.setattr(bump_version.shutil, "which", lambda _: "/usr/bin/uv")

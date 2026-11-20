@@ -110,10 +110,11 @@ lib/
 
 5. **Package Windows Installer**
    ```powershell
-   # Compile setup executable with Inno Setup and copy to release distribution folder:
+   # Paths in the script are relative to it, so this works from any checkout:
    & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\whisperdoc_setup.iss
-   Copy-Item windows\installer\WhisperDoc_Setup_v3.0.0.exe ..\win_x64_release\
+   # Output: windows\installer\WhisperDoc_Setup_v<version>.exe
    ```
+   Official installers are built by the **Release** workflow when a `vX.Y.Z` tag is pushed, and attached to a draft GitHub Release. Local packaging is for testing.
 
 ## Configuration
 

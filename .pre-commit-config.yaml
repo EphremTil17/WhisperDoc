@@ -21,3 +21,27 @@ repos:
         name: terminal client ruff format
         files: ^terminal_client/
         args: [--config, terminal_client/pyproject.toml]
+
+  # Read-only hygiene and secret checks: they fail the commit, never rewrite files.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: detect-private-key
+      # Installers ship as GitHub Release assets now; block binaries or models
+      # slipping into history (GitHub hard-rejects files over 100 MB).
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+
+  - repo: local
+    hooks:
+      - id: version-sync
+        name: version targets match backend/pyproject.toml
+        entry: python scripts/bump_version.py --check
+        language: python
+        pass_filenames: false
+        files: (pyproject\.toml|pubspec\.yaml|\.iss|README\.md|\.env\.template|settings_service_test\.dart|bump_version\.py)$

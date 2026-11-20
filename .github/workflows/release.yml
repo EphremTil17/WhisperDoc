@@ -1,0 +1,142 @@
+name: Release
+
+# Pushing a vX.Y.Z tag builds the Windows installer on a clean runner and
+# attaches it to a DRAFT GitHub Release. The client's update checker reads
+# releases/latest, which ignores drafts, so nobody is prompted until the
+# draft is reviewed and published by hand.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build installer and draft the release
+    runs-on: windows-2025
+    timeout-minutes: 45
+    permissions:
+      contents: write # create the draft release
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for the mainline ancestry check
+          persist-credentials: false
+
+      - name: Verify tag, versions, notes, and branch
+        shell: bash
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Tag $TAG is not vMAJOR.MINOR.PATCH"
+          version="${TAG#v}"
+          python scripts/bump_version.py --check || fail "Version targets disagree; run the bumper before tagging"
+          current=$(python scripts/bump_version.py --current | awk '{print $NF}')
+          [ "$current" = "$version" ] || fail "Tag $TAG does not match repository version $current"
+          [ -f "docs/release_notes/$TAG.md" ] || fail "Missing docs/release_notes/$TAG.md"
+          commit=$(git rev-parse "$TAG^{commit}")
+          git merge-base --is-ancestor "$commit" origin/mainline || fail "$TAG is not on mainline"
+          if gh release list --limit 200 --json tagName --jq '.[].tagName' | grep -qx "$TAG"; then
+            fail "A release for $TAG already exists; delete it to rebuild"
+          fi
+          build=$(sed -nE 's/^version:[[:space:]]*[^+]+\+([0-9]+).*/\1/p' flutter_client/pubspec.yaml)
+          {
+            echo "VERSION=$version"
+            echo "BUILD_NUMBER=${build:-1}"
+            echo "COMMIT=$commit"
+          } >> "$GITHUB_ENV"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.41.6
+          cache: true
+
+      - name: Write env.json from the repository secret
+        env:
+          FLUTTER_ENV_JSON: ${{ secrets.FLUTTER_ENV_JSON }}
+        run: |
+          if (-not $env:FLUTTER_ENV_JSON) {
+            Write-Output "::error::Repository secret FLUTTER_ENV_JSON (the contents of flutter_client/env.json) is not set."
+            exit 1
+          }
+          try { $config = $env:FLUTTER_ENV_JSON | ConvertFrom-Json }
+          catch { Write-Output "::error::FLUTTER_ENV_JSON is not valid JSON."; exit 1 }
+          foreach ($key in 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_REDIRECT_URI') {
+            if (-not $config.$key) { Write-Output "::error::FLUTTER_ENV_JSON is missing $key."; exit 1 }
+          }
+          [IO.File]::WriteAllText("$PWD\flutter_client\env.json", $env:FLUTTER_ENV_JSON)
+
+      - name: Resolve dependencies from the lockfile
+        working-directory: flutter_client
+        run: flutter pub get --enforce-lockfile
+
+      - name: Test
+        working-directory: flutter_client
+        run: flutter test
+
+      - name: Build obfuscated release
+        working-directory: flutter_client
+        run: >-
+          flutter build windows --release
+          "--build-name=$env:VERSION" "--build-number=$env:BUILD_NUMBER"
+          --obfuscate --split-debug-info=build/symbols
+          --dart-define-from-file=env.json
+
+      - name: Package installer
+        working-directory: flutter_client
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q windows\installer\whisperdoc_setup.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Draft the GitHub Release
+        working-directory: flutter_client
+        env:
+          SYMBOLS_PASSPHRASE: ${{ secrets.SYMBOLS_PASSPHRASE }}
+        run: |
+          $installer = "windows\installer\WhisperDoc_Setup_v$env:VERSION.exe"
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash
+          $size = (Get-Item $installer).Length
+          $assets = @($installer)
+
+          # Symbols deobfuscate crash traces. Release assets are public, so they
+          # are attached only as an AES-256 archive with encrypted file names.
+          if ($env:SYMBOLS_PASSPHRASE) {
+            $symbols = "WhisperDoc_$($env:TAG)_symbols.7z"
+            7z a -t7z -mhe=on "-p$env:SYMBOLS_PASSPHRASE" $symbols .\build\symbols\* | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $assets += $symbols
+          } else {
+            Write-Output "::warning::SYMBOLS_PASSPHRASE is not set, so debug symbols are not attached and crash traces from this build cannot be deobfuscated."
+          }
+
+          $notes = Get-Content "..\docs\release_notes\$env:TAG.md" -Raw
+          $runUrl = '{0}/{1}/actions/runs/{2}' -f $env:GITHUB_SERVER_URL, $env:GITHUB_REPOSITORY, $env:GITHUB_RUN_ID
+          $body = @(
+            $notes.TrimEnd()
+            ''
+            '---'
+            ''
+            '## Installer'
+            ''
+            '| File | Size | SHA-256 |'
+            '| ---- | ---- | ------- |'
+            ('| `{0}` | {1:N0} bytes | `{2}` |' -f (Split-Path $installer -Leaf), $size, $hash)
+            ''
+            ('Built by the [Release workflow]({0}) from commit `{1}`.' -f $runUrl, $env:COMMIT)
+          ) -join "`n"
+          $bodyFile = Join-Path $env:RUNNER_TEMP 'release-body.md'
+          [IO.File]::WriteAllText($bodyFile, $body)
+
+          gh release create $env:TAG @assets --draft --verify-tag --title "WhisperDoc $env:TAG" --notes-file $bodyFile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          "### Draft release $env:TAG created" >> $env:GITHUB_STEP_SUMMARY
+          "Installer SHA-256: ``$hash``. Review and publish it from the Releases page." >> $env:GITHUB_STEP_SUMMARY

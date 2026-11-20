@@ -1,0 +1,46 @@
+name: Terminal client
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "terminal_client/**"
+      - ".github/workflows/terminal-client.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Windows is the only supported runtime (pynput, keyring, sounddevice).
+    name: Pyright + pytest (Windows)
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: terminal_client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: terminal_client/uv.lock
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Pyright
+        run: uv run --no-sync pyright
+
+      - name: Pytest
+        run: uv run --no-sync pytest -ra

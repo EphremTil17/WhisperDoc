@@ -1,0 +1,171 @@
+name: Backend
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - "assets/**"
+      - "scripts/bump_version.py" # covered by backend/tests/test_version_bumper.py
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Pyright + pytest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      # The CUDA runtime wheels (~1 GB) are only needed on a GPU; ctranslate2
+      # and faster-whisper import and type-check fine without them.
+      - name: Install locked dependencies
+        run: >-
+          uv sync --locked --group dev --extra whisper
+          --no-install-package nvidia-cublas-cu12
+          --no-install-package nvidia-cudnn-cu12
+
+      - name: Pyright
+        run: uv run --no-sync pyright
+
+      # Live-server tests skip here; the e2e job runs them against the image.
+      - name: Pytest
+        run: uv run --no-sync pytest tests -ra
+
+  e2e:
+    name: Docker image end-to-end (CPU, tiny.en)
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      API: http://127.0.0.1:9989
+      # Throwaway key for a container that only lives for this job.
+      WHISPER_DOC_API_KEY: ci-ephemeral-key
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install test client dependencies
+        working-directory: backend
+        run: uv sync --locked --group dev
+
+      - name: Read release version
+        run: echo "VERSION=$(python3 scripts/bump_version.py --current | awk '{print $NF}')" >> "$GITHUB_ENV"
+
+      - name: Build Whisper image
+        working-directory: backend
+        run: docker build -f Dockerfile.whisper --build-arg VERSION="$VERSION" -t whisperdoc-backend:ci-whisper .
+
+      # The parakeet sidecar needs a GPU, so its API image is only built.
+      - name: Build Parakeet API image
+        working-directory: backend
+        run: docker build -f Dockerfile.parakeet --build-arg VERSION="$VERSION" -t whisperdoc-backend:ci-parakeet .
+
+      - name: Record image sizes
+        run: |
+          {
+            echo "### Backend image sizes"
+            docker image ls whisperdoc-backend --format '| {{.Tag}} | {{.Size}} |'
+          } >> "$GITHUB_STEP_SUMMARY"
+          docker builder prune -af > /dev/null
+
+      - name: Restore model cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: model-cache
+          key: whisper-model-tiny.en-v1
+
+      # Same isolation as docker-compose.yml: read-only root, tmpfs /tmp,
+      # no-new-privileges, loopback-only port.
+      - name: Start the Whisper container
+        run: |
+          mkdir -p model-cache
+          docker run -d --name wd-e2e \
+            --read-only --tmpfs /tmp:nosuid,nodev \
+            --security-opt no-new-privileges:true \
+            -p 127.0.0.1:9989:9989 \
+            -v "$PWD/model-cache:/app/model-cache" \
+            -e ASR_ENGINE=whisper -e MODEL_NAME=tiny.en \
+            -e MODEL_DEVICE=cpu -e MODEL_COMPUTE_TYPE=int8 \
+            -e WHISPER_DOC_API_KEY -e WHISPER_DOC_VERSION="$VERSION" \
+            whisperdoc-backend:ci-whisper
+
+      # Whisper loads the model during startup, so this includes the download.
+      - name: Wait for /health
+        run: |
+          for _ in $(seq 1 90); do
+            if curl -fsS "$API/health"; then echo; exit 0; fi
+            sleep 2
+          done
+          echo "::error::Backend never became healthy"
+          exit 1
+
+      - name: Transcribe jfk.flac over HTTP
+        run: |
+          body=$(curl -sS --max-time 600 --fail-with-body \
+            -H "Authorization: Bearer $WHISPER_DOC_API_KEY" \
+            -F "file=@assets/jfk.flac" "$API/transcribe")
+          echo "$body"
+          if ! grep -qi "country" <<< "$body"; then
+            echo "::error::Transcript does not contain the expected words"
+            exit 1
+          fi
+
+      - name: Security assertions
+        run: |
+          status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          expect() {
+            if [ "$1" != "$2" ]; then echo "::error::$3: expected $2, got $1"; exit 1; fi
+            echo "ok: $3 -> $1"
+          }
+          expect "$(status -F "file=@assets/jfk.flac" "$API/transcribe")" 401 "upload without a token"
+          expect "$(status -H "Authorization: Bearer wrong" -F "file=@assets/jfk.flac" "$API/transcribe")" 401 "upload with a wrong token"
+          expect "$(status -X POST -H "Authorization: Bearer $WHISPER_DOC_API_KEY" -H "Transfer-Encoding: chunked" --data-binary @assets/jfk.flac "$API/transcribe")" 411 "chunked upload without Content-Length"
+          expect "$(status -X POST "$API/log")" 404 "removed /log endpoint"
+          if docker exec wd-e2e sh -c 'touch /app/probe' 2> /dev/null; then
+            echo "::error::Container root filesystem is writable"
+            exit 1
+          fi
+          docker exec wd-e2e sh -c 'touch /tmp/probe'
+          echo "ok: root filesystem read-only, /tmp writable"
+
+      - name: Live API and WebSocket tests
+        working-directory: backend
+        run: |
+          uv run --no-sync pytest tests/test_api.py tests/test_websocket.py -rs | tee "$RUNNER_TEMP/live.txt"
+          if grep -q SKIPPED "$RUNNER_TEMP/live.txt"; then
+            echo "::error::Live tests were skipped, so they never reached the server"
+            exit 1
+          fi
+
+      - name: Container logs
+        if: always()
+        run: docker logs wd-e2e 2>&1 | tail -n 200 || true
