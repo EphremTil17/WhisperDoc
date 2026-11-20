@@ -48,14 +48,5 @@ void main() {
 
       expect(limiter.canRequest(), isTrue);
     });
-
-    test('statusMessage reports current counts', () {
-      limiter.recordRequest();
-      limiter.recordRequest();
-
-      final status = limiter.statusMessage;
-      expect(status, contains('2/20 RPM'));
-      expect(status, contains('2/2000 RPD'));
-    });
   });
 }

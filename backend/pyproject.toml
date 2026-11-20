@@ -11,7 +11,6 @@ dependencies = [
     "cachetools~=7.0.5",
     "fastapi~=0.138.2",
     "loguru~=0.7.3",
-    "orjson~=3.11.7",
     "pyjwt[crypto]~=2.15",
     "python-multipart~=0.0.30",
     "requests~=2.33.0",
@@ -26,7 +25,6 @@ whisper = [
     "faster-whisper~=1.2.1",
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
-    "torch",
 ]
 [dependency-groups]
 dev = [
@@ -53,7 +51,7 @@ environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
 # Floors for transitive dependencies carrying known CVEs. These packages are not
 # imported directly; they arrive via the web stack (starlette/anyio<-fastapi,
 # urllib3/certifi<-requests, cryptography<-pyjwt), the Whisper extra
-# (filelock/fsspec/setuptools<-torch/huggingface-hub/ctranslate2), or the dev
+# (filelock/fsspec/setuptools<-huggingface-hub/ctranslate2), or the dev
 # test client (httpcore2<-httpx2).
 # We pin the floor to the first patched release and leave the ceiling to each
 # parent so the resolver still tracks the latest compatible version.
@@ -69,14 +67,6 @@ constraint-dependencies = [
     "httpcore2>=2.10.0",         # GHSA-7mj9-2mp8-4m2p (WSS sent without TLS via SOCKS)
     "pygments>=2.20.0",          # GHSA-qfpq-jrcy-v2v9 (Low)
 ]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu", extra = "whisper" }]
 
 [tool.pyright]
 include = ["."]

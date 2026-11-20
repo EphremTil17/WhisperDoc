@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/infrastructure/database/app_database.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
@@ -9,7 +10,6 @@ import 'package:flutter_client/services/utility/secure_vault_service.dart';
 class HistoryService {
   static const String _gcmPrefix = 'gcm:';
   static const int _gcmNonceBytes = 12;
-  static const int _defaultHistoryLimit = 50;
 
   final SecureVaultService _vault;
   final LoggingService _logger = LoggingService();
@@ -42,33 +42,37 @@ class HistoryService {
     }
   }
 
-  /// Encrypt and save a transcription.
+  /// Encrypt and save a transcription, then prune to the newest
+  /// [AppConstants.maxHistorySize] entries so history on disk stays bounded.
   Future<void> saveTranscription({
     required String text,
     required DateTime timestamp,
-    int? durationMs,
-    bool isIncognito = false,
   }) async {
     final db = _requireDb();
     final encrypter = _requireEncrypter();
-    if (isIncognito) return;
 
     // AES-GCM is most efficient and conventional with a 96-bit (12-byte) nonce.
     final iv = encrypt.IV.fromSecureRandom(_gcmNonceBytes);
     final encrypted = encrypter.encrypt(text, iv: iv);
-    final transcriptionEntries = db.transcriptionEntries;
+    final entries = db.transcriptionEntries;
 
     await db
-        .into(transcriptionEntries)
+        .into(entries)
         .insert(
           TranscriptionEntriesCompanion.insert(
             encryptedText: '$_gcmPrefix${encrypted.base64}',
             ivBase64: iv.base64,
             timestamp: timestamp,
-            durationMs: Value(durationMs),
-            isIncognito: Value(isIncognito),
           ),
         );
+
+    final newest = db.selectOnly(entries)
+      ..addColumns([entries.id])
+      ..orderBy([OrderingTerm.desc(entries.timestamp)])
+      ..limit(AppConstants.maxHistorySize);
+    await (db.delete(
+      entries,
+    )..where((row) => row.id.isNotInQuery(newest))).go();
   }
 
   /// Decrypt a transcription entry.
@@ -83,7 +87,7 @@ class HistoryService {
   }
 
   Future<List<HistoryEntry>> getHistory({
-    int limit = _defaultHistoryLimit,
+    int limit = AppConstants.maxHistorySize,
   }) async {
     final db = _requireDb();
     final transcriptionEntries = db.transcriptionEntries;

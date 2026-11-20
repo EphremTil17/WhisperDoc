@@ -28,9 +28,6 @@ class AppConstants {
   /// the recording path's `ensureConnected()`.
   static const Duration wsConnectTimeout = Duration(seconds: 10);
 
-  /// Maximum delay between reconnection attempts (exponential backoff cap).
-  static const Duration wsMaxReconnectDelay = Duration(seconds: 30);
-
   // === Hotkey Defaults ===
   static const String defaultHotkeyDisplay = 'Ctrl+Alt+E';
 
@@ -41,11 +38,8 @@ class AppConstants {
   static const int defaultHotkeyVKey = 0x45;
 
   // === Recording & History ===
-  /// Maximum number of transcription entries to keep in history.
+  /// Transcription entries kept (and shown); older rows are pruned on save.
   static const int maxHistorySize = 100;
-
-  /// Maximum number of log entries to keep in UI buffer.
-  static const int logBufferSize = 500;
 
   /// Quiet period after the last OS audio-endpoint notification before
   /// re-enumerating devices. Measured bursts last ~40 ms, and Windows' device

@@ -60,13 +60,10 @@ class ClipboardService {
     }
 
     if (success) {
-      LoggingService().info(
-        'Text copied to clipboard (Win32)',
-        sendToServer: false,
-      );
+      LoggingService().info('Text copied to clipboard (Win32)');
     } else {
       GlobalFree(hMem);
-      LoggingService().error('Failed to set clipboard', sendToServer: false);
+      LoggingService().error('Failed to set clipboard');
     }
 
     return success;
@@ -84,16 +81,12 @@ class ClipboardService {
     if (ourWindow == foregroundWindow) {
       LoggingService().info(
         'Skipping paste simulation (WhisperDoc is focused)',
-        sendToServer: false,
       );
 
       return;
     }
 
-    LoggingService().info(
-      'Simulating Ctrl+V via SendInput (scan codes)...',
-      sendToServer: false,
-    );
+    LoggingService().info('Simulating Ctrl+V via SendInput (scan codes)...');
 
     final inputs = calloc<INPUT>(_inputEventCount);
     try {
@@ -135,12 +128,9 @@ class ClipboardService {
       // Send all inputs at once for atomicity
       SendInput(_inputEventCount, inputs, sizeOf<INPUT>());
 
-      LoggingService().info('Paste simulation complete', sendToServer: false);
+      LoggingService().info('Paste simulation complete');
     } catch (e) {
-      LoggingService().error(
-        'Paste simulation failed: $e',
-        sendToServer: false,
-      );
+      LoggingService().error('Paste simulation failed: $e');
     } finally {
       free(inputs);
     }

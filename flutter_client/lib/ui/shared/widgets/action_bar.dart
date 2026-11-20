@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
-import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/refined_icon_button.dart';
 import 'package:flutter_client/ui/screens/settings_screen.dart';
@@ -163,77 +162,59 @@ class ActionBar extends StatelessWidget {
         // 3. Connection Status Lock / Cloud Icon (CENTER)
         LockableControl(
           locked: isSessionActive,
-          child:
-              Consumer4<
-                WebSocketService,
-                AuthService,
-                SettingsService,
-                UpdateService
-              >(
-                builder:
-                    (
-                      context,
-                      wsService,
-                      authService,
-                      settings,
-                      updateService,
-                      child,
-                    ) {
-                      // Groq mode: show cloud icon, bypass backend state entirely.
-                      if (settings.isGroqMode) {
-                        final groqService = context
-                            .watch<GroqTranscriptionService>();
-                        final descriptor = ConnectionStateMapper.mapGroqState(
-                          hasGroqKey: groqService.hasValidCredentials,
-                          status: groqService.status,
-                        );
+          child: Consumer3<WebSocketService, SettingsService, UpdateService>(
+            builder: (context, wsService, settings, updateService, child) {
+              // Groq mode: show cloud icon, bypass backend state entirely.
+              if (settings.isGroqMode) {
+                final groqService = context.watch<GroqTranscriptionService>();
+                final descriptor = ConnectionStateMapper.mapGroqState(
+                  hasGroqKey: groqService.hasValidCredentials,
+                  status: groqService.status,
+                );
 
-                        return Tooltip(
-                          message: descriptor.tooltip,
-                          preferBelow: false,
-                          verticalOffset: _tooltipVerticalOffset,
-                          child: RefinedIconButton(
-                            icon: descriptor.icon,
-                            iconColor: descriptor.iconColor,
-                            iconSize: _standardIconSize,
-                            isPulsing: descriptor.isPulsing,
-                            pulseColor: descriptor.pulseColor,
-                            onTap: _buildGroqConnectionTapHandler(
-                              context,
-                              groqService,
-                            ),
-                          ),
-                        );
-                      }
+                return Tooltip(
+                  message: descriptor.tooltip,
+                  preferBelow: false,
+                  verticalOffset: _tooltipVerticalOffset,
+                  child: RefinedIconButton(
+                    icon: descriptor.icon,
+                    iconColor: descriptor.iconColor,
+                    iconSize: _standardIconSize,
+                    isPulsing: descriptor.isPulsing,
+                    pulseColor: descriptor.pulseColor,
+                    onTap: _buildGroqConnectionTapHandler(context, groqService),
+                  ),
+                );
+              }
 
-                      // Backend mode: existing logic unchanged.
-                      final descriptor = ConnectionStateMapper.mapState(
-                        status: wsService.status,
-                        handshake: wsService.handshakeState.state,
-                        security: wsService.securityStatus,
-                        hasAnyCreds: wsService.hasValidCredentials,
-                        updateStatus: updateService.status,
-                      );
+              // Backend mode: existing logic unchanged.
+              final descriptor = ConnectionStateMapper.mapState(
+                status: wsService.status,
+                handshake: wsService.handshakeState.state,
+                security: wsService.securityStatus,
+                hasAnyCreds: wsService.hasValidCredentials,
+                updateStatus: updateService.status,
+              );
 
-                      return Tooltip(
-                        message: descriptor.tooltip,
-                        preferBelow: false,
-                        verticalOffset: _tooltipVerticalOffset,
-                        child: RefinedIconButton(
-                          icon: descriptor.icon,
-                          iconColor: descriptor.iconColor,
-                          iconSize: _standardIconSize,
-                          isPulsing: descriptor.isPulsing,
-                          pulseColor: descriptor.pulseColor,
-                          onTap: _buildBackendConnectionTapHandler(
-                            context,
-                            wsService,
-                            updateService,
-                          ),
-                        ),
-                      );
-                    },
-              ),
+              return Tooltip(
+                message: descriptor.tooltip,
+                preferBelow: false,
+                verticalOffset: _tooltipVerticalOffset,
+                child: RefinedIconButton(
+                  icon: descriptor.icon,
+                  iconColor: descriptor.iconColor,
+                  iconSize: _standardIconSize,
+                  isPulsing: descriptor.isPulsing,
+                  pulseColor: descriptor.pulseColor,
+                  onTap: _buildBackendConnectionTapHandler(
+                    context,
+                    wsService,
+                    updateService,
+                  ),
+                ),
+              );
+            },
+          ),
         ),
         const SizedBox(width: _iconSpacing),
 

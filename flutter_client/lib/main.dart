@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/ui/whisper_doc_app.dart';
 
 Future<void> main() async {
@@ -10,7 +11,7 @@ Future<void> main() async {
   // screen, so a blank window is never visible.
   try {
     const windowOptions = WindowOptions(
-      size: Size(420, 600),
+      size: Size(AppConstants.windowWidth, AppConstants.windowHeight),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,

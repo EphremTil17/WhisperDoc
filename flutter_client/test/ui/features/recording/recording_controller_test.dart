@@ -446,7 +446,8 @@ void main() {
       await controller.startRecording();
 
       final defaultDeviceCall = verify(
-        () => mockAudioService.startRecording(deviceId: null, deviceLabel: null),
+        () =>
+            mockAudioService.startRecording(deviceId: null, deviceLabel: null),
       );
       expect(defaultDeviceCall.callCount, equals(1));
     });

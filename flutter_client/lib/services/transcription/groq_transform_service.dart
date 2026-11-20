@@ -47,7 +47,7 @@ class GroqTransformService {
       );
     }
 
-    final apiKey = await _settings.getGroqApiKey();
+    final apiKey = _settings.cachedGroqApiKey;
     if (apiKey == null || apiKey.isEmpty) {
       throw const GroqError(
         type: GroqErrorType.invalidApiKey,

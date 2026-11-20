@@ -24,7 +24,7 @@ void main() {
     when(() => session.loadRefreshToken()).thenAnswer((_) async => 'refresh');
     when(
       () => session.extractUser(any()),
-    ).thenReturn({'sub': 'user-1', 'email': 'user@example.com'});
+    ).thenReturn({'id': 'user-1', 'email': 'user@example.com'});
     when(() => session.clearSession()).thenAnswer((_) async {});
     when(
       () => oidc.discover(),
@@ -33,22 +33,25 @@ void main() {
   });
 
   group('AuthService startup', () {
-    test('does not wait on the network to restore an expired session', () async {
-      when(() => session.isExpired(storedToken)).thenReturn(true);
-      // A refresh that never answers, like a stalled connection.
-      final neverAnswers = Completer<Map<String, dynamic>>();
-      when(
-        () => oidc.exchangeToken(
-          tokenEndpoint: any(named: 'tokenEndpoint'),
-          refreshToken: any(named: 'refreshToken'),
-        ),
-      ).thenAnswer((_) => neverAnswers.future);
+    test(
+      'does not wait on the network to restore an expired session',
+      () async {
+        when(() => session.isExpired(storedToken)).thenReturn(true);
+        // A refresh that never answers, like a stalled connection.
+        final neverAnswers = Completer<Map<String, dynamic>>();
+        when(
+          () => oidc.exchangeToken(
+            tokenEndpoint: any(named: 'tokenEndpoint'),
+            refreshToken: any(named: 'refreshToken'),
+          ),
+        ).thenAnswer((_) => neverAnswers.future);
 
-      await auth.initialize().timeout(const Duration(seconds: 1));
+        await auth.initialize().timeout(const Duration(seconds: 1));
 
-      expect(auth.isAuthenticated, isTrue);
-      expect(auth.currentUser?['sub'], equals('user-1'));
-    });
+        expect(auth.isAuthenticated, isTrue);
+        expect(auth.currentUser?['id'], equals('user-1'));
+      },
+    );
   });
 
   group('AuthService silent refresh policy', () {
@@ -98,7 +101,6 @@ void main() {
       when(
         () => session.saveTokens(
           idToken: any(named: 'idToken'),
-          accessToken: any(named: 'accessToken'),
           refreshToken: any(named: 'refreshToken'),
         ),
       ).thenAnswer((_) async {});

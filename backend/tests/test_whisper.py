@@ -20,17 +20,22 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # In Docker, we use /app/model-cache via ENV. Locally, we use the root model-cache.
 CACHE_DIR = os.getenv("HF_HOME", os.path.join(os.path.dirname(BASE_DIR), "model-cache"))
 
-# Heavy imports (numpy, torch, faster_whisper) are deferred into test bodies
-# so that collection succeeds on hosts without these packages installed.
+# Heavy imports (numpy, ctranslate2, faster_whisper) are deferred into test
+# bodies so that collection succeeds on hosts without these packages installed.
 # The Docker-only skipif guards fire before the import would be needed.
 
 
-def get_gpu_available():
+def get_gpu_count() -> int:
+    """CUDA devices visible to CTranslate2, the runtime faster-whisper uses."""
     try:
-        torch = importlib.import_module("torch")
-        return torch.cuda.is_available()
+        ctranslate2 = importlib.import_module("ctranslate2")
+        return ctranslate2.get_cuda_device_count()
     except ImportError:
-        return False
+        return 0
+
+
+def get_gpu_available() -> bool:
+    return get_gpu_count() > 0
 
 
 @pytest.mark.skipif(
@@ -107,10 +112,7 @@ def test_whisper_gpu_full():
 if __name__ == "__main__":
     # Manual execution logic
     print("=== Manual Whisper Hardware Discovery ===")
-    print(f"CUDA Available: {get_gpu_available()}")
-    if get_gpu_available():
-        torch = importlib.import_module("torch")
-        print(f"Device: {torch.cuda.get_device_name(0)}")
+    print(f"CUDA devices (CTranslate2): {get_gpu_count()}")
 
     test_whisper_cpu_basic()
     if get_gpu_available():

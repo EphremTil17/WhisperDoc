@@ -32,9 +32,6 @@ void main() {
       when(() => mockSettings.groqLanguage).thenReturn('');
       when(() => mockSettings.groqPrompt).thenReturn('');
       when(() => mockSettings.groqModel).thenReturn('whisper-large-v3-turbo');
-      when(
-        () => mockSettings.getGroqApiKey(),
-      ).thenAnswer((_) async => 'test-groq-key');
 
       service = GroqTranscriptionService(mockSettings);
     });
@@ -95,11 +92,6 @@ void main() {
           ),
         ),
       );
-    });
-
-    test('isBufferOverLimit is false under the limit', () {
-      service.bufferAudioChunk(Uint8List(chunkSmall));
-      expect(service.isBufferOverLimit, isFalse);
     });
 
     test(

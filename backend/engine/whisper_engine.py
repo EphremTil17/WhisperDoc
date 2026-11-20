@@ -70,9 +70,7 @@ class WhisperEngine(BaseEngine):
         CTranslate2 context not being thread-safe across boundaries.
         """
         start = time.time()
-        model, _ = self._model_manager.get_model()
-        if model is None:
-            raise RuntimeError("Whisper model is not loaded.")
+        model = self._model_manager.get_model()
 
         segments_iter, info = model.transcribe(
             audio_path,

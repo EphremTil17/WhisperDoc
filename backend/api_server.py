@@ -53,10 +53,8 @@ class LogBatch(BaseModel):
     logs: List[RemoteLogRecord]
 
 
-# Load configuration from environment variables
-API_PORT = int(os.getenv("API_PORT", "9989"))
-
-# Read version from environment variable (Docker)
+# Read version from environment variable (Docker). The port is passed to
+# uvicorn on the command line (see Dockerfile.*).
 APP_VERSION = os.getenv("WHISPER_DOC_VERSION", "0.0.0-dev")
 
 # Versioning requirements for clients

@@ -29,9 +29,7 @@ void main() {
       mockChatClient = _MockGroqChatClient();
 
       when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
-      when(
-        () => mockSettings.getGroqApiKey(),
-      ).thenAnswer((_) async => 'test-groq-key');
+      when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
 
       service = GroqTransformService(mockSettings, chatClient: mockChatClient);
     });
@@ -58,7 +56,7 @@ void main() {
     );
 
     test('throws invalidApiKey if API key is missing or empty', () async {
-      when(() => mockSettings.getGroqApiKey()).thenAnswer((_) async => null);
+      when(() => mockSettings.cachedGroqApiKey).thenReturn(null);
 
       expect(
         () => service.transform(

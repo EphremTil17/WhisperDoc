@@ -26,7 +26,6 @@ class AuthService extends ChangeNotifier {
 
   Map<String, dynamic>? get currentUser => _currentUser;
   bool get isAuthenticated => _idToken != null;
-  bool get isAuthenticating => _isAuthenticating;
   String? get idToken => _idToken;
 
   Future<void> initialize() async {
@@ -79,7 +78,6 @@ class AuthService extends ChangeNotifier {
       _idToken = signInIdToken;
       await _session.saveTokens(
         idToken: signInIdToken,
-        accessToken: tokens['access_token'],
         refreshToken: tokens['refresh_token'],
       );
 
@@ -142,7 +140,6 @@ class AuthService extends ChangeNotifier {
       _idToken = refreshedIdToken;
       await _session.saveTokens(
         idToken: refreshedIdToken,
-        accessToken: tokens['access_token'],
         refreshToken: tokens['refresh_token'],
       );
 
@@ -187,10 +184,9 @@ class AuthService extends ChangeNotifier {
   }
 
   String _formatPrincipal(Map<String, dynamic>? user) {
-    final sub = (user?['sub'] ?? 'unknown').toString();
-    final email = (user?['email'] ?? user?['preferred_username'])
-        ?.toString()
-        .trim();
+    // SessionManager.extractUser stores the OIDC subject under 'id'.
+    final sub = (user?['id'] ?? 'unknown').toString();
+    final email = user?['email']?.toString().trim();
     if (email != null && email.isNotEmpty) {
       return 'sub=$sub email=$email';
     }

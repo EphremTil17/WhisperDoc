@@ -22,9 +22,7 @@ from logging_config import log
 OIDC_ISSUER_URL = os.getenv("OIDC_ISSUER_URL", "").strip()
 OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "").strip()
 OIDC_API_RESOURCE = os.getenv("OIDC_API_RESOURCE", "https://api.whisperdoc.com").strip()
-OIDC_CONFIG_CACHE_SECONDS = int(
-    os.getenv("OIDC_CONFIG_CACHE_SECONDS", os.getenv("OIDC_JWKS_CACHE_SECONDS", "3600"))
-)
+OIDC_CONFIG_CACHE_SECONDS = int(os.getenv("OIDC_CONFIG_CACHE_SECONDS", "3600"))
 OIDC_JWKS_CACHE_SECONDS = int(os.getenv("OIDC_JWKS_CACHE_SECONDS", "3600"))
 
 

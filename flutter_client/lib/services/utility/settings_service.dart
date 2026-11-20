@@ -100,13 +100,6 @@ class SettingsService extends ChangeNotifier {
   List<CustomProfile> get customProfiles => List.unmodifiable(_customProfiles);
 
   /// Returns the cached API key, fetching from vault if not yet loaded.
-  Future<String?> getApiKey() async {
-    final vault = _requireVault();
-    _apiKey ??= await vault.retrieveCredential(_vaultApiKeyKey);
-
-    return _apiKey;
-  }
-
   /// Auto-detect token type: JWT (has 2 dots) vs Static API Key.
   String getTokenLabel(String token) {
     if (token.contains('.') && token.split('.').length == _jwtPartCount) {
@@ -331,14 +324,6 @@ class SettingsService extends ChangeNotifier {
 
   // === Groq Cloud Setters ===
 
-  /// Returns the cached Groq API key, fetching from vault if not yet loaded.
-  Future<String?> getGroqApiKey() async {
-    final vault = _requireVault();
-    _groqApiKey ??= await vault.retrieveCredential(_vaultGroqApiKey);
-
-    return _groqApiKey;
-  }
-
   Future<void> setTranscriptionMode(String mode) async {
     final prefs = _requirePrefs();
     if (_transcriptionMode == mode) return;
@@ -382,7 +367,6 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setGroqPrompt(String prompt) async {
-    final prefs = _requirePrefs();
     final vault = _requireVault();
     if (_groqPrompt == prompt) return;
 
@@ -391,9 +375,6 @@ class SettingsService extends ChangeNotifier {
       await vault.deleteCredential(_vaultGroqPrompt);
     } else {
       await vault.storeCredential(_vaultGroqPrompt, prompt);
-    }
-    if (prefs.containsKey(_keyGroqPrompt)) {
-      await prefs.remove(_keyGroqPrompt);
     }
     notifyListeners();
     LoggingService().info('Groq prompt updated');
@@ -414,9 +395,8 @@ class SettingsService extends ChangeNotifier {
 
   DictationProfileSpec _resolveProfile(String? key) {
     if (key == null) return DictationProfile.raw;
-    for (final p in DictationProfile.values) {
-      if (p.storageKey == key) return p;
-    }
+    final builtIn = DictationProfile.tryFromStorageKey(key);
+    if (builtIn != null) return builtIn;
     for (final c in _customProfiles) {
       if (c.storageKey == key) return c;
     }

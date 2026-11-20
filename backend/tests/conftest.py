@@ -1,7 +1,7 @@
 """
 Pytest configuration and shared stubs for host-side test execution.
 
-Heavy dependencies (torch, faster_whisper, ctranslate2) are not
+Heavy dependencies (faster_whisper, ctranslate2) are not
 installed on the Windows host — they live only inside Docker. We stub them
 at the sys.modules level here, before any application code is imported, so
 that the full test suite can be collected and run without a GPU or Docker.
@@ -40,12 +40,6 @@ _load_dotenv(os.path.join(_base, "..", ".env"))  # project root .env
 # TrustedHostMiddleware reads ALLOWED_HOSTS at app import time; TestClient
 # uses 'testserver' as the Host header, so we add it to the allowed list.
 os.environ.setdefault("ALLOWED_HOSTS", "testserver,localhost")
-
-# --- torch / CUDA stubs ---
-_torch = MagicMock()
-_torch.cuda.is_available.return_value = False
-sys.modules.setdefault("torch", _torch)
-sys.modules.setdefault("torch.cuda", _torch.cuda)
 
 # --- faster-whisper stubs ---
 _fw = MagicMock()

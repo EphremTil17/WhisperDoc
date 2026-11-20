@@ -311,10 +311,8 @@ class RecordingController extends ChangeNotifier {
   }
 
   /// Public pass-through method to trigger hardware status re-evaluation.
-  Future<AudioInputStatus> refreshHardwareStatus() =>
-      _audioService.evaluateInputStatus(
-        targetDeviceId: _settingsService.microphoneId,
-      );
+  Future<AudioInputStatus> refreshHardwareStatus() => _audioService
+      .evaluateInputStatus(targetDeviceId: _settingsService.microphoneId);
 
   void _onAudioStateChanged() {
     if (_isRecording != _audioService.isRecording) {
@@ -351,7 +349,7 @@ class RecordingController extends ChangeNotifier {
       } else {
         _errorController.add('Server error: $errorMsg');
       }
-      LoggingService().error('Server error: $errorMsg', sendToServer: false);
+      LoggingService().error('Server error: $errorMsg');
     }
   }
 
@@ -365,10 +363,7 @@ class RecordingController extends ChangeNotifier {
       await _finishRecordingSession();
     } on GroqError catch (e) {
       _errorController.add(e.userMessage);
-      LoggingService().error(
-        'Groq transcription failed: ${e.message}',
-        sendToServer: false,
-      );
+      LoggingService().error('Groq transcription failed: ${e.message}');
     } finally {
       _isTranscribing = false;
       notifyListeners();
@@ -394,7 +389,6 @@ class RecordingController extends ChangeNotifier {
         );
         LoggingService().warning(
           'Transform fallback (${profile.storageKey}): ${e.message}',
-          sendToServer: false,
         );
       } finally {
         if (!wasTranscribing) {

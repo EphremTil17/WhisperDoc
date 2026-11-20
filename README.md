@@ -195,7 +195,7 @@ If you're actively developing in this repository, install these hooks.
 ### 6. "Weight Shedding" & Performance (v2.14.0)
 
 - **Digital Liposuction (Docker Slimming)**: Reduced image size and build complexity by implementing **Static FFmpeg** binaries and **CPU-only PyTorch** foundations. Faster-Whisper continues to use GPU-accelerated `ctranslate2` independently, resulting in a ~40% reduction in production image footprint.
-- **High-Performance Infrastructure**: Integrated **uvloop** (high-speed C-based event loop) and **orjson** (sub-millisecond JSON serialization) to minimize I/O latency and CPU overhead during heavy concurrency.
+- **High-Performance Infrastructure**: Integrated **uvloop** (high-speed C-based event loop) to minimize I/O latency and CPU overhead during heavy concurrency.
 - **Memory Hygiene (malloc_trim)**: Aggressive RAM reclamation using `malloc_trim` to force the Linux kernel to reclaim heap memory immediately after models are unloaded from VRAM.
 - **Drift-Proof Security Tracking**: Re-engineered the security maintenance loop to be time-interval based rather than clock-modulo based, ensuring robust IP-ban cleanup regardless of event-loop timing.
 

@@ -76,19 +76,6 @@ class BanStateService {
     _setBan(_defaultBanSeconds);
   }
 
-  /// Manually clear the ban (for testing or after manual user action)
-  void clearBan() {
-    if (!_isBanned) return;
-
-    _logger.info('Ban cleared manually');
-    _isBanned = false;
-    _cooldownSeconds = 0;
-    _banExpiresAt = null;
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
-    _cooldownController.add(0);
-  }
-
   /// Dispose resources
   void dispose() {
     _countdownTimer?.cancel();
@@ -128,7 +115,6 @@ class BanStateService {
     });
 
     // Emit initial countdown value
-    _cooldownController.add(0);
     _cooldownController.add(_cooldownSeconds);
   }
 }

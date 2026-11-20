@@ -21,15 +21,6 @@ class GroqRateLimiter {
     return remaining.isNegative ? Duration.zero : remaining;
   }
 
-  /// Human-readable status for diagnostic display.
-  String get statusMessage {
-    _pruneExpiredTimestamps();
-    _resetDailyIfNeeded();
-
-    return '${_requestTimestamps.length}/${AppConstants.groqMaxRpm} RPM, '
-        '$_dailyCount/${AppConstants.groqMaxRpd} RPD';
-  }
-
   /// Whether a request can be made right now without hitting a known limit.
   bool canRequest() {
     _pruneExpiredTimestamps();

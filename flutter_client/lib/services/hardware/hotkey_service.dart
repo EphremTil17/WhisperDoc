@@ -37,10 +37,7 @@ class HotkeyService {
       await stop();
     }
 
-    LoggingService().info(
-      'Starting HotkeyService (Native Blocking Loop)...',
-      sendToServer: false,
-    );
+    LoggingService().info('Starting HotkeyService (Native Blocking Loop)...');
 
     // Create fresh state for this session
     final receivePort = ReceivePort();

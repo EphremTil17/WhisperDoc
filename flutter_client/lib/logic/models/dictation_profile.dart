@@ -86,13 +86,13 @@ CRITICAL REQUIREMENTS:
   @override
   bool get isEditable => false;
 
-  /// Resolves a profile from its persistence storage key. Defaults to [DictationProfile.raw].
-  static DictationProfile fromStorageKey(String? key) {
-    if (key == null) return DictationProfile.raw;
+  /// The built-in profile persisted under [key], or null if [key] is not a
+  /// built-in (it may be a custom profile slot).
+  static DictationProfile? tryFromStorageKey(String key) {
     for (final profile in DictationProfile.values) {
       if (profile.storageKey == key) return profile;
     }
 
-    return DictationProfile.raw;
+    return null;
   }
 }

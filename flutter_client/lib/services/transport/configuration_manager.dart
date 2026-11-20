@@ -4,7 +4,7 @@ import '../utility/settings_service.dart';
 import '../utility/logging_service.dart';
 
 /// Manages observation of Auth and Settings to trigger connectivity changes.
-class ConfigurationManager extends ChangeNotifier {
+class ConfigurationManager {
   final AuthService _authService;
   final SettingsService _settingsService;
   final LoggingService _logger = LoggingService();
@@ -100,10 +100,10 @@ class ConfigurationManager extends ChangeNotifier {
     }
   }
 
-  void _handleSettingsChange() async {
+  void _handleSettingsChange() {
     final currentUri = _settingsService.serverUri;
     final currentIncognito = _settingsService.incognitoMode;
-    final currentApiKey = await _settingsService.getApiKey();
+    final currentApiKey = _settingsService.cachedApiKey;
     final currentMode = _settingsService.transcriptionMode;
 
     // Detect transcription mode change first — it overrides other signals.

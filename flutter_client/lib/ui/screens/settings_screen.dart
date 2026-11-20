@@ -121,10 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const AudioSection(),
                 if (!isGroqMode) ...[
                   const SizedBox(height: 16),
-                  AuthSection(
-                    uriController: _uriController,
-                    apiKeyController: _apiKeyController,
-                  ),
+                  AuthSection(apiKeyController: _apiKeyController),
                 ],
                 const SizedBox(height: 16),
                 const HotkeySection(),

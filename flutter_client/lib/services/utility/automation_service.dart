@@ -21,10 +21,7 @@ class AutomationService {
     final logPreview = _settingsService.incognitoMode
         ? '[REDACTED]'
         : '"$preview..."';
-    LoggingService().info(
-      'AutomationService: Processing text $logPreview',
-      sendToServer: false,
-    );
+    LoggingService().info('AutomationService: Processing text $logPreview');
 
     try {
       if (_settingsService.autoCopy) {
@@ -37,7 +34,7 @@ class AutomationService {
         }
       }
     } catch (e) {
-      LoggingService().error('Automation failed: $e', sendToServer: false);
+      LoggingService().error('Automation failed: $e');
     }
   }
 }

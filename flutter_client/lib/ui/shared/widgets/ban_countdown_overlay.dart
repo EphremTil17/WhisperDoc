@@ -15,12 +15,10 @@ class BanCountdownOverlay extends StatefulWidget {
     super.key,
     required this.countdownStream,
     required this.onReconnect,
-    this.onDismiss,
   });
 
   final Stream<int> countdownStream;
   final VoidCallback onReconnect;
-  final VoidCallback? onDismiss;
 
   @override
   State<BanCountdownOverlay> createState() => _BanCountdownOverlayState();
@@ -56,12 +54,6 @@ class _BanCountdownOverlayState extends State<BanCountdownOverlay> {
         setState(() {
           _remainingSeconds = seconds;
         });
-
-        // Auto-dismiss when countdown reaches 0 if dismiss callback provided
-        final onDismiss = widget.onDismiss;
-        if (seconds == 0 && onDismiss != null) {
-          onDismiss();
-        }
       }
     });
   }

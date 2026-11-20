@@ -102,9 +102,6 @@ class ConnectionManager:
         # Identity-Pinned Concurrency (IPC) Guard: 1 transcription per user at a time
         self.user_semaphores = defaultdict(lambda: asyncio.Semaphore(1))
 
-        # Performance & Throughput Monitoring
-        self.bytes_received: Dict[WebSocket, int] = defaultdict(int)
-
         # Background task references
         self._warmup_task: asyncio.Task | None = None
 
@@ -203,8 +200,6 @@ class ConnectionManager:
         if websocket in self.active_connections:
             conn_id = self.active_connections[websocket].get("id", "????")
             del self.active_connections[websocket]
-            if websocket in self.bytes_received:
-                del self.bytes_received[websocket]
             log.info(
                 f"[{conn_id}] WebSocket client disconnected: {describe_client(websocket)}"
             )
@@ -590,7 +585,6 @@ class ConnectionManager:
         buffer = connection_data["buffer"]
         if len(buffer) < MAX_BUFFER_SIZE:
             buffer.extend(message)
-            self.bytes_received[websocket] += len(message)
         else:
             log.warning(f"[{conn_id}] Resource Exhaustion: Buffer limit reached.")
             await self._reject(

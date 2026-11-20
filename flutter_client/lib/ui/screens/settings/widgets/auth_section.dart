@@ -7,13 +7,8 @@ import 'package:flutter_client/ui/screens/settings/widgets/auth_user_card.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/manual_api_key_section.dart';
 
 class AuthSection extends StatefulWidget {
-  const AuthSection({
-    super.key,
-    required this.uriController,
-    required this.apiKeyController,
-  });
+  const AuthSection({super.key, required this.apiKeyController});
 
-  final TextEditingController uriController;
   final TextEditingController apiKeyController;
 
   @override

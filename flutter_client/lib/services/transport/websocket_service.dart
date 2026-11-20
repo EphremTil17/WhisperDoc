@@ -69,7 +69,6 @@ class WebSocketService extends ChangeNotifier {
   String? get backendMinVersion => _backendMinVersion;
   String? get backendSecVersion => _backendSecVersion;
   String? get backendServerVersion => _backendServerVersion;
-  String? get connectionId => _connectionId;
   Stream<ConnectionStatus> get onStatusChanged => _statusController.stream;
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
   bool get hasValidCredentials =>
@@ -124,7 +123,6 @@ class WebSocketService extends ChangeNotifier {
         _audioBuffer.clear();
       }
     });
-    _logger.attachWebSocket(this);
   }
 
   @override
@@ -158,7 +156,7 @@ class WebSocketService extends ChangeNotifier {
 
     try {
       final uriString = uriOverride ?? _settingsService.serverUri;
-      _activeApiKey = apiKeyOverride ?? await _settingsService.getApiKey();
+      _activeApiKey = apiKeyOverride ?? _settingsService.cachedApiKey;
 
       _logger.info(
         'Connecting to: $uriString (Auth: ${_authService.isAuthenticated ? "OIDC" : "API_KEY"})',
@@ -208,7 +206,7 @@ class WebSocketService extends ChangeNotifier {
       return true;
     } catch (e) {
       _logger.error('Connection failed', error: e);
-      if (e.toString().contains('Auth token missing')) {
+      if (e is _MissingAuthTokenException) {
         _lastHandshakeError = 'Identity session expired or missing';
         _handshake.transitionTo(HandshakeState.failed);
       }
@@ -260,8 +258,6 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void sendEndSignal() => _sendJson({'event': 'end-of-stream'});
-  void sendLog(String level, String msg) =>
-      _sendJson({'event': 'log', 'level': level, 'message': msg});
 
   /// Simulates a server-initiated close without a real socket.
   /// Use only in tests annotated with @visibleForTesting.
@@ -299,7 +295,7 @@ class WebSocketService extends ChangeNotifier {
         : _activeApiKey;
     final String authType = _authService.isAuthenticated ? 'oidc' : 'api_key';
 
-    if (token == null) throw Exception('Auth token missing');
+    if (token == null) throw const _MissingAuthTokenException();
 
     final payload = await _payloadBuilder.buildHello(
       token: token,
@@ -517,3 +513,12 @@ class WebSocketService extends ChangeNotifier {
 }
 
 enum ConnectionStatus { disconnected, connecting, connected, banned }
+
+/// No credential was available for the handshake (expired/missing OIDC
+/// session or no API key). Raised before anything is sent to the server.
+class _MissingAuthTokenException implements Exception {
+  const _MissingAuthTokenException();
+
+  @override
+  String toString() => 'Auth token missing';
+}

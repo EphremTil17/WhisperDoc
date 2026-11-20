@@ -38,10 +38,9 @@ async def test_model_manager_loading(mock_whisper):
     mock_whisper.assert_called_once()
     assert manager.model is not None
 
-    # Check get_model returns the instance and reload=False
-    model, reloaded = manager.get_model()
-    assert model == manager.model
-    assert reloaded is False
+    # get_model returns the resident instance without reloading
+    assert manager.get_model() == manager.model
+    mock_whisper.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -65,9 +64,7 @@ async def test_model_manager_unload_logic(mock_whisper):
     assert manager.model is None
 
     # 4. Request Model Again -> Should Reload
-    model, reloaded = manager.get_model()
-    assert model is not None
-    assert reloaded is True
+    assert manager.get_model() is not None
     # Verify WhisperModel was called twice (initial + reload)
     assert mock_whisper.call_count == 2
 

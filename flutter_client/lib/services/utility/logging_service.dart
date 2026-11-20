@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'package:logger/logger.dart';
-import 'package:flutter_client/services/transport/websocket_service.dart';
 
 class LoggingService {
   static final LoggingService _instance = LoggingService._internal();
 
   final Logger _logger = Logger(printer: _CompactPrinter());
-  WebSocketService? _webSocketService;
 
   // Log buffer for UI consumption (last 200 entries)
   final List<LogEntry> _logBuffer = [];
@@ -22,37 +20,24 @@ class LoggingService {
 
   LoggingService._internal();
 
-  void attachWebSocket(WebSocketService service) {
-    _webSocketService = service;
-  }
-
-  void info(String message, {bool sendToServer = false}) {
+  void info(String message) {
     _logger.i(message);
     _addToBuffer('INFO', message);
-    if (sendToServer) _sendLogToServer('INFO', message);
   }
 
-  void warning(String message, {bool sendToServer = false}) {
+  void warning(String message) {
     _logger.w(message);
     _addToBuffer('WARN', message);
-    if (sendToServer) _sendLogToServer('WARNING', message);
   }
 
-  void error(
-    String message, {
-    Object? error,
-    StackTrace? stackTrace,
-    bool sendToServer = false,
-  }) {
+  void error(String message, {Object? error, StackTrace? stackTrace}) {
     _logger.e(message, error: error, stackTrace: stackTrace);
     _addToBuffer('ERROR', '$message${error != null ? ' - $error' : ''}');
-    if (sendToServer) _sendLogToServer('ERROR', '$message ${error ?? ''}');
   }
 
-  void debug(String message, {bool sendToServer = false}) {
+  void debug(String message) {
     _logger.d(message);
     _addToBuffer('DEBUG', message);
-    if (sendToServer) _sendLogToServer('DEBUG', message);
   }
 
   void dispose() {
@@ -70,18 +55,6 @@ class LoggingService {
       _logBuffer.removeAt(0);
     }
     _logStreamController.add(entry);
-  }
-
-  void _sendLogToServer(String level, String message) {
-    final ws = _webSocketService;
-    if (ws != null && ws.status == ConnectionStatus.connected) {
-      try {
-        ws.sendLog(level, message);
-      } catch (e) {
-        // ignore: avoid_print - logging fallback intentionally uses stdout
-        print('Failed to send log to server: $e');
-      }
-    }
   }
 }
 

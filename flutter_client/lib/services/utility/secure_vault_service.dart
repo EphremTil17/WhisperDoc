@@ -115,27 +115,6 @@ class SecureVaultService {
     }
   }
 
-  /// Check if a credential exists in the vault
-  Future<bool> hasCredential(String key) async {
-    _ensureInitialized();
-    final value = await _storage.read(key: key);
-
-    return value != null;
-  }
-
-  /// Clear all credentials from the vault
-  Future<void> clearAll() async {
-    _ensureInitialized();
-    try {
-      await _storage.deleteAll();
-      _logger.warning('All credentials cleared from secure vault');
-      _isInitialized = false;
-    } catch (e) {
-      _logger.error('Failed to clear vault', error: e);
-      rethrow;
-    }
-  }
-
   /// Get the derived encryption key for database encryption
   String getEncryptionKey() {
     _ensureInitialized();

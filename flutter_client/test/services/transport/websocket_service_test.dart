@@ -37,9 +37,6 @@ class _StubAuthService extends ChangeNotifier implements AuthService {
   String? get idToken => _isAuthenticated ? 'stub_token' : null;
 
   @override
-  bool get isAuthenticating => false;
-
-  @override
   Map<String, dynamic>? get currentUser =>
       _isAuthenticated && _userId != null ? {'id': _userId} : null;
 
@@ -81,9 +78,6 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
       _apiKey = apiKey;
 
   // Methods
-  @override
-  Future<String?> getApiKey() async => _apiKey;
-
   void changeUri(String newUri) {
     _serverUri = newUri;
     notifyListeners();

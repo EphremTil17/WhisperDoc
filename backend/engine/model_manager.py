@@ -15,11 +15,6 @@ MODEL_TIMEOUT_SECONDS = int(os.getenv("MODEL_TIMEOUT_SECONDS", "1800"))
 WhisperModel: Any | None = None
 
 
-def _load_torch_module() -> Any:
-    """Import torch lazily so non-Whisper environments can still import this module."""
-    return importlib.import_module("torch")
-
-
 def _load_whisper_model_class() -> type[Any]:
     """Import faster-whisper lazily to scope dependency errors to actual usage."""
     global WhisperModel
@@ -93,14 +88,8 @@ class ModelManager:
             self.model = None
             gc.collect()
 
-        # Clear Torch CUDA cache if available
-        try:
-            torch = _load_torch_module()
-        except ImportError:
-            torch = None
-
-        if torch is not None and torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # CTranslate2 frees its CUDA allocations when the model object is
+        # released above; torch is not involved in Whisper inference.
 
         # AGGRESSIVE: Release memory back to the OS (Linux only)
         # Python's GC often keeps free memory in its own heap.
@@ -115,14 +104,16 @@ class ModelManager:
 
         log.success("Model unloaded. Memory reclamation complete.")
 
-    def get_model(self):
+    def get_model(self) -> Any:
+        """Return the resident model, loading it on demand.
+
+        load_model() either sets self.model or raises, so the result is
+        never None.
+        """
         self.last_used = time.time()
         if not self.model:
             self.load_model()
-            if self.model is None:
-                raise RuntimeError("Whisper model failed to initialize.")
-            return self.model, True  # Tuple: (model, was_reloaded)
-        return self.model, False
+        return self.model
 
     async def _monitor_usage(self):
         while True:

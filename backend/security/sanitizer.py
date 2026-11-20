@@ -30,23 +30,14 @@ class Sanitizer:
         if not text:
             return ""
 
-        try:
-            # 1. Strip ANSI escape sequences explicitly
-            cleaned = cls.ANSI_ESCAPE_REGEX.sub("", text)
+        # 1. Strip ANSI escape sequences, 2. remove remaining control
+        # characters, 3. trim.
+        cleaned = cls.ANSI_ESCAPE_REGEX.sub("", text)
+        cleaned = cls.CONTROL_CHAR_REGEX.sub("", cleaned).strip()
 
-            # 2. Remove remaining control characters
-            cleaned = cls.CONTROL_CHAR_REGEX.sub("", cleaned)
+        if cleaned != text:
+            log.debug(
+                "Sanitizer neutralized control sequences in transcription output."
+            )
 
-            # 3. Final cleaning
-            cleaned = cleaned.strip()
-
-            if cleaned != text:
-                log.debug(
-                    "Sanitizer neutralized control sequences in transcription output."
-                )
-
-            return cleaned
-        except Exception as e:
-            log.error(f"Backend Sanitization failure: {e}")
-            # Fail-secure: return empty if processing fails
-            return ""
+        return cleaned

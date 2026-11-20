@@ -31,11 +31,8 @@ class GroqTranscriptionService extends ChangeNotifier {
   bool get hasValidCredentials =>
       _settings.cachedGroqApiKey?.isNotEmpty ?? false;
 
-  /// Current buffer size in bytes.
+  @visibleForTesting
   int get bufferSizeBytes => _totalBytes;
-
-  /// Whether the buffer has exceeded the conservative file-size ceiling.
-  bool get isBufferOverLimit => _totalBytes >= AppConstants.groqMaxBufferBytes;
 
   // --- Constructor ---
 
@@ -106,7 +103,7 @@ class GroqTranscriptionService extends ChangeNotifier {
       final wav = WavEncoder.encode(pcm);
 
       // Retrieve credentials and optional hints.
-      final apiKey = await _settings.getGroqApiKey();
+      final apiKey = _settings.cachedGroqApiKey;
       if (apiKey == null || apiKey.isEmpty) {
         throw const GroqError(
           type: GroqErrorType.invalidApiKey,
