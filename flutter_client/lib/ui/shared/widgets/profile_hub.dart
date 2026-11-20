@@ -109,9 +109,9 @@ class _ProfileHubState extends State<ProfileHub>
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsService>();
+    final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
 
-    if (settings.isGroqMode) {
+    if (isGroqMode) {
       _syncPulseAnimation(false);
 
       return ProfileHubGroq(

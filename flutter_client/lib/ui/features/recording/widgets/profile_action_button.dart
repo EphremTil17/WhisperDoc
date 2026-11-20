@@ -44,19 +44,34 @@ class ProfileActionButton extends StatefulWidget {
 class _ProfileActionButtonState extends State<ProfileActionButton> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
+  RecordingController? _recording;
   bool _isButtonHovered = false;
-  bool _isMenuOpen = false;
+
+  bool get _isMenuOpen => _overlayEntry != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen rather than watch: only a session start matters here, and it
+    // should close the menu directly instead of rebuilding this button.
+    _recording = context.read<RecordingController>()
+      ..addListener(_closeMenuOnSessionStart);
+  }
 
   @override
   void dispose() {
+    _recording?.removeListener(_closeMenuOnSessionStart);
     _removeOverlay();
     super.dispose();
+  }
+
+  void _closeMenuOnSessionStart() {
+    if (_recording?.isSessionActive ?? false) _closeMenu();
   }
 
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
-    _isMenuOpen = false;
   }
 
   void _openMenu(BuildContext context) {
@@ -92,10 +107,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
     );
 
     overlay.insert(entry);
-    setState(() {
-      _overlayEntry = entry;
-      _isMenuOpen = true;
-    });
+    setState(() => _overlayEntry = entry);
   }
 
   void _closeMenu() {
@@ -143,14 +155,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
-    final controller = context.watch<RecordingController>();
-
     final activeProfile = settings.dictationProfile;
-
-    // Auto-close menu if a recording session begins
-    if (controller.isSessionActive && _isMenuOpen) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _closeMenu());
-    }
 
     final tooltip =
         'Profile: ${activeProfile.label} (${DictationProfileUiMapper.subtitleFor(activeProfile)})';

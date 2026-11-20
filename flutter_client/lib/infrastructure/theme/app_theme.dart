@@ -25,6 +25,16 @@ class AppTheme {
         onSurface: Colors.white,
       ),
       fontFamily: GoogleFonts.lexend().fontFamily,
+      // Shared look for settings inputs and dropdowns; fields override only
+      // what differs (padding, hints, error borders).
+      inputDecorationTheme: const InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.black26,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(8)),
+          borderSide: BorderSide.none,
+        ),
+      ),
       textTheme: GoogleFonts.lexendTextTheme(
         ThemeData.dark().textTheme,
       ).apply(bodyColor: Colors.white, displayColor: Colors.white),
@@ -53,7 +63,7 @@ class AppTheme {
     ],
   );
 
-  static TextStyle get sectionTitleStyle => const TextStyle(
+  static const TextStyle sectionTitleStyle = TextStyle(
     color: Colors.white54,
     fontSize: 12,
     fontWeight: FontWeight.w600,

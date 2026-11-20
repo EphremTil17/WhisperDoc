@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// A reusable glassmorphic dialog container.
 ///
@@ -90,11 +89,10 @@ class GlassDialog extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: _titleFontSize,
                           fontWeight: FontWeight.w600,
-                          fontFamily: GoogleFonts.lexend().fontFamily,
                         ),
                       ),
                       if (titleTrailing case final trailing?) ...[

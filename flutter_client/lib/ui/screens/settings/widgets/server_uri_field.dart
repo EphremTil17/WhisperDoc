@@ -19,12 +19,6 @@ class ServerUriField extends StatelessWidget {
           controller: uriController,
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
-            filled: true,
-            fillColor: Colors.black26,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.all(Radius.circular(8)),
-              borderSide: BorderSide.none,
-            ),
             hintText: 'ws://localhost:9989/ws',
             hintStyle: TextStyle(color: Colors.white24),
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),

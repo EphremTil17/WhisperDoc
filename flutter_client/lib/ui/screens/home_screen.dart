@@ -211,14 +211,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             const HomeHeader(),
                             const RecordingView(),
                             const Expanded(child: TranscriptionView()),
-                            Consumer<RecordingController>(
-                              builder: (context, controller, child) =>
-                                  ActionBar(
-                                    isIncognitoMode: controller.incognitoMode,
-                                    onIncognitoTap: () => unawaited(
-                                      _toggleIncognitoMode(context, controller),
-                                    ),
-                                  ),
+                            ActionBar(
+                              onIncognitoTap: () => unawaited(
+                                _toggleIncognitoMode(
+                                  context,
+                                  context.read<RecordingController>(),
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 12),
                             const StatusBar(),

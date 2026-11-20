@@ -170,8 +170,12 @@ class ProfileHubBackend extends StatelessWidget {
                 isPulsing: updateUi.isPulsing,
               );
 
+              // Zero duration while pulsing: the AnimatedBuilder already drives
+              // every frame (see RefinedIconButton).
               return AnimatedContainer(
-                duration: _hoverAnimationDuration,
+                duration: updateUi.isPulsing
+                    ? Duration.zero
+                    : _hoverAnimationDuration,
                 padding: _containerPadding,
                 decoration: BoxDecoration(
                   color: backgroundColor,

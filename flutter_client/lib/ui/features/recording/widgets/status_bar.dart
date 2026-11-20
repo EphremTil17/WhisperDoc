@@ -5,7 +5,6 @@ import 'package:flutter_client/services/transport/transport_security_service.dar
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 class StatusBar extends StatelessWidget {
@@ -19,12 +18,12 @@ class StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsService>();
+    final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
     Color statusColor;
     String statusText;
 
     // Groq mode: show Groq-specific status.
-    if (settings.isGroqMode) {
+    if (isGroqMode) {
       final groqService = context.watch<GroqTranscriptionService>();
 
       if (groqService.status == GroqTranscriptionStatus.idle) {
@@ -97,7 +96,6 @@ class StatusBar extends StatelessWidget {
             color: statusColor,
             fontSize: _statusFontSize,
             fontWeight: FontWeight.w400,
-            fontFamily: GoogleFonts.lexend().fontFamily,
             letterSpacing: _statusLetterSpacing,
           ),
         ),

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
@@ -50,15 +49,7 @@ class HotkeySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'HOTKEY',
-          style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.0,
-          ),
-        ),
+        const Text('HOTKEY', style: AppTheme.sectionTitleStyle),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -88,10 +79,9 @@ class HotkeySection extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () => _showHotkeyRecorder(context),
-                child: Text(
+                child: const Text(
                   'Change',
                   style: TextStyle(
-                    fontFamily: GoogleFonts.lexend().fontFamily,
                     color: AppTheme.crimsonPrimary,
                     fontSize: _changeFontSize,
                   ),

@@ -6,7 +6,6 @@ import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/connection_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/audio_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_section.dart';
@@ -89,10 +88,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           TextButton(
             onPressed: _handleDoneTap,
-            child: Text(
+            child: const Text(
               'Done',
               style: TextStyle(
-                fontFamily: GoogleFonts.lexend().fontFamily,
                 color: AppTheme.crimsonPrimary,
                 fontWeight: FontWeight.bold,
               ),
@@ -100,10 +98,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-      body: Consumer<SettingsService>(
-        builder: (context, settings, child) {
-          final isGroqMode = settings.isGroqMode;
-
+      body: Selector<SettingsService, bool>(
+        selector: (_, settings) => settings.isGroqMode,
+        builder: (context, isGroqMode, child) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(

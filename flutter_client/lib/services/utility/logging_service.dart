@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:logger/logger.dart';
+import 'package:flutter_client/logic/formatters/clock_time.dart';
 
 class LoggingService {
   static final LoggingService _instance = LoggingService._internal();
@@ -64,22 +65,18 @@ class LogEntry {
   final String level;
   final String message;
 
-  static const int _levelColumnWidth = 5;
-  static const int _twoDigitWidth = 2;
+  /// Width the level is padded to so columns line up (longest is "ERROR").
+  static const int levelColumnWidth = 5;
 
-  String get formatted =>
-      '${_formatTime(timestamp)} | ${level.padRight(_levelColumnWidth)} | $message';
+  String get time => ClockTime.hms(timestamp);
+  String get paddedLevel => level.padRight(levelColumnWidth);
+  String get formatted => '$time | $paddedLevel | $message';
 
   LogEntry({
     required this.timestamp,
     required this.level,
     required this.message,
   });
-
-  static String _formatTime(DateTime dt) =>
-      '${dt.hour.toString().padLeft(_twoDigitWidth, '0')}:'
-      '${dt.minute.toString().padLeft(_twoDigitWidth, '0')}:'
-      '${dt.second.toString().padLeft(_twoDigitWidth, '0')}';
 }
 
 /// Compact single-line printer with ANSI colors matching backend format

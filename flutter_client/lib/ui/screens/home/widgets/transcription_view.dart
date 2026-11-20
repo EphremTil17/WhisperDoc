@@ -8,13 +8,15 @@ class TranscriptionView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<RecordingController>();
+    final currentText = context.select(
+      (RecordingController c) => c.currentText,
+    );
 
     return Column(
       children: [
         const HotkeyHint(),
         const SizedBox(height: 12),
-        Expanded(child: TranscribedTextArea(text: controller.currentText)),
+        Expanded(child: TranscribedTextArea(text: currentText)),
         const SizedBox(height: 12),
       ],
     );

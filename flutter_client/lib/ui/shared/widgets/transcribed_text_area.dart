@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_client/services/utility/clipboard_service.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class TranscribedTextArea extends StatefulWidget {
   const TranscribedTextArea({super.key, required this.text});
@@ -58,7 +57,6 @@ class _TranscribedTextAreaState extends State<TranscribedTextArea> {
   Widget build(BuildContext context) {
     final text = widget.text;
     final hasText = text.isNotEmpty;
-    final fontFamily = GoogleFonts.lexend().fontFamily;
     final buttonColor = _copied
         ? Colors.greenAccent.withValues(alpha: _copiedAlpha)
         : Colors.white.withValues(alpha: _idleAlpha);
@@ -84,7 +82,6 @@ class _TranscribedTextAreaState extends State<TranscribedTextArea> {
                   fontSize: _fontSize,
                   height: _lineHeight,
                   color: text.isEmpty ? Colors.white38 : Colors.white,
-                  fontFamily: fontFamily,
                 ),
               ),
             ),
@@ -120,12 +117,11 @@ class _TranscribedTextAreaState extends State<TranscribedTextArea> {
                         ),
                         if (_copied) ...[
                           _labelGap,
-                          Text(
+                          const Text(
                             'Copied',
                             style: TextStyle(
                               color: Colors.greenAccent,
                               fontSize: _labelFontSize,
-                              fontFamily: fontFamily,
                             ),
                           ),
                         ],

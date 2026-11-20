@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AuthSignInCard extends StatelessWidget {
   const AuthSignInCard({super.key, required this.authService});
@@ -64,12 +63,9 @@ class AuthSignInCard extends StatelessWidget {
                   borderRadius: BorderRadius.all(Radius.circular(12)),
                 ),
               ),
-              child: Text(
+              child: const Text(
                 'Sign in with Verified Identity',
-                style: TextStyle(
-                  fontFamily: GoogleFonts.lexend().fontFamily,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
           ),

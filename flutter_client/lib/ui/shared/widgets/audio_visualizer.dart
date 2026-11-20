@@ -9,7 +9,8 @@ import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 ///
 /// Optimizations:
 /// - O(1) circular buffer (no array shifting)
-/// - Throttled setState (max 20fps)
+/// - Throttled setState (~60fps, see [WaveformConfig.throttleMs])
+/// - Single amplitude subscription for the widget's lifetime
 /// - Pre-allocated Paint objects
 /// - Early skip for invisible bars
 /// - RepaintBoundary isolation
@@ -33,10 +34,13 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
 
   StreamSubscription<double>? _subscription;
 
-  void _setupSubscription() {
-    unawaited(_subscription?.cancel());
-    final audioService = context.read<AudioService>();
-    _subscription = audioService.amplitudeStream.listen(_onAmplitude);
+  @override
+  void initState() {
+    super.initState();
+    // AudioService is an app-lifetime singleton, so one subscription suffices.
+    _subscription = context.read<AudioService>().amplitudeStream.listen(
+      _onAmplitude,
+    );
   }
 
   void _onAmplitude(double rawAmplitude) {
@@ -72,12 +76,6 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _setupSubscription();
-  }
-
-  @override
   void dispose() {
     _throttleTimer?.cancel();
     unawaited(_subscription?.cancel());
@@ -86,7 +84,7 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
 
   @override
   Widget build(BuildContext context) {
-    final audioService = context.watch<AudioService>();
+    final isRecording = context.select((AudioService s) => s.isRecording);
 
     return RepaintBoundary(
       child: SizedBox(
@@ -98,7 +96,7 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
             writeIndex: _writeIndex,
             version: _version,
             color: AppTheme.crimsonPrimary,
-            isActive: audioService.isRecording,
+            isActive: isRecording,
           ),
         ),
       ),

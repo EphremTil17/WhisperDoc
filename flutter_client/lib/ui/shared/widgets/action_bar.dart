@@ -16,22 +16,18 @@ import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/ui/features/recording/widgets/profile_action_button.dart';
 import 'package:flutter_client/ui/shared/widgets/lockable_control.dart';
 
-/// Bottom action bar with icon buttons for app controls
+/// Bottom action bar with icon buttons for app controls.
+///
+/// Rebuilds only when the values it renders change (session lock, incognito,
+/// transcription mode); each status icon subscribes to its own services.
 class ActionBar extends StatelessWidget {
-  const ActionBar({
-    super.key,
-    required this.isIncognitoMode,
-    required this.onIncognitoTap,
-  });
+  const ActionBar({super.key, required this.onIncognitoTap});
 
   static const double _tooltipVerticalOffset = 20;
   static const double _compactIconSize = 16;
   static const double _standardIconSize = 18;
   static const double _iconSpacing = 8;
   static const double _silenceWarningPulseAlpha = 0.3;
-
-  /// Whether incognito mode is active
-  final bool isIncognitoMode;
 
   /// Callback when incognito button is tapped
   final VoidCallback onIncognitoTap;
@@ -100,9 +96,21 @@ class ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSessionActive = context
-        .watch<RecordingController>()
-        .isSessionActive;
+    final isSessionActive = context.select(
+      (RecordingController c) => c.isSessionActive,
+    );
+    final isIncognitoMode = context.select(
+      (RecordingController c) => c.incognitoMode,
+    );
+    final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
+    final String incognitoTooltip;
+    if (isIncognitoMode && isGroqMode) {
+      incognitoTooltip = 'Incognito (Local Only)';
+    } else if (isIncognitoMode) {
+      incognitoTooltip = 'Disable Incognito';
+    } else {
+      incognitoTooltip = 'Enable Incognito';
+    }
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -110,34 +118,18 @@ class ActionBar extends StatelessWidget {
         // 1. Incognito button
         LockableControl(
           locked: isSessionActive,
-          child: Consumer<SettingsService>(
-            builder: (context, settings, child) {
-              final isCloudActive = settings.isGroqMode;
-              final String incognitoTooltip;
-              if (isIncognitoMode && isCloudActive) {
-                incognitoTooltip = 'Incognito (Local Only)';
-              } else if (isIncognitoMode) {
-                incognitoTooltip = 'Disable Incognito';
-              } else {
-                incognitoTooltip = 'Enable Incognito';
-              }
-
-              return Tooltip(
-                message: incognitoTooltip,
-                preferBelow: false,
-                verticalOffset: _tooltipVerticalOffset,
-                child: RefinedIconButton(
-                  icon: isIncognitoMode
-                      ? Icons.visibility_off
-                      : Icons.visibility_off_outlined,
-                  iconColor: isIncognitoMode
-                      ? Colors.orangeAccent
-                      : Colors.white38,
-                  iconSize: _compactIconSize,
-                  onTap: onIncognitoTap,
-                ),
-              );
-            },
+          child: Tooltip(
+            message: incognitoTooltip,
+            preferBelow: false,
+            verticalOffset: _tooltipVerticalOffset,
+            child: RefinedIconButton(
+              icon: isIncognitoMode
+                  ? Icons.visibility_off
+                  : Icons.visibility_off_outlined,
+              iconColor: isIncognitoMode ? Colors.orangeAccent : Colors.white38,
+              iconSize: _compactIconSize,
+              onTap: onIncognitoTap,
+            ),
           ),
         ),
         const SizedBox(width: _iconSpacing),
@@ -162,59 +154,62 @@ class ActionBar extends StatelessWidget {
         // 3. Connection Status Lock / Cloud Icon (CENTER)
         LockableControl(
           locked: isSessionActive,
-          child: Consumer3<WebSocketService, SettingsService, UpdateService>(
-            builder: (context, wsService, settings, updateService, child) {
-              // Groq mode: show cloud icon, bypass backend state entirely.
-              if (settings.isGroqMode) {
-                final groqService = context.watch<GroqTranscriptionService>();
-                final descriptor = ConnectionStateMapper.mapGroqState(
-                  hasGroqKey: groqService.hasValidCredentials,
-                  status: groqService.status,
-                );
+          child: isGroqMode
+              ? Consumer<GroqTranscriptionService>(
+                  builder: (context, groqService, child) {
+                    // Groq mode: cloud icon, backend state is irrelevant.
+                    final descriptor = ConnectionStateMapper.mapGroqState(
+                      hasGroqKey: groqService.hasValidCredentials,
+                      status: groqService.status,
+                    );
 
-                return Tooltip(
-                  message: descriptor.tooltip,
-                  preferBelow: false,
-                  verticalOffset: _tooltipVerticalOffset,
-                  child: RefinedIconButton(
-                    icon: descriptor.icon,
-                    iconColor: descriptor.iconColor,
-                    iconSize: _standardIconSize,
-                    isPulsing: descriptor.isPulsing,
-                    pulseColor: descriptor.pulseColor,
-                    onTap: _buildGroqConnectionTapHandler(context, groqService),
-                  ),
-                );
-              }
+                    return Tooltip(
+                      message: descriptor.tooltip,
+                      preferBelow: false,
+                      verticalOffset: _tooltipVerticalOffset,
+                      child: RefinedIconButton(
+                        icon: descriptor.icon,
+                        iconColor: descriptor.iconColor,
+                        iconSize: _standardIconSize,
+                        isPulsing: descriptor.isPulsing,
+                        pulseColor: descriptor.pulseColor,
+                        onTap: _buildGroqConnectionTapHandler(
+                          context,
+                          groqService,
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : Consumer2<WebSocketService, UpdateService>(
+                  builder: (context, wsService, updateService, child) {
+                    final descriptor = ConnectionStateMapper.mapState(
+                      status: wsService.status,
+                      handshake: wsService.handshakeState.state,
+                      security: wsService.securityStatus,
+                      hasAnyCreds: wsService.hasValidCredentials,
+                      updateStatus: updateService.status,
+                    );
 
-              // Backend mode: existing logic unchanged.
-              final descriptor = ConnectionStateMapper.mapState(
-                status: wsService.status,
-                handshake: wsService.handshakeState.state,
-                security: wsService.securityStatus,
-                hasAnyCreds: wsService.hasValidCredentials,
-                updateStatus: updateService.status,
-              );
-
-              return Tooltip(
-                message: descriptor.tooltip,
-                preferBelow: false,
-                verticalOffset: _tooltipVerticalOffset,
-                child: RefinedIconButton(
-                  icon: descriptor.icon,
-                  iconColor: descriptor.iconColor,
-                  iconSize: _standardIconSize,
-                  isPulsing: descriptor.isPulsing,
-                  pulseColor: descriptor.pulseColor,
-                  onTap: _buildBackendConnectionTapHandler(
-                    context,
-                    wsService,
-                    updateService,
-                  ),
+                    return Tooltip(
+                      message: descriptor.tooltip,
+                      preferBelow: false,
+                      verticalOffset: _tooltipVerticalOffset,
+                      child: RefinedIconButton(
+                        icon: descriptor.icon,
+                        iconColor: descriptor.iconColor,
+                        iconSize: _standardIconSize,
+                        isPulsing: descriptor.isPulsing,
+                        pulseColor: descriptor.pulseColor,
+                        onTap: _buildBackendConnectionTapHandler(
+                          context,
+                          wsService,
+                          updateService,
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
         ),
         const SizedBox(width: _iconSpacing),
 
@@ -252,9 +247,10 @@ class ActionBar extends StatelessWidget {
         ),
 
         // 6. Silence Warning (Conditional - EXCLUDED from lock)
-        Consumer<RecordingController>(
-          builder: (context, controller, child) {
-            if (!controller.showSilenceWarning) return const SizedBox.shrink();
+        Selector<RecordingController, bool>(
+          selector: (_, controller) => controller.showSilenceWarning,
+          builder: (context, showSilenceWarning, child) {
+            if (!showSilenceWarning) return const SizedBox.shrink();
 
             return Padding(
               padding: const EdgeInsets.only(left: _iconSpacing),
@@ -280,19 +276,12 @@ class ActionBar extends StatelessWidget {
         const SizedBox(width: _iconSpacing),
 
         // 7. Dictation Profile Selector (Far Right)
-        Consumer<SettingsService>(
-          builder: (context, settings, child) {
-            final isLocked = isSessionActive || !settings.isGroqMode;
-            final tooltip = !settings.isGroqMode
-                ? 'Available in Groq Cloud mode'
-                : 'Unavailable while recording';
-
-            return LockableControl(
-              locked: isLocked,
-              tooltipMessage: tooltip,
-              child: const ProfileActionButton(),
-            );
-          },
+        LockableControl(
+          locked: isSessionActive || !isGroqMode,
+          tooltipMessage: isGroqMode
+              ? 'Unavailable while recording'
+              : 'Available in Groq Cloud mode',
+          child: const ProfileActionButton(),
         ),
       ],
     );

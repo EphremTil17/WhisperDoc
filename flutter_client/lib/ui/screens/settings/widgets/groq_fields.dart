@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/secure_key_field.dart';
 
@@ -31,7 +30,7 @@ class GroqFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle inputTextStyle = GoogleFonts.lexend(
+    final TextStyle inputTextStyle = const TextStyle(
       color: Colors.white,
       fontSize: _fontSize,
     );
@@ -81,13 +80,11 @@ class GroqFields extends StatelessWidget {
                         children: [
                           TextField(
                             controller: groqLanguageController,
-                            style: GoogleFonts.lexend(
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: _fontSize,
                             ),
                             decoration: InputDecoration(
-                              filled: true,
-                              fillColor: Colors.black26,
                               border: OutlineInputBorder(
                                 borderRadius: const BorderRadius.all(
                                   Radius.circular(8),
@@ -154,12 +151,6 @@ class GroqFields extends StatelessWidget {
                     borderRadius: const BorderRadius.all(Radius.circular(8)),
                     style: inputTextStyle,
                     decoration: const InputDecoration(
-                      filled: true,
-                      fillColor: Colors.black26,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(8)),
-                        borderSide: BorderSide.none,
-                      ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 10,
@@ -174,7 +165,7 @@ class GroqFields extends StatelessWidget {
                         child: Text(
                           name,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.lexend(fontSize: _fontSize),
+                          style: const TextStyle(fontSize: _fontSize),
                         ),
                       );
                     }).toList(),
@@ -196,12 +187,6 @@ class GroqFields extends StatelessWidget {
           style: inputTextStyle,
           maxLines: _promptMaxLines,
           decoration: const InputDecoration(
-            filled: true,
-            fillColor: Colors.black26,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.all(Radius.circular(8)),
-              borderSide: BorderSide.none,
-            ),
             hintText: 'Spelling/style hints (max 224 tokens)',
             hintStyle: TextStyle(color: Colors.white24, fontSize: 12),
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),

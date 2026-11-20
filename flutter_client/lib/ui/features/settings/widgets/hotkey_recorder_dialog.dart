@@ -6,7 +6,7 @@ import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 class HotkeyRecorderDialog extends StatefulWidget {
   const HotkeyRecorderDialog({super.key, required this.onSelected});
 
-  final Function(String display, int mods, int vKey) onSelected;
+  final void Function(String display, int mods, int vKey) onSelected;
 
   @override
   State<HotkeyRecorderDialog> createState() => _HotkeyRecorderDialogState();
@@ -18,21 +18,10 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
   static const _modShift = 0x0004;
   static const _borderAlpha = 0.3;
 
-  FocusNode? _focusNode;
+  final FocusNode _focusNode = FocusNode();
   String _currentKeys = 'Press keys...';
   int _mods = 0;
   int _vKey = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode = FocusNode();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode?.requestFocus();
-      }
-    });
-  }
 
   void _onKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent) {
@@ -83,17 +72,15 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
 
   @override
   void dispose() {
-    _focusNode?.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final focusNode = _focusNode;
-    if (focusNode == null) return const SizedBox.shrink();
-
     return KeyboardListener(
-      focusNode: focusNode,
+      focusNode: _focusNode,
+      autofocus: true,
       onKeyEvent: _onKeyEvent,
       child: AlertDialog(
         backgroundColor: const Color(0xFF1A1A1E),

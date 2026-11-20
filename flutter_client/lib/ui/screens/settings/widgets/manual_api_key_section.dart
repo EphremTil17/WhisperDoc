@@ -3,19 +3,12 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/secure_key_field.dart';
 
 class ManualApiKeySection extends StatelessWidget {
-  const ManualApiKeySection({
-    super.key,
-    required this.settings,
-    required this.apiKeyController,
-  });
+  const ManualApiKeySection({super.key, required this.apiKeyController});
 
-  final SettingsService settings;
   final TextEditingController apiKeyController;
 
   @override
   Widget build(BuildContext context) {
-    final tokenLabel = settings.getTokenLabel(apiKeyController.text);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -26,9 +19,13 @@ class ManualApiKeySection extends StatelessWidget {
               'MANUAL API KEY',
               style: TextStyle(color: Colors.white38, fontSize: 10),
             ),
-            Text(
-              tokenLabel,
-              style: const TextStyle(color: Colors.blueGrey, fontSize: 9),
+            // Tracks the field as the user types or pastes.
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: apiKeyController,
+              builder: (context, value, _) => Text(
+                SettingsService.getTokenLabel(value.text),
+                style: const TextStyle(color: Colors.blueGrey, fontSize: 9),
+              ),
             ),
           ],
         ),

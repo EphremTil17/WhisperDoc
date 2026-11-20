@@ -14,10 +14,16 @@ class BanCountdownOverlay extends StatefulWidget {
   const BanCountdownOverlay({
     super.key,
     required this.countdownStream,
+    required this.initialSeconds,
     required this.onReconnect,
   });
 
   final Stream<int> countdownStream;
+
+  /// Cooldown at the moment the overlay appears. The stream only emits on the
+  /// next tick, so without this the overlay briefly showed "Ban expired" with
+  /// Reconnect enabled.
+  final int initialSeconds;
   final VoidCallback onReconnect;
 
   @override
@@ -49,6 +55,7 @@ class _BanCountdownOverlayState extends State<BanCountdownOverlay> {
   @override
   void initState() {
     super.initState();
+    _remainingSeconds = widget.initialSeconds;
     _subscription = widget.countdownStream.listen((seconds) {
       if (mounted) {
         setState(() {

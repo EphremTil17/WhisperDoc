@@ -1,6 +1,6 @@
+import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_sign_in_card.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_user_card.dart';
@@ -28,7 +28,6 @@ class _AuthSectionState extends State<AuthSection> {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
-    final settings = context.watch<SettingsService>();
 
     final isAuthenticated = authService.isAuthenticated;
     final user = authService.currentUser;
@@ -37,15 +36,7 @@ class _AuthSectionState extends State<AuthSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // --- Primary OIDC Section ---
-        const Text(
-          'IDENTITY & ACCESS',
-          style: TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.0,
-          ),
-        ),
+        const Text('IDENTITY & ACCESS', style: AppTheme.sectionTitleStyle),
         const SizedBox(height: 12),
 
         if (isAuthenticated && user != null)
@@ -86,10 +77,7 @@ class _AuthSectionState extends State<AuthSection> {
 
         if (_showAdvanced) ...[
           const SizedBox(height: 12),
-          ManualApiKeySection(
-            settings: settings,
-            apiKeyController: widget.apiKeyController,
-          ),
+          ManualApiKeySection(apiKeyController: widget.apiKeyController),
         ],
       ],
     );

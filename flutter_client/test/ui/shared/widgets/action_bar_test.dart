@@ -68,6 +68,7 @@ void main() {
 
     when(() => mockController.isSessionActive).thenReturn(false);
     when(() => mockController.showSilenceWarning).thenReturn(false);
+    when(() => mockController.incognitoMode).thenReturn(false);
 
     when(() => mockSettings.isGroqMode).thenReturn(true);
     when(() => mockSettings.dictationProfile).thenReturn(DictationProfile.raw);
@@ -102,7 +103,6 @@ void main() {
       child: const MaterialApp(
         home: Scaffold(
           body: ActionBar(
-            isIncognitoMode: false,
             onIncognitoTap: _TestConstants.noop,
           ),
         ),

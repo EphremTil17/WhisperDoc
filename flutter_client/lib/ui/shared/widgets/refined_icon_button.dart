@@ -108,8 +108,13 @@ class _RefinedIconButtonState extends State<RefinedIconButton>
               borderColor = Colors.white.withValues(alpha: _idleBorderAlpha);
             }
 
+            // While pulsing, the AnimatedBuilder drives every frame; a non-zero
+            // implicit duration would restart a tween per frame and smear the
+            // pulse. When idle the controller is stopped and hover still fades.
             return AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
+              duration: widget.isPulsing
+                  ? Duration.zero
+                  : const Duration(milliseconds: 150),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: _isHovering

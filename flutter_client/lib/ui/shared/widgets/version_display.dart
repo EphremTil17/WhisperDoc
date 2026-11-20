@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_client/services/utility/settings_service.dart';
 
-/// Displays dynamic version from pubspec.yaml
+/// Displays the app version, read once at startup by [SettingsService].
 class VersionDisplay extends StatelessWidget {
   const VersionDisplay({super.key});
 
@@ -9,16 +10,11 @@ class VersionDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<PackageInfo>(
-      future: PackageInfo.fromPlatform(),
-      builder: (context, snapshot) {
-        final version = snapshot.data?.version ?? '...';
+    final version = context.select((SettingsService s) => s.appVersion);
 
-        return Text(
-          'v$version',
-          style: const TextStyle(color: Colors.white24, fontSize: _fontSize),
-        );
-      },
+    return Text(
+      'v$version',
+      style: const TextStyle(color: Colors.white24, fontSize: _fontSize),
     );
   }
 }

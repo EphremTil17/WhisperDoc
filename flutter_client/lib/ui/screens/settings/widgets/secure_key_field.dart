@@ -21,12 +21,6 @@ class _SecureKeyFieldState extends State<SecureKeyField> {
       obscureText: _obscureText,
       style: const TextStyle(color: Colors.white, fontSize: 13),
       decoration: InputDecoration(
-        filled: true,
-        fillColor: Colors.black26,
-        border: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(8)),
-          borderSide: BorderSide.none,
-        ),
         suffixIcon: IconButton(
           icon: Icon(
             _obscureText ? Icons.visibility_off : Icons.visibility,

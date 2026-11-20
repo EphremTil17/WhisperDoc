@@ -27,17 +27,17 @@ class ConnectionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsService>();
-    final controller = context.watch<RecordingController>();
-    final isGroqMode = settings.isGroqMode;
-    final sessionActive = controller.isSessionActive;
+    final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
+    final sessionActive = context.select(
+      (RecordingController c) => c.isSessionActive,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Text('CONNECTION', style: AppTheme.sectionTitleStyle),
+            const Text('CONNECTION', style: AppTheme.sectionTitleStyle),
             if (sessionActive) ...[
               const SizedBox(width: 8),
               const Text(
@@ -49,7 +49,7 @@ class ConnectionSection extends StatelessWidget {
             ModeToggle(
               isGroqMode: isGroqMode,
               enabled: !sessionActive,
-              settings: settings,
+              settings: context.read<SettingsService>(),
             ),
           ],
         ),

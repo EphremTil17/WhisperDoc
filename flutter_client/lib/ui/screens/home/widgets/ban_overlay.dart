@@ -22,6 +22,7 @@ class BanOverlay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 40),
             child: BanCountdownOverlay(
               countdownStream: wsService.banState.cooldownStream,
+              initialSeconds: wsService.banState.cooldownRemaining,
               onReconnect: () => unawaited(wsService.connect()),
             ),
           ),

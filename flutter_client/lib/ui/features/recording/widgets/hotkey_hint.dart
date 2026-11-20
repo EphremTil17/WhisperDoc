@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 class HotkeyHint extends StatelessWidget {
@@ -15,8 +14,7 @@ class HotkeyHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsService>();
-    final fontFamily = GoogleFonts.lexend().fontFamily;
+    final globalHotkey = context.select((SettingsService s) => s.globalHotkey);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -27,10 +25,9 @@ class HotkeyHint extends StatelessWidget {
       ),
       child: Text.rich(
         TextSpan(
-          style: TextStyle(
+          style: const TextStyle(
             color: Colors.white54,
             fontSize: _hintFontSize,
-            fontFamily: fontFamily,
           ),
           children: [
             const TextSpan(text: 'Press '),
@@ -44,11 +41,10 @@ class HotkeyHint extends StatelessWidget {
                   borderRadius: const BorderRadius.all(Radius.circular(4)),
                 ),
                 child: Text(
-                  settings.globalHotkey,
-                  style: TextStyle(
+                  globalHotkey,
+                  style: const TextStyle(
                     color: Colors.white70,
                     fontSize: _keyFontSize,
-                    fontFamily: fontFamily,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

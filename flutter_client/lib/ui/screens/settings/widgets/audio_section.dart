@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
@@ -76,7 +75,7 @@ class _AudioSectionState extends State<AudioSection> {
           alignment: Alignment.centerLeft,
           child: Text(
             label,
-            style: GoogleFonts.lexend(
+            style: TextStyle(
               color: isRecording ? Colors.white38 : Colors.white,
               fontSize: _fontSize,
             ),
@@ -89,8 +88,9 @@ class _AudioSectionState extends State<AudioSection> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
-    final recordingController = context.watch<RecordingController>();
-    final isRecording = recordingController.isRecording;
+    final isRecording = context.select(
+      (RecordingController c) => c.isRecording,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -98,7 +98,7 @@ class _AudioSectionState extends State<AudioSection> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('AUDIO INPUT', style: AppTheme.sectionTitleStyle),
+            const Text('AUDIO INPUT', style: AppTheme.sectionTitleStyle),
             if (!isRecording)
               IconButton(
                 onPressed: _handleRefreshPressed,
@@ -139,17 +139,11 @@ class _AudioSectionState extends State<AudioSection> {
                 size: _iconSize,
               ),
               borderRadius: const BorderRadius.all(Radius.circular(8)),
-              style: GoogleFonts.lexend(
+              style: TextStyle(
                 color: isRecording ? Colors.white38 : Colors.white,
                 fontSize: _fontSize,
               ),
               decoration: const InputDecoration(
-                filled: true,
-                fillColor: Colors.black26,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                  borderSide: BorderSide.none,
-                ),
                 contentPadding: EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 14,
@@ -160,11 +154,11 @@ class _AudioSectionState extends State<AudioSection> {
                 isRecording,
               ),
               items: [
-                DropdownMenuItem<String?>(
+                const DropdownMenuItem<String?>(
                   value: null,
                   child: Text(
                     'Default (System Voice Input)',
-                    style: GoogleFonts.lexend(fontSize: _fontSize),
+                    style: TextStyle(fontSize: _fontSize),
                   ),
                 ),
                 ...devices.map(
@@ -172,7 +166,7 @@ class _AudioSectionState extends State<AudioSection> {
                     value: d.id,
                     child: Text(
                       d.label,
-                      style: GoogleFonts.lexend(fontSize: _fontSize),
+                      style: const TextStyle(fontSize: _fontSize),
                     ),
                   ),
                 ),

@@ -101,7 +101,7 @@ class SettingsService extends ChangeNotifier {
 
   /// Returns the cached API key, fetching from vault if not yet loaded.
   /// Auto-detect token type: JWT (has 2 dots) vs Static API Key.
-  String getTokenLabel(String token) {
+  static String getTokenLabel(String token) {
     if (token.contains('.') && token.split('.').length == _jwtPartCount) {
       return 'Access Token (JWT)';
     }
