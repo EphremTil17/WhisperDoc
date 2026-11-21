@@ -1,4 +1,4 @@
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -14,7 +14,7 @@ class AutomationSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('AUTOMATION', style: AppTheme.sectionTitleStyle),
+        const Text('AUTOMATION', style: AppType.label),
         const SizedBox(height: 12),
         SettingsToggle(
           title: 'Auto Copy',

@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 /// Compact select field in the style of the app's glass menus (the profile
 /// picker): a filled trigger and a dark glass panel of short rows, with the
@@ -147,7 +147,7 @@ class _GlassDropdownState<T> extends State<GlassDropdown<T>> {
           ? const Icon(
               Icons.check,
               size: GlassDropdown._checkSize,
-              color: AppTheme.crimsonPrimary,
+              color: AppColors.record,
             )
           : null,
       style: ButtonStyle(

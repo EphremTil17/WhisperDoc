@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/groq_fields.dart';
@@ -37,7 +37,7 @@ class ConnectionSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Text('CONNECTION', style: AppTheme.sectionTitleStyle),
+            const Text('CONNECTION', style: AppType.label),
             if (sessionActive) ...[
               const SizedBox(width: 8),
               const Text(

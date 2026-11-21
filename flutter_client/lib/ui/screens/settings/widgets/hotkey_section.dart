@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
 import 'package:flutter_client/ui/features/settings/settings.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 class HotkeySection extends StatelessWidget {
   const HotkeySection({super.key});
@@ -50,7 +50,7 @@ class HotkeySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('HOTKEY', style: AppTheme.sectionTitleStyle),
+        const Text('HOTKEY', style: AppType.label),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -83,7 +83,7 @@ class HotkeySection extends StatelessWidget {
                 child: const Text(
                   'Change',
                   style: TextStyle(
-                    color: AppTheme.crimsonPrimary,
+                    color: AppColors.record,
                     fontSize: _changeFontSize,
                   ),
                 ),

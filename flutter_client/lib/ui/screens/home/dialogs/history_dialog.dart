@@ -3,7 +3,7 @@ import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/formatters/clock_time.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
-import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
 import 'package:provider/provider.dart';
 
 class HistoryDialog extends StatefulWidget {
@@ -46,7 +46,7 @@ class _HistoryDialogState extends State<HistoryDialog> {
     final history = controller.history;
     const badgeColor = Colors.orangeAccent;
 
-    return GlassDialog(
+    return AppDialog(
       title: 'Transcription History',
       titleTrailing: controller.incognitoMode
           ? Container(

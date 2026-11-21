@@ -75,6 +75,16 @@ abstract final class AppType {
     color: AppColors.text,
   );
 
+  /// 12/17 medium, muted: section headings in panels and settings.
+  static const TextStyle label = TextStyle(
+    fontFamily: family,
+    fontSize: _captionSize,
+    height: 17 / _captionSize,
+    leadingDistribution: TextLeadingDistribution.even,
+    fontWeight: FontWeight.w500,
+    color: AppColors.textMuted,
+  );
+
   /// 16/24: body, values, buttons.
   static const TextStyle body = TextStyle(
     fontFamily: family,

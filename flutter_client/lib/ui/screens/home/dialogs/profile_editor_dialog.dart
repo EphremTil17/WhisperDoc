@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
-import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
 
 /// Modal dialog for creating and editing user custom dictation profiles.
-/// Built on the standard [GlassDialog] shell.
+/// Built on the standard [AppDialog] shell.
 class ProfileEditorDialog extends StatefulWidget {
   const ProfileEditorDialog({super.key, required this.slotKey, this.existing});
 
@@ -131,14 +131,14 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
     );
     const focusedBorder = OutlineInputBorder(
       borderRadius: borderRadius,
-      borderSide: BorderSide(color: AppTheme.crimsonPrimary),
+      borderSide: BorderSide(color: AppColors.record),
     );
     final fieldFillColor = Colors.white.withValues(alpha: _fieldFillAlpha);
     final disabledBgColor = Colors.white.withValues(
       alpha: _disabledControlAlpha,
     );
 
-    return GlassDialog(
+    return AppDialog(
       title: _isEditMode ? 'Edit Custom Profile' : 'New Custom Profile',
       shrinkWrap: true,
       maxWidth: _dialogMaxWidth,
@@ -267,12 +267,12 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
               icon: const Icon(
                 Icons.delete_outline_rounded,
                 size: 14,
-                color: AppTheme.crimsonPrimary,
+                color: AppColors.record,
               ),
               label: const Text(
                 'Delete',
                 style: TextStyle(
-                  color: AppTheme.crimsonPrimary,
+                  color: AppColors.record,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -297,7 +297,7 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
               ElevatedButton(
                 onPressed: _canSave ? _onSave : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.crimsonPrimary,
+                  backgroundColor: AppColors.record,
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: disabledBgColor,
                   disabledForegroundColor: Colors.white38,

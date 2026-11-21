@@ -5,8 +5,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
-import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/connection_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/audio_section.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/auth_section.dart';
@@ -75,7 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GlassDialog(
+    return AppDialog(
       title: 'Settings',
       shrinkWrap: true,
       footer: Row(
@@ -92,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text(
               'Done',
               style: TextStyle(
-                color: AppTheme.crimsonPrimary,
+                color: AppColors.record,
                 fontWeight: FontWeight.bold,
               ),
             ),

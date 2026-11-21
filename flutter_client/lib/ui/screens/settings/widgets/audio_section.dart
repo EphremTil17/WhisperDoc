@@ -6,7 +6,7 @@ import 'package:record/record.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dropdown.dart';
 
 class AudioSection extends StatefulWidget {
@@ -89,7 +89,7 @@ class _AudioSectionState extends State<AudioSection> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('AUDIO INPUT', style: AppTheme.sectionTitleStyle),
+            const Text('AUDIO INPUT', style: AppType.label),
             if (!isRecording)
               IconButton(
                 onPressed: _handleRefreshPressed,

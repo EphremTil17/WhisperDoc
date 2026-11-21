@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
-import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
 
 class LogViewerDialog extends StatefulWidget {
   const LogViewerDialog({super.key});
@@ -63,7 +63,7 @@ class _LogViewerDialogState extends State<LogViewerDialog> {
   Widget build(BuildContext context) {
     final loggingService = LoggingService();
 
-    return GlassDialog(
+    return AppDialog(
       title: 'Application Logs',
       body: StreamBuilder<LogEntry>(
         stream: loggingService.onLog,

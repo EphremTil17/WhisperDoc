@@ -1,5 +1,5 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 class SettingsToggle extends StatelessWidget {
   const SettingsToggle({
@@ -24,14 +24,13 @@ class SettingsToggle extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1.0 : _disabledAlpha,
       child: SwitchListTile(
-        title: Text(title, style: const TextStyle(fontSize: 14)),
+        title: Text(title, style: AppType.body),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(fontSize: 11, color: Colors.white38),
+          style: AppType.caption.copyWith(color: AppColors.textMuted),
         ),
         value: value,
         onChanged: enabled ? onChanged : null,
-        activeThumbColor: AppTheme.crimsonPrimary,
         contentPadding: EdgeInsets.zero,
         dense: true,
       ),

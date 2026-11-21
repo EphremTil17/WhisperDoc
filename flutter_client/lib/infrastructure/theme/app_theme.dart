@@ -1,16 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
+/// The app's single theme, built from the tokens in app_tokens.dart. Material
+/// components that are not hand-built (inputs, switches, dropdowns, icon
+/// buttons, tooltips, snackbars) take the Captions look from here.
 class AppTheme {
-  static const Color crimsonPrimary = Color(0xFFDC143C); // Crimson
-  static const Color crimsonDark = Color(0xFF990000); // Darker Crimson
-  static const Color surface = Color(0xCC1E1E23); // Semi-transparent surface
-  static const Color glassBorder = Color(0x1AFFFFFF); // White with low opacity
-  static const Color cardBackground = Color(0x0DFFFFFF); // Very subtle white
-
   static const double _selectionAlpha = 0.45;
-  static const double _shadowAlpha = 0.2;
-  static const double _shadowBlur = 16;
 
   static ThemeData get darkTheme {
     final base = ThemeData.dark().textTheme;
@@ -20,10 +15,11 @@ class AppTheme {
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.ground,
       colorScheme: const ColorScheme.dark(
-        primary: crimsonPrimary,
-        secondary: crimsonDark,
-        surface: surface,
-        onSurface: Colors.white,
+        primary: AppColors.record,
+        secondary: AppColors.alert,
+        surface: AppColors.surface,
+        onSurface: AppColors.text,
+        outline: AppColors.outline,
       ),
       fontFamily: AppType.family,
       // Theme the parts we did not draw: selection and the caret.
@@ -72,40 +68,43 @@ class AppTheme {
       ),
       // Shared look for settings inputs and dropdowns; fields override only
       // what differs (padding, hints, error borders).
-      inputDecorationTheme: const InputDecorationTheme(
+      inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.black26,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(8)),
-          borderSide: BorderSide.none,
+        fillColor: AppColors.ground,
+        // Placeholders must not read as values.
+        hintStyle: AppType.body.copyWith(color: AppColors.textMuted),
+        border: const OutlineInputBorder(
+          borderRadius: AppRadius.controlAll,
+          borderSide: BorderSide(color: AppColors.rule),
+        ),
+        enabledBorder: const OutlineInputBorder(
+          borderRadius: AppRadius.controlAll,
+          borderSide: BorderSide(color: AppColors.rule),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: AppRadius.controlAll,
+          borderSide: BorderSide(color: AppColors.textMuted),
         ),
       ),
+      switchTheme: SwitchThemeData(
+        // "On" is white, not crimson: crimson means recording or "needs you".
+        thumbColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? AppColors.ground : AppColors.iconFaint,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? AppColors.text : Colors.transparent,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? AppColors.text : AppColors.outline,
+        ),
+      ),
+      dividerTheme: const DividerThemeData(color: AppColors.rule, space: 1),
       textTheme: base.apply(
         fontFamily: AppType.family,
         bodyColor: AppColors.text,
         displayColor: AppColors.text,
       ),
-      iconTheme: const IconThemeData(color: Colors.white70),
+      iconTheme: const IconThemeData(color: AppColors.textMuted),
     );
   }
-
-  static BoxDecoration get glassDecoration => BoxDecoration(
-    color: surface,
-    border: const Border.fromBorderSide(BorderSide(color: glassBorder)),
-    borderRadius: const BorderRadius.all(Radius.circular(16)),
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withValues(alpha: _shadowAlpha),
-        blurRadius: _shadowBlur,
-        offset: const Offset(0, 4),
-      ),
-    ],
-  );
-
-  static const TextStyle sectionTitleStyle = TextStyle(
-    color: Colors.white54,
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
-    letterSpacing: 1.0,
-  );
 }

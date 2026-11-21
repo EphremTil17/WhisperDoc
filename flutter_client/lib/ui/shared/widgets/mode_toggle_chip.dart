@@ -1,5 +1,5 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 /// Reusable compact segmented toggle chip with glassmorphic crimson accent styling.
 class ModeToggleChip extends StatelessWidget {
@@ -11,8 +11,8 @@ class ModeToggleChip extends StatelessWidget {
   });
 
   static const Color _activeChipBackground = Color(0x33DC143C);
-  static const Color _activeChipBorder = AppTheme.crimsonPrimary;
-  static const Color _activeChipText = AppTheme.crimsonPrimary;
+  static const Color _activeChipBorder = AppColors.record;
+  static const Color _activeChipText = AppColors.record;
   static const Color _inactiveChipBorder = Colors.white24;
   static const Color _inactiveChipText = Colors.white70;
   static const double _chipFontSize = 9;

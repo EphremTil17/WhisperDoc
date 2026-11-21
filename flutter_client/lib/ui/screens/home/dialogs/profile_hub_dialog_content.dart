@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/home/widgets/profile_info_block.dart';
@@ -275,7 +275,7 @@ class ProfileHubDialogContent extends StatelessWidget {
             child: ElevatedButton(
               onPressed: openSettings,
               style: _buildButtonStyle(
-                color: AppTheme.crimsonPrimary,
+                color: AppColors.record,
                 padding: const EdgeInsets.symmetric(
                   vertical: _actionButtonPaddingVertical,
                 ),

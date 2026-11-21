@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_client/infrastructure/utils/win32_key_mapper.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 class HotkeyRecorderDialog extends StatefulWidget {
   const HotkeyRecorderDialog({super.key, required this.onSelected});
@@ -102,7 +102,7 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
                 color: Colors.black38,
                 borderRadius: const BorderRadius.all(Radius.circular(12)),
                 border: Border.all(
-                  color: AppTheme.crimsonPrimary.withValues(
+                  color: AppColors.record.withValues(
                     alpha: _borderAlpha,
                   ),
                 ),
@@ -130,7 +130,7 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
           FilledButton(
             onPressed: _vKey != 0 ? _handleSave : null,
             style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.crimsonPrimary,
+              backgroundColor: AppColors.record,
             ),
             child: const Text('Save Hotkey'),
           ),
