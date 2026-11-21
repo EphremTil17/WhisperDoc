@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
@@ -53,7 +57,11 @@ class CustomTitleBar extends StatelessWidget {
             icon: AppIcons.x,
             tooltip: 'Close',
             isClose: true,
-            onPressed: () => WindowManager.instance.getCurrent()?.close(),
+            // Exit through Flutter so the app's exit handler can stop the
+            // hotkey isolate first (see HomeScreen._onExitRequested).
+            onPressed: () => unawaited(
+              ServicesBinding.instance.exitApplication(AppExitType.cancelable),
+            ),
           ),
           const SizedBox(width: _endPadding),
         ],

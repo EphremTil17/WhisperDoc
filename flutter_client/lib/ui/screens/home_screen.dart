@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _notice = Duration(seconds: 2);
 
   StreamSubscription? _hotkeySubscription;
+  AppLifecycleListener? _lifecycle;
   StreamSubscription? _errorSubscription;
   SettingsService? _settings;
   int? _lastModifiers;
@@ -36,7 +38,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lifecycle = AppLifecycleListener(onExitRequested: _onExitRequested);
     _initHotkeys();
+  }
+
+  /// Every way of closing (title-bar button, Alt+F4, taskbar) arrives here.
+  /// The hotkey isolate blocks in a native GetMessageW call that the VM cannot
+  /// interrupt, so it must be woken (WM_QUIT) before the engine shuts down;
+  /// otherwise the window disappears but the process never exits.
+  Future<AppExitResponse> _onExitRequested() async {
+    await context.read<HotkeyService>().stop();
+
+    return AppExitResponse.exit;
   }
 
   @override
@@ -155,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _lifecycle?.dispose();
     _settings?.removeListener(_onSettingsChanged);
     unawaited(_hotkeySubscription?.cancel());
     unawaited(_errorSubscription?.cancel());
