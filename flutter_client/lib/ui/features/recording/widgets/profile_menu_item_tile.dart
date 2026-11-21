@@ -1,9 +1,12 @@
-import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/mappers/dictation_profile_ui_mapper.dart';
 import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
+import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 
-/// An individual profile selection tile within the [ProfileActionButton] dropdown.
+/// One output style in the [ProfileActionButton] menu: glyph, name and a
+/// one-line description; the active style is filled and checked.
 class ProfileMenuItemTile extends StatefulWidget {
   const ProfileMenuItemTile({
     required this.profile,
@@ -22,19 +25,11 @@ class ProfileMenuItemTile extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
 
-  static const double _tileSelectedBgAlpha = 0.15;
-  static const double _tileHoverBgAlpha = 0.08;
-  static const double _tileSelectedBorderAlpha = 0.28;
-  static const double _tileIconSize = 15;
-  static const double _tileTitleFontSize = 12.5;
-  static const double _tileTitleLetterSpacing = 0.15;
-  static const double _tileTitleLineHeight = 1.25;
-  static const double _tileSubtitleFontSize = 10.5;
-  static const double _tileSubtitleLetterSpacing = 0.05;
-  static const double _tileSubtitleLineHeight = 1.2;
-  static const double _tileEditIconSize = 14;
-  static const double _tileEditIconAlpha = 0.65;
-  static const double _tileBlockedIconSize = 13;
+  static const EdgeInsets _padding = EdgeInsets.symmetric(
+    horizontal: 10,
+    vertical: AppSpace.sm,
+  );
+  static const double _editPadStart = 6;
 
   @override
   State<ProfileMenuItemTile> createState() => _ProfileMenuItemTileState();
@@ -45,101 +40,54 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
 
   @override
   Widget build(BuildContext context) {
-    Color tileBg;
-    if (widget.isSelected) {
-      tileBg = Colors.white.withValues(
-        alpha: ProfileMenuItemTile._tileSelectedBgAlpha,
-      );
-    } else if (_isHovered && widget.isEnabled) {
-      tileBg = Colors.white.withValues(
-        alpha: ProfileMenuItemTile._tileHoverBgAlpha,
-      );
-    } else {
-      tileBg = Colors.transparent;
-    }
-
-    final Color titleColor;
-    final Color subtitleColor;
-    final Color iconColor;
-    if (!widget.isEnabled) {
-      titleColor = const Color(0xFF606068);
-      subtitleColor = const Color(0xFF606068);
-      iconColor = const Color(0xFF606068);
-    } else if (widget.isSelected) {
-      titleColor = Colors.white;
-      subtitleColor = const Color(0xFFD0D0D8);
-      iconColor = Colors.white;
-    } else {
-      titleColor = const Color(0xFFE8E8EE);
-      subtitleColor = const Color(0xFFB0B0B8);
-      iconColor = const Color(0xFFCCCCCC);
-    }
+    final enabled = widget.isEnabled;
+    final filled = widget.isSelected || (_isHovered && enabled);
+    final ink = enabled ? AppColors.text : AppColors.iconFaint;
+    final meta = enabled ? AppColors.textMuted : AppColors.iconFaint;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: widget.isEnabled
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          duration: AppMotion.quick,
+          padding: ProfileMenuItemTile._padding,
           decoration: BoxDecoration(
-            color: tileBg,
-            borderRadius: const BorderRadius.all(Radius.circular(7)),
-            border: Border.all(
-              color: widget.isSelected
-                  ? Colors.white.withValues(
-                      alpha: ProfileMenuItemTile._tileSelectedBorderAlpha,
-                    )
-                  : Colors.transparent,
-              width: 1,
-            ),
+            color: filled ? AppColors.band : Colors.transparent,
+            borderRadius: AppRadius.controlAll,
           ),
           child: Row(
+            spacing: 10,
             children: [
               Icon(
                 DictationProfileUiMapper.iconFor(widget.profile),
-                size: ProfileMenuItemTile._tileIconSize,
-                color: iconColor,
+                size: AppSizes.smallIconSize,
+                color: enabled ? AppColors.textMuted : AppColors.iconFaint,
               ),
-              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    CrispText(
                       widget.profile.label,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontSize: ProfileMenuItemTile._tileTitleFontSize,
-                        fontWeight: widget.isSelected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                        letterSpacing:
-                            ProfileMenuItemTile._tileTitleLetterSpacing,
-                        height: ProfileMenuItemTile._tileTitleLineHeight,
+                      style: AppType.caption.copyWith(
+                        color: ink,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
+                    CrispText(
                       DictationProfileUiMapper.subtitleFor(
                         widget.profile,
                         isKeyBlocked: widget.isKeyBlocked,
                       ),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: subtitleColor,
-                        fontSize: ProfileMenuItemTile._tileSubtitleFontSize,
-                        fontWeight: FontWeight.normal,
-                        letterSpacing:
-                            ProfileMenuItemTile._tileSubtitleLetterSpacing,
-                        height: ProfileMenuItemTile._tileSubtitleLineHeight,
-                      ),
+                      style: AppType.caption.copyWith(color: meta),
                     ),
                   ],
                 ),
@@ -150,35 +98,29 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.onEdit,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 6, right: 4),
+                    child: const Padding(
+                      padding: EdgeInsetsDirectional.only(
+                        start: ProfileMenuItemTile._editPadStart,
+                      ),
                       child: Icon(
                         AppIcons.pencil,
-                        size: ProfileMenuItemTile._tileEditIconSize,
-                        color: Colors.white.withValues(
-                          alpha: ProfileMenuItemTile._tileEditIconAlpha,
-                        ),
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textMuted,
                       ),
                     ),
                   ),
                 ),
               if (widget.isSelected)
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Icon(
-                    Icons.check_rounded,
-                    size: ProfileMenuItemTile._tileIconSize,
-                    color: Colors.white,
-                  ),
+                const Icon(
+                  AppIcons.check,
+                  size: AppSizes.smallIconSize,
+                  color: AppColors.text,
                 )
               else if (widget.isKeyBlocked)
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Icon(
-                    AppIcons.keyRound,
-                    size: ProfileMenuItemTile._tileBlockedIconSize,
-                    color: Color(0xFF606068),
-                  ),
+                const Icon(
+                  AppIcons.keyRound,
+                  size: AppSizes.smallIconSize,
+                  color: AppColors.iconFaint,
                 ),
             ],
           ),

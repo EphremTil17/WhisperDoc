@@ -36,6 +36,7 @@ class _HomeStageState extends State<HomeStage> {
   Widget build(BuildContext context) {
     final status = context.watchHomeStatus();
     final text = context.select((RecordingController c) => c.currentText);
+    final arrivedAt = context.select((RecordingController c) => c.transcriptAt);
     final phase = status.phase;
 
     return Padding(
@@ -67,8 +68,8 @@ class _HomeStageState extends State<HomeStage> {
               '[ you’re speaking ]',
               style: AppType.captionBand.copyWith(color: AppColors.textMuted),
             )
-          else if (text.isNotEmpty && phase != HomePhase.working)
-            LastTranscript(text: text),
+          else if (arrivedAt != null && phase != HomePhase.working)
+            LastTranscript(text: text, arrivedAt: arrivedAt),
           const SizedBox(height: _bottomGap),
         ],
       ),

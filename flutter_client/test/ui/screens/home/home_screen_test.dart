@@ -44,6 +44,16 @@ void main() {
       expect(find.byTooltip('Copy again'), findsOneWidget);
     });
 
+    testWidgets('an older transcript keeps its real age', (tester) async {
+      // Regression: the widget used to stamp its own mount time, so coming
+      // back from a blocked state made an old transcript read "just now".
+      final home = HomeOrchestrator(tester)
+        ..showTranscript(transcript, age: const Duration(minutes: 5));
+      await home.pump();
+
+      expect(find.text('5 min ago'), findsOneWidget);
+    });
+
     testWidgets('listening: Stop, the meter, and locked controls', (tester) async {
       final home = HomeOrchestrator(tester)..startRecording();
       await home.pump();

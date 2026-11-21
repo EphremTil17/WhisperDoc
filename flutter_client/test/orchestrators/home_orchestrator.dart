@@ -58,6 +58,7 @@ class HomeOrchestrator {
     when(() => recording.isTranscribing).thenReturn(false);
     when(() => recording.isSessionActive).thenReturn(false);
     when(() => recording.currentText).thenReturn('');
+    when(() => recording.transcriptAt).thenReturn(null);
     when(() => recording.showSilenceWarning).thenReturn(false);
     when(() => recording.incognitoMode).thenReturn(false);
     when(recording.toggleRecording).thenAnswer((_) => Future.value());
@@ -93,8 +94,10 @@ class HomeOrchestrator {
   final StreamController<double> levels = StreamController<double>.broadcast();
   int incognitoTaps = 0;
 
-  void showTranscript(String text) {
+  /// A transcript produced [age] ago (as the controller timestamps it).
+  void showTranscript(String text, {Duration age = Duration.zero}) {
     when(() => recording.currentText).thenReturn(text);
+    when(() => recording.transcriptAt).thenReturn(DateTime.now().subtract(age));
   }
 
   void startRecording() {

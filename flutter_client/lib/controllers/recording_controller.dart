@@ -40,6 +40,7 @@ class RecordingController extends ChangeNotifier {
 
   // Current active transcription buffer (accumulating text)
   String _currentBuffer = '';
+  DateTime? _transcriptAt;
 
   // Single source of truth for recording state
   bool _isRecording = false;
@@ -61,6 +62,9 @@ class RecordingController extends ChangeNotifier {
   bool get isTranscribing => _isTranscribing;
   bool get incognitoMode => _settingsService.incognitoMode;
   String get currentText => _currentBuffer;
+
+  /// When [currentText] was produced; null while there is none.
+  DateTime? get transcriptAt => _transcriptAt;
   bool get isRecording => _isRecording;
 
   /// True while recording or while a Groq transcription/transform is in flight.
@@ -158,7 +162,7 @@ class RecordingController extends ChangeNotifier {
       return;
     }
 
-    _currentBuffer = '';
+    _setTranscript('');
     _showSilenceWarning = false;
     notifyListeners();
 
@@ -329,7 +333,7 @@ class RecordingController extends ChangeNotifier {
   void _handleWebSocketMessage(Map<String, dynamic> msg) {
     final event = msg['event'] as String?;
     if (event == 'transcription') {
-      _currentBuffer = msg['text'] ?? '';
+      _setTranscript(msg['text'] ?? '');
       notifyListeners();
       unawaited(_finishRecordingSession());
     } else if (event == 'error') {
@@ -351,7 +355,7 @@ class RecordingController extends ChangeNotifier {
     notifyListeners();
     try {
       final text = await _groqService.finalizeAndTranscribe();
-      _currentBuffer = text;
+      _setTranscript(text);
       notifyListeners();
       await _finishRecordingSession();
     } on GroqError catch (e) {
@@ -374,7 +378,7 @@ class RecordingController extends ChangeNotifier {
       notifyListeners();
       try {
         text = await _transformService.transform(text, profile);
-        _currentBuffer = text;
+        _setTranscript(text);
         notifyListeners();
       } on GroqError catch (e) {
         _errorController.add(
@@ -403,9 +407,15 @@ class RecordingController extends ChangeNotifier {
     await _automationService.runAutomation(text);
   }
 
+  /// The single place the transcript changes, so its timestamp cannot drift.
+  void _setTranscript(String text) {
+    _currentBuffer = text;
+    _transcriptAt = text.isEmpty ? null : DateTime.now();
+  }
+
   /// Explicitly clears all sensitive transcription data from memory and disk.
   Future<void> _clearSensitiveData() async {
-    _currentBuffer = '';
+    _setTranscript('');
     _history.clear();
     _showSilenceWarning = false;
     await _historyService.clearAll();

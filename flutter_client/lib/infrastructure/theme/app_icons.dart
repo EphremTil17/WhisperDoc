@@ -79,4 +79,7 @@ abstract final class AppIcons {
 
   /// The output-style picker.
   static const IconData type = IconData(57752, fontFamily: _family);
+
+  /// Create something new (a custom style).
+  static const IconData plus = IconData(57661, fontFamily: _family);
 }
