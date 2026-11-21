@@ -50,3 +50,14 @@ PROJECT_CONTEXT.md
 flutter_client/env.json
 # Inno Setup output; release installers are built by CI as GitHub Release assets
 flutter_client/windows/installer/*.exe
+
+# Design tooling scratch: Playwright logs, impeccable decision mocks, review
+# captures and caches. The durable impeccable records (surfaces/, config.json)
+# and PRODUCT.md are tracked.
+.playwright-mcp/
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/questions/
+.impeccable/hook.cache.json
+.impeccable/decision-*.json
+.impeccable/brief-*.md

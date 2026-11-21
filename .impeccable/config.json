@@ -1,0 +1,44 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/assigned.html"
+        ],
+        "createdAt": "2026-11-21T06:06:34.340Z",
+        "reason": "agent decision: throwaway Playwright preview strips; flagged elements are keycap chips, caption-band spans and row separators by design; shipping UI is Flutter and gets its own review"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-11-21T06:06:34.536Z",
+        "reason": "agent decision: throwaway Playwright preview strips; flagged elements are keycap chips, caption-band spans and row separators by design; shipping UI is Flutter and gets its own review"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-pass.html"
+        ],
+        "createdAt": "2026-11-21T06:06:34.758Z",
+        "reason": "agent decision: throwaway Playwright preview strips; flagged elements are keycap chips, caption-band spans and row separators by design; shipping UI is Flutter and gets its own review"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-11-21T06:06:34.974Z",
+        "reason": "agent decision: throwaway Playwright preview strips; flagged elements are keycap chips, caption-band spans and row separators by design; shipping UI is Flutter and gets its own review"
+      }
+    ]
+  }
+}
