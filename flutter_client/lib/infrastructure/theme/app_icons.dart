@@ -20,9 +20,6 @@ abstract final class AppIcons {
   /// Menu open.
   static const IconData chevronUp = IconData(57456, fontFamily: _family);
 
-  /// Paused (no action available).
-  static const IconData circlePause = IconData(57471, fontFamily: _family);
-
   /// Groq Cloud account.
   static const IconData cloud = IconData(57480, fontFamily: _family);
 
@@ -50,7 +47,7 @@ abstract final class AppIcons {
   /// Output style: Casual.
   static const IconData messageCircle = IconData(57622, fontFamily: _family);
 
-  /// Output style: Raw; choose a microphone.
+  /// Output style Raw (in the style menu); choose a microphone.
   static const IconData mic = IconData(57624, fontFamily: _family);
 
   /// Microphone missing or blocked.
@@ -73,4 +70,13 @@ abstract final class AppIcons {
 
   /// Close.
   static const IconData x = IconData(57778, fontFamily: _family);
+
+  /// Connection paused by the server.
+  static const IconData ban = IconData(57425, fontFamily: _family);
+
+  /// Try again; reconnect.
+  static const IconData refreshCw = IconData(57669, fontFamily: _family);
+
+  /// The output-style picker.
+  static const IconData type = IconData(57752, fontFamily: _family);
 }

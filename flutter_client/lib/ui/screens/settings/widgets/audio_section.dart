@@ -7,7 +7,7 @@ import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
-import 'package:flutter_client/ui/shared/widgets/glass_dropdown.dart';
+import 'package:flutter_client/ui/shared/widgets/app_dropdown.dart';
 
 class AudioSection extends StatefulWidget {
   const AudioSection({super.key});
@@ -60,15 +60,15 @@ class _AudioSectionState extends State<AudioSection> {
     // A remembered device that is no longer present shows as Default.
     final isListed = currentId == null || devices.any((d) => d.id == currentId);
 
-    return GlassDropdown<String?>(
+    return AppDropdown<String?>(
       value: isListed ? currentId : null,
       items: [
-        const GlassDropdownItem(
+        const AppDropdownItem(
           value: null,
           label: 'Default (System Voice Input)',
         ),
         for (final device in devices)
-          GlassDropdownItem(value: device.id, label: device.label),
+          AppDropdownItem(value: device.id, label: device.label),
       ],
       onChanged: isRecording
           ? null
@@ -89,7 +89,7 @@ class _AudioSectionState extends State<AudioSection> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('AUDIO INPUT', style: AppType.label),
+            const Text('Microphone', style: AppType.label),
             if (!isRecording)
               IconButton(
                 onPressed: _handleRefreshPressed,

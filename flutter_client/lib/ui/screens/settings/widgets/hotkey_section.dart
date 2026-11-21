@@ -50,7 +50,7 @@ class HotkeySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('HOTKEY', style: AppType.label),
+        const Text('Shortcut', style: AppType.label),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

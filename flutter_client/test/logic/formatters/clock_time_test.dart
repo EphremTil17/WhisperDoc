@@ -19,4 +19,13 @@ void main() {
       );
     });
   });
+
+  group('ClockTime.ago', () {
+    test('reads as plain relative time', () {
+      expect(ClockTime.ago(const Duration(seconds: 40)), 'just now');
+      expect(ClockTime.ago(const Duration(minutes: 1)), '1 min ago');
+      expect(ClockTime.ago(const Duration(minutes: 59)), '59 min ago');
+      expect(ClockTime.ago(const Duration(hours: 3, minutes: 5)), '3 h ago');
+    });
+  });
 }

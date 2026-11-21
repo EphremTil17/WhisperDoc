@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/ui/screens/settings/widgets/secure_key_field.dart';
-import 'package:flutter_client/ui/shared/widgets/glass_dropdown.dart';
+import 'package:flutter_client/ui/shared/widgets/app_dropdown.dart';
 
 class GroqFields extends StatelessWidget {
   const GroqFields({
@@ -128,7 +128,7 @@ class GroqFields extends StatelessWidget {
                     style: TextStyle(color: Colors.white38, fontSize: 10),
                   ),
                   const SizedBox(height: 4),
-                  GlassDropdown<String>(
+                  AppDropdown<String>(
                     value:
                         AppConstants.groqSupportedModels.contains(
                           selectedGroqModel,
@@ -137,7 +137,7 @@ class GroqFields extends StatelessWidget {
                         : AppConstants.groqDefaultModel,
                     items: [
                       for (final model in AppConstants.groqSupportedModels)
-                        GlassDropdownItem(
+                        AppDropdownItem(
                           value: model,
                           label:
                               AppConstants.groqModelDisplayNames[model] ??

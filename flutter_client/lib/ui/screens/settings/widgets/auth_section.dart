@@ -36,7 +36,7 @@ class _AuthSectionState extends State<AuthSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // --- Primary OIDC Section ---
-        const Text('IDENTITY & ACCESS', style: AppType.label),
+        const Text('Sign-in', style: AppType.label),
         const SizedBox(height: 12),
 
         if (isAuthenticated && user != null)

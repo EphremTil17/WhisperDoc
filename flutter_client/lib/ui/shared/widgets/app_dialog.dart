@@ -72,18 +72,27 @@ class AppDialog extends StatelessWidget {
                     end: AppSpace.xs,
                   ),
                   child: Row(
-                    spacing: AppSpace.sm,
                     children: [
-                      Flexible(
-                        child: CrispText(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppType.body.copyWith(fontWeight: FontWeight.w600),
+                      // The title area takes all free space, so the close
+                      // button always sits at the right edge.
+                      Expanded(
+                        child: Row(
+                          spacing: AppSpace.sm,
+                          children: [
+                            Flexible(
+                              child: CrispText(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppType.body.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            ?titleTrailing,
+                          ],
                         ),
                       ),
-                      ?titleTrailing,
-                      const Spacer(),
                       IconButton(
                         tooltip: 'Close',
                         onPressed: () => Navigator.of(context).pop(),

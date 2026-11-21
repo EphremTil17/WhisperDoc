@@ -53,7 +53,7 @@ void main() {
       );
 
   testWidgets(
-    'renders rectangular button with fixed width and active profile',
+    'renders the picker glyph and the active style',
     (tester) async {
       when(() => mockSettings.dictationProfile)
           .thenReturn(DictationProfile.clean);
@@ -62,7 +62,7 @@ void main() {
       await orchestrator.pumpButton();
 
       expect(find.text('Clean'), findsOneWidget);
-      expect(find.byIcon(AppIcons.sparkles), findsOneWidget);
+      expect(find.byIcon(AppIcons.type), findsOneWidget);
 
       // Profile menu overlay should not be visible yet
       expect(find.text('Clean disfluencies'), findsNothing);
@@ -196,7 +196,7 @@ void main() {
     await orchestrator.pumpButton();
 
     expect(find.text('Engineering Spec'), findsOneWidget);
-    expect(find.byIcon(AppIcons.slidersHorizontal), findsOneWidget);
+    expect(find.byIcon(AppIcons.type), findsOneWidget);
   });
 
   testWidgets('shows blocked state for LLM profile when Groq key is missing', (

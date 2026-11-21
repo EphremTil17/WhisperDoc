@@ -24,9 +24,6 @@ class ProfileActionButton extends StatefulWidget {
   static const double menuWidth = 224;
 
   static const double _buttonTooltipOffset = 20;
-  static const double _menuShadowAlpha = 0.6;
-  static const double _menuShadowBlur = 20;
-  static const double _menuShadowOffsetY = 6;
   static const double _chevronSize = 14;
   static const double _contentGap = 6;
   static const double _padX = 10;
@@ -183,8 +180,10 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
                 mainAxisSize: MainAxisSize.min,
                 spacing: ProfileActionButton._contentGap,
                 children: [
-                  Icon(
-                    DictationProfileUiMapper.iconFor(activeProfile),
+                  // One glyph for the picker itself; each style's own glyph
+                  // appears in the menu rows.
+                  const Icon(
+                    AppIcons.type,
                     size: AppSizes.smallIconSize,
                     color: AppColors.textMuted,
                   ),
@@ -225,19 +224,10 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
 
     return Container(
       padding: const EdgeInsets.all(AppSpace.xs),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadius.controlAll,
-        border: Border.all(color: AppColors.rule),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: ProfileActionButton._menuShadowAlpha,
-            ),
-            blurRadius: ProfileActionButton._menuShadowBlur,
-            offset: const Offset(0, ProfileActionButton._menuShadowOffsetY),
-          ),
-        ],
+        border: Border.fromBorderSide(BorderSide(color: AppColors.rule)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

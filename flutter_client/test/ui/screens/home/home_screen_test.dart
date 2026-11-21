@@ -40,7 +40,8 @@ void main() {
 
       expect(find.byType(CaptionBand), findsOneWidget);
       expect(find.bySemanticsLabel(transcript), findsOneWidget);
-      expect(find.text('Copied'), findsOneWidget);
+      expect(find.text('just now'), findsOneWidget);
+      expect(find.byTooltip('Copy again'), findsOneWidget);
     });
 
     testWidgets('listening: Stop, the meter, and locked controls', (tester) async {

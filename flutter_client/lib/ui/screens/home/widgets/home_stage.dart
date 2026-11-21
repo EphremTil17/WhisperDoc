@@ -49,7 +49,7 @@ class _HomeStageState extends State<HomeStage> {
             CaptionCue(
               status.cue,
               tone: status.tone,
-              icon: phase == HomePhase.blocked ? status.fix.icon : null,
+              icon: phase == HomePhase.blocked ? status.fix.problemIcon : null,
             ),
           const SizedBox(height: AppSpace.md),
           switch (phase) {

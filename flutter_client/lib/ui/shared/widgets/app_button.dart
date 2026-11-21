@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
+import 'package:flutter_client/ui/shared/widgets/dashed_outline.dart';
 
 /// The single button component: squared corners, flat fills, 40px tall.
 class AppButton extends StatelessWidget {
@@ -33,7 +34,7 @@ class AppButton extends StatelessWidget {
     final mark = leading;
     final enabled = onPressed != null;
 
-    return TextButton(
+    final button = TextButton(
       onPressed: onPressed,
       style: ButtonStyle(
         minimumSize: const WidgetStatePropertyAll(
@@ -52,7 +53,7 @@ class AppButton extends StatelessWidget {
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
             borderRadius: AppRadius.controlAll,
-            side: tone == AppButtonTone.outline || !enabled
+            side: tone == AppButtonTone.outline && enabled
                 ? const BorderSide(color: AppColors.outline)
                 : BorderSide.none,
           ),
@@ -74,6 +75,9 @@ class AppButton extends StatelessWidget {
         ],
       ),
     );
+
+    // Unavailable controls get a dashed outline instead of a solid one.
+    return enabled ? button : DashedOutline(child: button);
   }
 }
 

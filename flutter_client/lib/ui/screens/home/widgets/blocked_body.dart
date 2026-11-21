@@ -45,7 +45,7 @@ class BlockedBody extends StatelessWidget {
           const SizedBox(height: _fixGap),
           AppButton(
             label: fixLabel,
-            leading: Icon(status.fix.icon, size: AppSizes.smallIconSize),
+            leading: Icon(status.fix.actionIcon, size: AppSizes.smallIconSize),
             onPressed: () => _run(context, status.fix),
           ),
         ],

@@ -139,7 +139,10 @@ class _PixelMeterPainter extends CustomPainter {
       final body = _tierFor(position);
 
       for (var r = 0; r < n; r++) {
-        final tier = (r == n - 1 && position < _brightAge) ? _tip : body;
+        // The light tip caps a column of sound; a one-row silent column
+        // stays in its body colour so silence never reads brighter.
+        final isTip = n > 1 && r == n - 1 && position < _brightAge;
+        final tier = isTip ? _tip : body;
         tier.addPair(x, centre, r);
       }
       if (age == 0 && peakRows > n) _peak.addPair(x, centre, peakRows - 1);
