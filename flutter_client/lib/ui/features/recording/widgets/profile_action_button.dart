@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/mappers/dictation_profile_ui_mapper.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
@@ -11,32 +13,23 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/features/recording/widgets/add_custom_profile_tile.dart';
 import 'package:flutter_client/ui/features/recording/widgets/profile_menu_item_tile.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_editor_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 
-/// Compact rectangular profile action button designed for the [ActionBar].
-/// Matches the height and gray glass aesthetic of adjacent controls.
-/// Displays an aligned vertical menu overlay on hover or click with zero layout jitter.
+/// Output-style picker for the home bottom bar: the active style's glyph,
+/// its name and a chevron. Opens a vertical menu above itself, left-aligned,
+/// with zero layout jitter.
 class ProfileActionButton extends StatefulWidget {
   const ProfileActionButton({super.key});
 
-  static const double buttonWidth = 92;
-  static const double buttonHeight = 34;
   static const double menuWidth = 224;
 
-  static const double _buttonHoverBgAlpha = 0.2;
-  static const double _buttonIdleBgAlpha = 0.08;
-  static const double _buttonHoverBorderAlpha = 0.5;
-  static const double _buttonIdleBorderAlpha = 0.15;
   static const double _buttonTooltipOffset = 20;
-  static const double _menuBorderAlpha = 0.16;
   static const double _menuShadowAlpha = 0.6;
   static const double _menuShadowBlur = 20;
   static const double _menuShadowOffsetY = 6;
-  static const double _buttonIconSize = 14;
-  static const double _buttonChevronSize = 13;
-  static const double _buttonFontSize = 11.5;
-  static const double _buttonLetterSpacing = 0.15;
-  static const double _buttonLineHeight = 1.2;
-  static const double _buttonChevronAlpha = 0.75;
+  static const double _chevronSize = 14;
+  static const double _contentGap = 6;
+  static const double _padX = 10;
 
   @override
   State<ProfileActionButton> createState() => _ProfileActionButtonState();
@@ -94,8 +87,8 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
             child: CompositedTransformFollower(
               link: _layerLink,
               showWhenUnlinked: false,
-              targetAnchor: Alignment.topRight,
-              followerAnchor: Alignment.bottomRight,
+              targetAnchor: Alignment.topLeft,
+              followerAnchor: Alignment.bottomLeft,
               offset: const Offset(0, -6),
               child: Material(
                 color: Colors.transparent,
@@ -161,29 +154,11 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
     final tooltip =
         'Profile: ${activeProfile.label} (${DictationProfileUiMapper.subtitleFor(activeProfile)})';
 
-    final Color backgroundColor = _isButtonHovered || _isMenuOpen
-        ? Colors.white.withValues(
-            alpha: ProfileActionButton._buttonHoverBgAlpha,
-          )
-        : Colors.white.withValues(
-            alpha: ProfileActionButton._buttonIdleBgAlpha,
-          );
-
-    final Color borderColor = _isButtonHovered || _isMenuOpen
-        ? Colors.white.withValues(
-            alpha: ProfileActionButton._buttonHoverBorderAlpha,
-          )
-        : Colors.white.withValues(
-            alpha: ProfileActionButton._buttonIdleBorderAlpha,
-          );
-
-    final Color contentColor = _isButtonHovered || _isMenuOpen
-        ? Colors.white
-        : const Color(0xFFD0D0D8);
+    final active = _isButtonHovered || _isMenuOpen;
 
     return Tooltip(
       message: tooltip,
-      preferBelow: true,
+      preferBelow: false,
       verticalOffset: ProfileActionButton._buttonTooltipOffset,
       child: CompositedTransformTarget(
         link: _layerLink,
@@ -195,46 +170,37 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
             onTap: () => _toggleMenu(context),
             behavior: HitTestBehavior.opaque,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              width: ProfileActionButton.buttonWidth,
-              height: ProfileActionButton.buttonHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+              duration: AppMotion.quick,
+              height: AppSizes.controlHeight,
+              padding: const EdgeInsets.symmetric(
+                horizontal: ProfileActionButton._padX,
+              ),
               decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: const BorderRadius.all(Radius.circular(8)),
-                border: Border.all(color: borderColor, width: 1),
+                color: active ? AppColors.band : Colors.transparent,
+                borderRadius: AppRadius.controlAll,
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                spacing: ProfileActionButton._contentGap,
                 children: [
                   Icon(
                     DictationProfileUiMapper.iconFor(activeProfile),
-                    size: ProfileActionButton._buttonIconSize,
-                    color: contentColor,
+                    size: AppSizes.smallIconSize,
+                    color: AppColors.textMuted,
                   ),
-                  const SizedBox(width: 5),
+                  // Custom style names can be long: shrink, never overflow.
                   Flexible(
-                    child: Text(
+                    child: CrispText(
                       activeProfile.label,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: contentColor,
-                        fontSize: ProfileActionButton._buttonFontSize,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: ProfileActionButton._buttonLetterSpacing,
-                        height: ProfileActionButton._buttonLineHeight,
-                      ),
+                      style: AppType.caption.copyWith(fontWeight: FontWeight.w500),
                     ),
                   ),
-                  const SizedBox(width: 3),
                   Icon(
-                    _isMenuOpen
-                        ? Icons.arrow_drop_up_rounded
-                        : Icons.unfold_more_rounded,
-                    size: ProfileActionButton._buttonChevronSize,
-                    color: contentColor.withValues(
-                      alpha: ProfileActionButton._buttonChevronAlpha,
-                    ),
+                    _isMenuOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                    size: ProfileActionButton._chevronSize,
+                    color: AppColors.textMuted,
                   ),
                 ],
               ),
@@ -258,16 +224,11 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
     ];
 
     return Container(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(AppSpace.xs),
       decoration: BoxDecoration(
-        color: const Color(0xF518181F),
-        borderRadius: const BorderRadius.all(Radius.circular(10)),
-        border: Border.all(
-          color: Colors.white.withValues(
-            alpha: ProfileActionButton._menuBorderAlpha,
-          ),
-          width: 1,
-        ),
+        color: AppColors.surface,
+        borderRadius: AppRadius.controlAll,
+        border: Border.all(color: AppColors.rule),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(

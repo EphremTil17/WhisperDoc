@@ -4,8 +4,6 @@ import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 class AppTheme {
   static const Color crimsonPrimary = Color(0xFFDC143C); // Crimson
   static const Color crimsonDark = Color(0xFF990000); // Darker Crimson
-  static const Color backgroundStart = Color(0xFF1a0a0f); // Dark gradient start
-  static const Color backgroundEnd = Color(0xFF2d0a1a); // Dark gradient end
   static const Color surface = Color(0xCC1E1E23); // Semi-transparent surface
   static const Color glassBorder = Color(0x1AFFFFFF); // White with low opacity
   static const Color cardBackground = Color(0x0DFFFFFF); // Very subtle white
@@ -50,6 +48,16 @@ class AppTheme {
           splashFactory: NoSplash.splashFactory,
         ),
       ),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.surface,
+        contentTextStyle: AppType.caption,
+        insetPadding: EdgeInsets.all(AppSpace.lg),
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.controlAll,
+          side: BorderSide(color: AppColors.rule),
+        ),
+      ),
       tooltipTheme: const TooltipThemeData(
         decoration: BoxDecoration(
           color: AppColors.band,
@@ -80,14 +88,6 @@ class AppTheme {
       iconTheme: const IconThemeData(color: Colors.white70),
     );
   }
-
-  static BoxDecoration get mainGradient => const BoxDecoration(
-    gradient: LinearGradient(
-      colors: [backgroundStart, backgroundEnd],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-  );
 
   static BoxDecoration get glassDecoration => BoxDecoration(
     color: surface,

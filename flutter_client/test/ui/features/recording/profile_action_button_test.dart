@@ -1,6 +1,7 @@
 // ignore_for_file: avoid-late-keyword, prefer-match-file-name
 import 'dart:ui';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -61,7 +62,7 @@ void main() {
       await orchestrator.pumpButton();
 
       expect(find.text('Clean'), findsOneWidget);
-      expect(find.byIcon(Icons.auto_fix_high_rounded), findsOneWidget);
+      expect(find.byIcon(LucideIcons.sparkles), findsOneWidget);
 
       // Profile menu overlay should not be visible yet
       expect(find.text('Clean disfluencies'), findsNothing);
@@ -134,7 +135,7 @@ void main() {
       expect(find.text('Verbatim transcription'), findsOneWidget);
 
       // Only the custom profile has the edit icon
-      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      expect(find.byIcon(LucideIcons.pencil), findsOneWidget);
     },
   );
 
@@ -195,7 +196,7 @@ void main() {
     await orchestrator.pumpButton();
 
     expect(find.text('Engineering Spec'), findsOneWidget);
-    expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+    expect(find.byIcon(LucideIcons.slidersHorizontal), findsOneWidget);
   });
 
   testWidgets('shows blocked state for LLM profile when Groq key is missing', (
@@ -215,7 +216,7 @@ void main() {
     verifyNever(
       () => mockSettings.setDictationProfile(DictationProfile.professional),
     );
-    expect(find.byIcon(Icons.key_off_outlined), findsWidgets);
+    expect(find.byIcon(LucideIcons.keyRound), findsWidgets);
   });
 
   testWidgets(
@@ -239,7 +240,7 @@ void main() {
   );
 
   testWidgets(
-    'hovering displays tooltip at the bottom position and does not open menu',
+    'hovering displays tooltip above the button and does not open menu',
     (tester) async {
       tester.view.physicalSize = const Size(420, 600);
       tester.view.devicePixelRatio = 1.0;
@@ -263,8 +264,8 @@ void main() {
       final tooltipRect = tester.getRect(tooltipTextFinder);
       final buttonRect = tester.getRect(find.byType(AnimatedContainer).first);
 
-      // Verify tooltip is positioned strictly below the button
-      expect(tooltipRect.top, greaterThanOrEqualTo(buttonRect.bottom));
+      // The picker sits on the bottom bar, so its tooltip opens above it.
+      expect(tooltipRect.bottom, lessThanOrEqualTo(buttonRect.top));
 
       // Verify vertical menu list is NOT opened on hover (click-only model)
       expect(find.text('Verbatim transcription'), findsNothing);

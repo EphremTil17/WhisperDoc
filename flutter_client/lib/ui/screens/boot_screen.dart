@@ -1,8 +1,9 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
+import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 
-/// The app's first frame: its background and title bar, so the window opens
+/// The app's first frame: its ground and title bar, so the window opens
 /// already looking like WhisperDoc while services start. Shows [error] if
 /// startup fails, so the window never sits blank.
 class BootScreen extends StatelessWidget {
@@ -15,26 +16,23 @@ class BootScreen extends StatelessWidget {
     final failure = error;
 
     return Scaffold(
-      body: DecoratedBox(
-        decoration: AppTheme.mainGradient,
-        child: Column(
-          children: [
-            const CustomTitleBar(),
-            if (failure != null)
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      'WhisperDoc could not start.\n\n$failure',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
+      body: Column(
+        children: [
+          const CustomTitleBar(),
+          if (failure != null)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.xl),
+                  child: CrispText(
+                    'WhisperDoc could not start.\n\n$failure',
+                    textAlign: TextAlign.center,
+                    style: AppType.caption.copyWith(color: AppColors.textMuted),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

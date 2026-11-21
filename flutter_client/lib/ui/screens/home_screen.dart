@@ -5,19 +5,15 @@ import 'package:provider/provider.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
-import 'package:flutter_client/ui/features/recording/recording.dart';
-import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
-import 'package:flutter_client/ui/shared/widgets/profile_hub.dart';
+import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
-import 'package:flutter_client/ui/shared/widgets/app_footer.dart';
-import 'package:flutter_client/ui/shared/widgets/action_bar.dart';
-import 'package:flutter_client/ui/screens/home/widgets/transcription_view.dart';
-import 'package:flutter_client/ui/screens/home/widgets/home_header.dart';
-import 'package:flutter_client/ui/screens/home/widgets/recording_view.dart';
-import 'package:flutter_client/ui/screens/home/widgets/ban_overlay.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/auth_error_dialog.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/incognito_toggle_dialog.dart';
-import 'package:flutter_client/infrastructure/theme/app_theme.dart';
+import 'package:flutter_client/ui/screens/home/widgets/account_indicator.dart';
+import 'package:flutter_client/ui/screens/home/widgets/ban_overlay.dart';
+import 'package:flutter_client/ui/screens/home/widgets/home_bottom_bar.dart';
+import 'package:flutter_client/ui/screens/home/widgets/home_stage.dart';
+import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,10 +23,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  static const _snackBarWidth = 350.0;
-  static const _snackBarShortSeconds = 1;
-  static const _snackBarAlphaStrong = 0.9;
-  static const _snackBarAlphaMedium = 0.8;
+  static const _briefNotice = Duration(seconds: 1);
+  static const _notice = Duration(seconds: 2);
 
   StreamSubscription? _hotkeySubscription;
   StreamSubscription? _errorSubscription;
@@ -69,17 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // 2. Handle Update Errors
       if (lowerError.contains('update required')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Update Required. Redirecting...'),
-            backgroundColor: AppTheme.crimsonPrimary.withValues(
-              alpha: _snackBarAlphaStrong,
-            ),
-            behavior: SnackBarBehavior.floating,
-            width: _snackBarWidth,
-            duration: const Duration(seconds: _snackBarShortSeconds),
-          ),
-        );
+        _notify('Update required. Redirecting…', _briefNotice);
 
         return;
       }
@@ -97,17 +81,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       } else {
         // 4. Default: Ephemeral Notification
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(error),
-            backgroundColor: Colors.redAccent.withValues(
-              alpha: _snackBarAlphaMedium,
-            ),
-            behavior: SnackBarBehavior.floating,
-            width: _snackBarWidth,
-            duration: const Duration(seconds: _snackBarShortSeconds),
-          ),
-        );
+        _notify(error, _briefNotice);
       }
     });
 
@@ -147,24 +121,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// One look for every notice (set by the snackbar theme).
+  void _notify(String message, Duration duration) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: duration),
+    );
+  }
+
   Future<void> _toggleIncognitoMode(
     BuildContext context,
     RecordingController controller,
   ) async {
     if (controller.isRecording) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Finish recording before changing privacy mode',
-            style: TextStyle(color: Colors.white),
-          ),
-          backgroundColor: Colors.orangeAccent.withValues(
-            alpha: _snackBarAlphaMedium,
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      _notify('Finish recording before changing privacy mode', _notice);
 
       return;
     }
@@ -194,47 +164,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: AppTheme.mainGradient,
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                const CustomTitleBar(),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      const Positioned(top: 10, right: 24, child: ProfileHub()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          children: [
-                            const HomeHeader(),
-                            const RecordingView(),
-                            const Expanded(child: TranscriptionView()),
-                            ActionBar(
-                              onIncognitoTap: () => unawaited(
-                                _toggleIncognitoMode(
-                                  context,
-                                  context.read<RecordingController>(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            const StatusBar(),
-                            const SizedBox(height: 24),
-                          ],
-                        ),
-                      ),
-                    ],
+      body: Stack(
+        children: [
+          Column(
+            children: [
+              const CustomTitleBar(trailing: AccountIndicator()),
+              const Expanded(child: HomeStage()),
+              HomeBottomBar(
+                onIncognitoTap: () => unawaited(
+                  _toggleIncognitoMode(
+                    context,
+                    context.read<RecordingController>(),
                   ),
                 ),
-                const AppFooter(),
-              ],
-            ),
-            const BanOverlay(),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const BanOverlay(),
+        ],
       ),
     );
   }

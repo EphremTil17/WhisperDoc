@@ -10,6 +10,9 @@ abstract final class AppColors {
   /// Window ground.
   static const Color ground = Color(0xFF0B0A0C);
 
+  /// Raised surfaces that float over the ground: menus, popovers.
+  static const Color surface = Color(0xFF171415);
+
   /// Caption bands, keycaps and pressed/hovered surfaces.
   static const Color band = Color(0xFF26211F);
 
