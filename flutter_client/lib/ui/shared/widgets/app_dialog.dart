@@ -4,12 +4,14 @@ import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 
 /// The one dialog shell: a flat raised surface with a 1px rule, a title row
-/// with a close button, a body, and an optional footer.
+/// with a close button, a body, and an optional footer. Only for short
+/// interruptions (confirmations, the shortcut recorder, the style editor);
+/// places the user goes to are panels (see AppPanel).
 ///
 /// ```dart
 /// showDialog(
 ///   context: context,
-///   builder: (_) => AppDialog(title: 'History', body: HistoryList()),
+///   builder: (_) => AppDialog(title: 'Shortcut', body: Recorder()),
 /// );
 /// ```
 class AppDialog extends StatelessWidget {

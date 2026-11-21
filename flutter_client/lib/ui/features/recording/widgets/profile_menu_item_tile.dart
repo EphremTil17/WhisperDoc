@@ -26,10 +26,10 @@ class ProfileMenuItemTile extends StatefulWidget {
   final VoidCallback? onEdit;
 
   static const EdgeInsets _padding = EdgeInsets.symmetric(
-    horizontal: 10,
+    horizontal: AppSpace.md,
     vertical: AppSpace.sm,
   );
-  static const double _editPadStart = 6;
+  static const double _editPadStart = AppSpace.sm;
 
   @override
   State<ProfileMenuItemTile> createState() => _ProfileMenuItemTileState();
@@ -42,8 +42,9 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
   Widget build(BuildContext context) {
     final enabled = widget.isEnabled;
     final filled = widget.isSelected || (_isHovered && enabled);
-    final ink = enabled ? AppColors.text : AppColors.iconFaint;
-    final meta = enabled ? AppColors.textMuted : AppColors.iconFaint;
+    // Faint is for icons only; unavailable text steps down to muted.
+    final ink = enabled ? AppColors.text : AppColors.textMuted;
+    const meta = AppColors.textMuted;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -60,7 +61,7 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
             borderRadius: AppRadius.controlAll,
           ),
           child: Row(
-            spacing: 10,
+            spacing: AppSpace.md,
             children: [
               Icon(
                 DictationProfileUiMapper.iconFor(widget.profile),

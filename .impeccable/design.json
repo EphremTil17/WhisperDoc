@@ -267,11 +267,11 @@
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Blocked-state headlines and the shortcut line."
+        "purpose": "Blocked-state headlines and the shortcut line; panel titles (600)."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Body copy, values, button labels (500), dialog titles (600)."
+        "purpose": "Body copy, panel row labels, history text, button labels (500), dialog titles and the Account identity name (600)."
       },
       "caption-band": {
         "displayName": "Caption Band",
@@ -279,11 +279,15 @@
       },
       "caption": {
         "displayName": "Caption",
-        "purpose": "Cues, meta, tooltips, snackbars, keycaps, title-bar wordmark."
+        "purpose": "Cues, meta and history stamps, panel row values and subtitles, field notes and errors, tooltips, snackbars, keycaps and links (500), title-bar wordmark (600)."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Muted section headings in panels and settings."
+        "purpose": "Muted panel section headings and field labels."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "JetBrains Mono, log lines only."
       }
     },
     "shadows": [],
@@ -291,7 +295,7 @@
       {
         "name": "quick",
         "value": "120ms cubic-bezier(0.33, 1, 0.68, 1)",
-        "purpose": "AppMotion.quick with Curves.easeOutCubic: hover, focus, panel open."
+        "purpose": "AppMotion.quick with Curves.easeOutCubic: hover, focus, and the fade that opens and closes a full-window panel (AppPanel.push)."
       },
       {
         "name": "meter",
@@ -364,20 +368,28 @@
       "css": ".ds-icon-btn { width:40px; height:40px; display:inline-grid; place-items:center; background:transparent; color:#A69DA0; border:none; border-radius:2px; cursor:pointer; transition: background 120ms cubic-bezier(0.33,1,0.68,1); } .ds-icon-btn:hover, .ds-icon-btn:active { background:#26211F; } .ds-icon-btn:focus-visible { outline:1px solid #A69DA0; outline-offset:-1px; } .ds-icon-btn:disabled { color:#6B6265; background:transparent; }"
     },
     {
-      "name": "Dialog Shell",
+      "name": "Confirm Dialog",
       "kind": "card",
       "refersTo": "dialog",
-      "description": "Surface panel with a 1px rule, 48px header with close, body with label, switches and input, footer.",
-      "html": "<div class=\"ds-dialog\"><div class=\"ds-dialog-head\"><span>Settings</span><button aria-label=\"Close\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></div><div class=\"ds-dialog-body\"><div class=\"ds-label\">When you stop</div><div class=\"ds-row\"><span>Copy to clipboard</span><span class=\"ds-switch on\"></span></div><div class=\"ds-row\"><span>Paste where your cursor is</span><span class=\"ds-switch\"></span></div><input class=\"ds-input\" placeholder=\"https://whisper.example.com\"></div><div class=\"ds-dialog-foot\">Done</div></div>",
-      "css": ".ds-dialog { font-family: Lexend, sans-serif; width:388px; background:#171415; border:1px solid #221E20; border-radius:2px; color:#FFFFFF; } .ds-dialog-head { height:48px; display:flex; align-items:center; justify-content:space-between; padding:0 4px 0 16px; border-bottom:1px solid #221E20; font-size:16px; line-height:24px; font-weight:600; } .ds-dialog-head button { width:40px; height:40px; display:grid; place-items:center; background:transparent; border:none; color:#A69DA0; border-radius:2px; } .ds-dialog-head button:hover { background:#26211F; } .ds-dialog-body { padding:16px; display:flex; flex-direction:column; gap:12px; } .ds-label { font-size:12px; line-height:17px; font-weight:500; color:#A69DA0; } .ds-row { display:flex; justify-content:space-between; align-items:center; font-size:16px; line-height:24px; } .ds-switch { width:52px; height:32px; border-radius:16px; border:2px solid #4A4245; box-sizing:border-box; position:relative; } .ds-switch::after { content:''; position:absolute; top:8px; left:8px; width:12px; height:12px; border-radius:50%; background:#6B6265; } .ds-switch.on { background:#FFFFFF; border-color:#FFFFFF; } .ds-switch.on::after { left:22px; top:2px; width:24px; height:24px; background:#0B0A0C; } .ds-input { font-family: Lexend, sans-serif; height:48px; padding:0 16px; background:#0B0A0C; color:#FFFFFF; font-size:16px; border:1px solid #221E20; border-radius:2px; outline:none; } .ds-input::placeholder { color:#A69DA0; } .ds-input:focus { border-color:#A69DA0; } .ds-dialog-foot { border-top:1px solid #221E20; padding:16px; text-align:right; font-size:16px; font-weight:500; }"
+      "description": "The AppDialog shell as ConfirmDialog.ask: surface with a 1px rule, 48px header with close, one muted sentence, Cancel and the confirm action.",
+      "html": "<div class=\"ds-dialog\"><div class=\"ds-dialog-head\"><span>Remove API key?</span><button aria-label=\"Close\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></div><div class=\"ds-dialog-body\">WhisperDoc stops transcribing until you add a key again.</div><div class=\"ds-dialog-foot\"><button class=\"ds-d-outline\">Cancel</button><button class=\"ds-d-primary\">Remove</button></div></div>",
+      "css": ".ds-dialog { font-family: Lexend, sans-serif; width:360px; background:#171415; border:1px solid #221E20; border-radius:2px; color:#FFFFFF; } .ds-dialog-head { height:48px; display:flex; align-items:center; justify-content:space-between; padding:0 4px 0 16px; border-bottom:1px solid #221E20; font-size:16px; line-height:24px; font-weight:600; } .ds-dialog-head button { width:40px; height:40px; display:grid; place-items:center; background:transparent; border:none; color:#A69DA0; border-radius:2px; cursor:pointer; } .ds-dialog-head button:hover { background:#26211F; } .ds-dialog-body { padding:16px; font-size:16px; line-height:24px; color:#A69DA0; } .ds-dialog-foot { border-top:1px solid #221E20; padding:16px; display:flex; justify-content:flex-end; gap:8px; } .ds-dialog-foot button { font-family:inherit; height:40px; padding:0 16px 0 14px; font-size:16px; line-height:24px; font-weight:500; border-radius:2px; cursor:pointer; } .ds-d-outline { background:transparent; color:#FFFFFF; border:1px solid #4A4245; } .ds-d-primary { background:#FFFFFF; color:#0B0A0C; border:none; } .ds-dialog-foot button:focus-visible { outline:1px solid #FFFFFF; outline-offset:2px; }"
     },
     {
-      "name": "Menu",
+      "name": "Style Menu",
       "kind": "nav",
       "refersTo": "menu",
-      "description": "Surface menu with a rule border; rows muted, selected row band-filled and white with a check.",
+      "description": "Surface menu with a rule border; rows band-filled when hovered or selected, a white check on the selected style.",
       "html": "<div class=\"ds-menu\"><div class=\"ds-menu-item sel\">Raw <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></div><div class=\"ds-menu-item\">Clean</div><div class=\"ds-menu-item\">Pro</div></div>",
-      "css": ".ds-menu { font-family: Lexend, sans-serif; width:220px; padding:4px; background:#171415; border:1px solid #221E20; border-radius:2px; } .ds-menu-item { height:40px; display:flex; align-items:center; justify-content:space-between; padding:0 12px; border-radius:2px; color:#A69DA0; font-size:16px; line-height:24px; cursor:pointer; transition: background 120ms cubic-bezier(0.33,1,0.68,1); } .ds-menu-item:hover { background:#26211F; } .ds-menu-item.sel { background:#26211F; color:#FFFFFF; }"
+      "css": ".ds-menu { font-family: Lexend, sans-serif; width:220px; padding:4px; background:#171415; border:1px solid #221E20; border-radius:2px; } .ds-menu-item { height:40px; display:flex; align-items:center; justify-content:space-between; padding:0 12px; border-radius:2px; color:#FFFFFF; font-size:12px; font-weight:500; line-height:17px; cursor:pointer; transition: background 120ms cubic-bezier(0.33,1,0.68,1); } .ds-menu-item:hover { background:#26211F; } .ds-menu-item.sel { background:#26211F; color:#FFFFFF; }"
+    },
+    {
+      "name": "Full-Window Panel",
+      "kind": "nav",
+      "refersTo": "panel-row",
+      "description": "AppPanel: 48px header with back chevron and title, label-headed sections of 48px rows (icon, label, muted value, faint chevron, or a 40x24 switch), band on hover, rule beneath; a disabled toggle reads as off.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-panel-head\"><button aria-label=\"Back\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"/></svg></button><h2>Settings</h2></div><div class=\"ds-panel-list\"><div class=\"ds-panel-label\">Recording</div><button class=\"ds-panel-row\"><span class=\"ds-ico\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 19v3\"/><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/><rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/></svg></span><span class=\"ds-lbl\">Microphone</span><span class=\"ds-val\">System default</span><span class=\"ds-chev\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg></span></button><button class=\"ds-panel-row\"><span class=\"ds-ico\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 8h.01\"/><path d=\"M12 12h.01\"/><path d=\"M14 8h.01\"/><path d=\"M16 12h.01\"/><path d=\"M18 8h.01\"/><path d=\"M6 8h.01\"/><path d=\"M7 16h10\"/><path d=\"M8 12h.01\"/><rect width=\"20\" height=\"16\" x=\"2\" y=\"4\" rx=\"2\"/></svg></span><span class=\"ds-lbl\">Shortcut</span><kbd class=\"ds-kc\">Ctrl Q</kbd><span class=\"ds-chev\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg></span></button><div class=\"ds-panel-label\">When you stop</div><button class=\"ds-panel-row\" role=\"switch\" aria-checked=\"true\"><span class=\"ds-ico\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/></svg></span><span class=\"ds-lbl\">Copy to clipboard</span><span class=\"ds-sw on\"></span></button><button class=\"ds-panel-row\" role=\"switch\" aria-checked=\"false\" disabled><span class=\"ds-ico\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 5v14\"/><path d=\"M21 12H7\"/><path d=\"m15 18 6-6-6-6\"/></svg></span><span class=\"ds-lbl\">Paste where your cursor is<small>Needs Copy to clipboard</small></span><span class=\"ds-sw\"></span></button></div><div class=\"ds-panel-foot\"><a href=\"#\" class=\"ds-link ds-link-alert\">Remove API key</a></div></div>",
+      "css": ".ds-panel { font-family: Lexend, sans-serif; width:420px; background:#0B0A0C; color:#FFFFFF; } .ds-panel-head { height:48px; display:flex; align-items:center; gap:4px; padding:0 4px 0 8px; } .ds-panel-head button { width:40px; height:40px; display:grid; place-items:center; background:transparent; border:none; color:#FFFFFF; border-radius:2px; cursor:pointer; } .ds-panel-head button:hover { background:#26211F; } .ds-panel-head h2 { margin:0; font-size:20px; line-height:29px; font-weight:600; } .ds-panel-list { padding:0 8px 16px; } .ds-panel-label { padding:24px 8px 4px; font-size:12px; line-height:17px; font-weight:500; color:#A69DA0; } .ds-panel-row { all:unset; box-sizing:border-box; width:100%; min-height:48px; display:flex; align-items:center; padding:8px; border-bottom:1px solid #221E20; border-radius:2px; cursor:pointer; transition: background 120ms cubic-bezier(0.33,1,0.68,1); } .ds-panel-row:hover, .ds-panel-row:focus-visible { background:#26211F; } .ds-panel-row:disabled { cursor:default; background:transparent; } .ds-ico { color:#A69DA0; display:grid; margin-right:24px; } .ds-panel-row:disabled .ds-ico { color:#6B6265; } .ds-lbl { flex:1; font-size:16px; line-height:24px; display:flex; flex-direction:column; } .ds-panel-row:disabled .ds-lbl { color:#A69DA0; } .ds-lbl small { font-size:12px; line-height:17px; color:#A69DA0; } .ds-val { max-width:168px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; line-height:17px; color:#A69DA0; margin-left:8px; } .ds-chev { color:#6B6265; display:grid; margin-left:4px; } .ds-kc { font-family:inherit; font-size:12px; line-height:17px; font-weight:500; background:#26211F; padding:0 8px; margin-left:8px; } .ds-sw { width:40px; height:24px; border-radius:12px; border:2px solid #4A4245; box-sizing:border-box; position:relative; margin-left:8px; } .ds-sw::after { content:\"\"; position:absolute; top:6px; left:6px; width:8px; height:8px; border-radius:50%; background:#6B6265; } .ds-sw.on { background:#FFFFFF; border-color:#FFFFFF; } .ds-sw.on::after { left:18px; top:2px; width:16px; height:16px; background:#0B0A0C; } .ds-panel-row:disabled .ds-sw { border-color:#221E20; background:transparent; } .ds-panel-foot { border-top:1px solid #221E20; padding:8px 16px; } .ds-link { display:inline-flex; align-items:center; height:40px; padding:0 8px; margin-left:-8px; font-size:12px; line-height:17px; font-weight:500; color:#FFFFFF; text-decoration:underline; border-radius:2px; transition: background 120ms cubic-bezier(0.33,1,0.68,1); } .ds-link:hover, .ds-link:focus-visible { background:#26211F; outline:none; } .ds-link-alert { color:#F2566F; }"
     }
   ],
   "narrative": {
@@ -404,7 +416,7 @@
       },
       {
         "name": "The White Switch Rule",
-        "body": "An \"on\" switch is a white track with a ground-coloured thumb; off is a transparent track with an outline border and a faint thumb.",
+        "body": "An \"on\" switch is a white track with a ground-coloured thumb; off is a transparent track with an outline border and a faint thumb. A disabled switch reads as off whatever its value (transparent track, rule outline, faint thumb), so a locked control never shows white.",
         "section": "colors"
       },
       {
@@ -418,6 +430,11 @@
         "section": "typography"
       },
       {
+        "name": "The Places Are Panels Rule",
+        "body": "Somewhere you go is a full-window panel with a back chevron, and Esc goes back. A dialog only asks or captures: confirmations, the sign-in failure notice, the shortcut recorder and the style editor.",
+        "section": "layout"
+      },
+      {
         "name": "The No-Glow Rule",
         "body": "No gradients, glows, glass, blur or soft shadows. A floating thing is a surface fill with a 1px rule, nothing more.",
         "section": "elevation"
@@ -429,7 +446,9 @@
       "**Do** float things on surface with a 1px rule border, and use band for hover, pressed and selected.",
       "**Do** say status as a bracketed caption cue, and give every blocked state its one fix as a primary button.",
       "**Do** mark unavailable controls with the dashed outline rather than lowering opacity.",
-      "**Do** take every colour, size, space, radius and duration from `app_tokens.dart` and every icon from `AppIcons`."
+      "**Do** take every colour, size, space, radius and duration from `app_tokens.dart` and every icon from `AppIcons`.",
+      "**Do** open a destination as a full-window `AppPanel` built from `PanelSection` and `PanelRow`; keep dialogs for confirmations and short captures.",
+      "**Do** ask with `ConfirmDialog.ask` before anything that cannot be undone."
     ],
     "donts": [
       "**Don't** use gradients, glows, glass, blur or soft shadows, or non-zero Material elevation.",

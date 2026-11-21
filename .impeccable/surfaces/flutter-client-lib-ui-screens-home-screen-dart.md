@@ -2,7 +2,7 @@
 version: 1
 slug: "flutter-client-lib-ui-screens-home-screen-dart"
 primary_target: "flutter_client/lib/ui/screens/home_screen.dart"
-related_targets: ["flutter_client/lib/ui/screens/settings_screen.dart"]
+related_targets: ["flutter_client/lib/ui/screens/account_panel.dart", "flutter_client/lib/ui/screens/settings_panel.dart", "flutter_client/lib/ui/screens/history_panel.dart", "flutter_client/lib/ui/screens/logs_panel.dart", "flutter_client/lib/ui/shared/widgets/panel/app_panel.dart"]
 ---
 
 # Home surface (WhisperDoc client window)
@@ -70,12 +70,27 @@ crimson window, framed stage).
 
 ## Open decisions
 
-- Account and Settings as full-window panels (mocked on canvas page R4);
-  this build restyles the existing dialogs to the shared shell instead.
-- Self-hosted backend mode: account panel shows sign-in identity instead of
-  Groq key; same structure.
+None at present.
 
 ## Settled
 
 - Icons: the bundled Lucide font, named in AppIcons (tree-shaken to the
   glyphs in use).
+- Full-window panels (canvas page R4): Account, Settings, History and Logs
+  are AppPanel pages that replace the stage and bottom bar under the title
+  bar, with a back chevron, Esc to go back and a 120ms fade. Each one-value
+  edit or pick inside them is a panel too (FieldPanel, ChoicePanel). Dialogs
+  remain only for confirmations (ConfirmDialog), the sign-in failure notice,
+  the shortcut recorder and the style editor.
+- Account at 600px: Updates and Diagnostics merged into one "App" section
+  (Version with the update note and Update button, or "Up to date" with
+  release notes; then Logs), so identity, connection and app fit the window
+  without crowding. Remove API key / Sign out sit in the footer as an alert
+  link.
+- Self-hosted backend mode: Account keeps the same structure; the identity
+  block shows the signed-in person (40px square avatar, name, email) or the
+  server glyph, and Connection lists Server, Sign in (alert when it is the
+  fix) and Developer key in place of the Groq rows.
+- Custom output styles are created and edited from the bottom-bar style
+  menu (its add row and the pencil on each custom style open the style
+  editor), not from a Settings row.

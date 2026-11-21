@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 /// The app's single theme, built from the tokens in app_tokens.dart. Material
-/// components that are not hand-built (inputs, switches, dropdowns, icon
+/// components that are not hand-built (inputs, switches, icon
 /// buttons, tooltips, snackbars) take the Captions look from here.
 class AppTheme {
   static const double _selectionAlpha = 0.45;
@@ -66,7 +66,7 @@ class AppTheme {
         ),
         waitDuration: Duration(milliseconds: 400),
       ),
-      // Shared look for settings inputs and dropdowns; fields override only
+      // Shared look for panel and dialog inputs; fields override only
       // what differs (padding, hints, error borders).
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

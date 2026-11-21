@@ -18,9 +18,9 @@ class AuthErrorDialog extends StatelessWidget {
 
   final String error;
 
-  static void _openSettings(BuildContext context) {
+  static void _openAccount(BuildContext context) {
     final navigator = Navigator.of(context)..pop();
-    unawaited(HomeNavigation.openSettings(navigator.context));
+    unawaited(HomeNavigation.openAccount(navigator.context));
   }
 
   @override
@@ -42,7 +42,7 @@ class AuthErrorDialog extends StatelessWidget {
               icon: AppIcons.circleAlert,
             ),
             CrispText(
-              '$error. Check your API key or sign-in in Settings.',
+              '$error. Check your API key or sign-in in Account.',
               style: AppType.body.copyWith(color: AppColors.textMuted),
             ),
           ],
@@ -57,7 +57,7 @@ class AuthErrorDialog extends StatelessWidget {
             tone: AppButtonTone.outline,
             onPressed: () => Navigator.of(context).pop(),
           ),
-          AppButton(label: 'Open settings', onPressed: () => _openSettings(context)),
+          AppButton(label: 'Open account', onPressed: () => _openAccount(context)),
         ],
       ),
     );

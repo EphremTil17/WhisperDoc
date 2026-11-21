@@ -51,6 +51,11 @@ typography:
     fontSize: "12px"
     fontWeight: 500
     lineHeight: "17px"
+  mono:
+    fontFamily: "JetBrains Mono"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: "17px"
 rounded:
   control: "2px"
 spacing:
@@ -116,12 +121,41 @@ components:
     textColor: "{colors.text}"
     typography: "{typography.body}"
     rounded: "{rounded.control}"
-  dropdown-trigger:
+    padding: "8px 12px"
+    height: "40px"
+  panel-header:
     backgroundColor: "{colors.ground}"
+    textColor: "{colors.text}"
+    typography: "{typography.title}"
+    height: "48px"
+  panel-row:
+    backgroundColor: "transparent"
     textColor: "{colors.text}"
     typography: "{typography.body}"
     rounded: "{rounded.control}"
+    padding: "8px"
+    height: "48px"
+  panel-row-hover:
+    backgroundColor: "{colors.band}"
+    textColor: "{colors.text}"
+  panel-row-disabled:
+    backgroundColor: "transparent"
+    textColor: "{colors.text-muted}"
+  link:
+    backgroundColor: "transparent"
+    textColor: "{colors.text}"
+    typography: "{typography.label}"
+    rounded: "{rounded.control}"
+    padding: "0 8px"
     height: "40px"
+  link-destructive:
+    backgroundColor: "transparent"
+    textColor: "{colors.alert}"
+  avatar:
+    backgroundColor: "{colors.band}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.control}"
+    size: "40px"
   menu:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.text-muted}"
@@ -164,20 +198,20 @@ A near-monochrome warm-dark palette with one rationed crimson and one rationed a
 
 ### Primary
 - **Broadcast Crimson** (record): the brand crimson. Fills only: the Record and Stop buttons, the live dot in the listening cue, the account indicator's "needs you" dot, the close button's hover, and the text-selection handle (selection fill at 45% alpha). Never text, never a switch, never a selected state.
-- **Readable Crimson** (alert): crimson lifted to 5.7:1 on ground so it can be text or a thin icon. Used for alert-tone caption cues (`[ not set up ]`, `[ can't connect ]`) and their leading icon.
+- **Readable Crimson** (alert): crimson lifted to 5.7:1 on ground so it can be text or a thin icon. Used for alert-tone caption cues (`[ not set up ]`, `[ can't connect ]`) and their leading icon; a panel row's icon and value when that row is the fix (`API key` · `Not set`, `Sign in`); the identity status line when the account needs the user; destructive links (`Remove API key`, `Sign out`); a field's error border and message; "your server needs a newer version"; and ERROR lines in the log.
 
 ### Secondary
-- **Update Amber** (update): "update available" only, as the 8px dot on the account indicator and its update surfaces. Nothing else is amber.
+- **Update Amber** (update): "update available" only: the 8px dot on the account indicator, and in Account's App section the Version row's download icon and its note (`3.2.0 is available`). The Update button beside it stays white. Nothing else is amber.
 
 ### Neutral
-- **Screen Black** (ground): window ground, input and dropdown-trigger fill, the text on light fills (on-light).
+- **Screen Black** (ground): window ground (full-window panels included), input fill, the text on light fills (on-light).
 - **Raised Charcoal** (surface): anything that floats over the ground: dialogs, menus, snackbars.
-- **Caption Brown** (band): caption bands, keycaps, tooltips, and the hover/pressed/selected surface for icon buttons and menu rows.
-- **Hairline** (rule): every 1px divider and the border on dialogs, menus, snackbars and inputs.
+- **Caption Brown** (band): caption bands, keycaps, tooltips, the initial square behind a signed-in person's avatar, and the hover/pressed/focused/selected surface for icon buttons, links, panel rows and menu rows.
+- **Hairline** (rule): every 1px divider (under each panel row, between history entries, above panel and dialog footers), the border on dialogs, menus, snackbars and inputs, and a disabled switch's outline.
 - **Dashed Grey** (outline): dashed "unavailable" outlines, outline-button borders, switch track outline when off.
-- **White** (text): primary text, primary-button fill, the "on" switch track.
-- **Muted Rose-Grey** (text-muted): secondary text (7:1 on ground), cues in the muted tone, idle icons, section labels.
-- **Faint Rose-Grey** (icon-faint): chevrons, locked and disabled icons, the "off" switch thumb. Below 4.5:1, so never text.
+- **White** (text): primary text, primary-button fill, the "on" switch track, the panel back chevron, WARN lines in the log.
+- **Muted Rose-Grey** (text-muted): secondary text (7:1 on ground), cues in the muted tone, idle icons, section labels, panel row values and subtitles, disabled row labels, the rest of the log.
+- **Faint Rose-Grey** (icon-faint): chevrons, locked and disabled icons, the "off" and disabled switch thumb. Below 4.5:1, so never text.
 
 ### Meter
 - **Meter tiers** (meter-bright, meter-mid, meter-dim) colour the recording meter's column bodies by age, newest to oldest, in flat steps; **meter-tip** caps sounding columns in the newest band; **meter-peak** is the single white peak cell. These are part of "recording", so they sit inside the crimson rule.
@@ -187,25 +221,28 @@ A near-monochrome warm-dark palette with one rationed crimson and one rationed a
 
 **The One Amber Rule.** Amber marks "update available" and nothing else.
 
-**The White Switch Rule.** An "on" switch is a white track with a ground-coloured thumb; off is a transparent track with an outline border and a faint thumb.
+**The White Switch Rule.** An "on" switch is a white track with a ground-coloured thumb; off is a transparent track with an outline border and a faint thumb. A disabled switch reads as off whatever its value (transparent track, rule outline, faint thumb), so a locked control never shows white.
 
 ## Typography
 
 **UI Font:** Lexend (bundled, never fetched)
-**Mono Font:** JetBrains Mono, for logs and history text only
+**Mono Font:** JetBrains Mono (bundled), for log lines only; history text is Lexend body
 
-**Character:** Lexend's open, even forms read like caption lettering at small sizes; one family carries every role, separated by size and a single medium weight.
+**Character:** Lexend's open, even forms read like caption lettering at small sizes; one family carries every UI role, separated by size and a single medium weight. The mono face appears only where columns must align, in the log.
 
 ### Hierarchy
 - **Display** (500, 28/37, tabular figures): the recording timer.
-- **Title** (400, 20/29): headlines in blocked states and the main shortcut line (`[Ctrl Q] to talk`).
-- **Body** (400, 16/24): body copy, values, button labels (set at 500), dialog titles (set at 600).
+- **Title** (400, 20/29): headlines in blocked states and the main shortcut line (`[Ctrl Q] to talk`); panel titles (set at 600).
+- **Body** (400, 16/24): body copy, panel row labels, history text, button labels (set at 500), dialog titles and the Account identity name (set at 600).
 - **Caption Band** (400, 16/30): transcript text on caption bands; the extra leading makes room for the band's 3px vertical padding so stacked bands meet cleanly.
-- **Caption** (400, 12/17): cues, meta (`just now`), tooltips, snackbars, keycaps (at 500), the title-bar wordmark (at 600).
-- **Label** (500, 12/17, text-muted): section headings inside panels and settings.
+- **Caption** (400, 12/17): cues, meta (`just now`; history stamps `14:32`, `Yesterday 14:32`, `2 Nov 14:32`), panel row values and subtitles, field notes and errors, tooltips, snackbars, keycaps and links (at 500), the title-bar wordmark (at 600).
+- **Label** (500, 12/17, text-muted): panel section headings (`Recording`, `Connection`, `App`) and field labels.
+- **Mono** (400, 12/17, JetBrains Mono): log lines only: a fixed `time  LEVEL` column, then the message.
 
 ### Named Rules
 **The Whole-Pixel Baseline Rule.** Lexend's ascent is 1.0 em and descent 0.25 em; every size/line-height pair keeps (line height − 1.25 × size) even and uses even leading distribution, so the baseline falls on a whole pixel at 1×. Do not add a size or line height that breaks this. All UI text is drawn through `CrispText` (or a render object that snaps its paint origin, as `CaptionBand` does), which paints at the nearest device pixel. This is the fix for blurred text on Windows, where Flutter has no ClearType or hinting.
+
+The baseline arithmetic is Lexend's; mono shares the 12/17 metric and is drawn through `CrispText` like every other string.
 
 **The Four Sizes Rule.** 12, 16, 20 and 28. No 9.5, 10, 11, 13 or other in-between sizes.
 
@@ -213,18 +250,23 @@ A near-monochrome warm-dark palette with one rationed crimson and one rationed a
 
 A fixed 420×600 frameless window, not responsive. A 40px title bar (wordmark left; account indicator, minimize, close right), a centred stage, and a 64px bottom bar separated by a 1px rule (Record and the output-style trigger left; History, Incognito, Settings icon buttons right). Status lives in the stage's upper third as a centred stack: cue, then a 20/29 line, then at most one fix button. The last transcript sits as caption bands near the bottom of the stage, with a tick, age and copy action beneath.
 
-Spacing is a 4px grid (xs 4, sm 8, md 12, lg 16, xl 24, xxl 32). Window and dialog insets are 16px; controls are 40px tall and icon targets 40px square; icons are 18px (16px small, 14px in window buttons and cues). Recording uses the same layout: the pixel meter takes the stage, Stop replaces Record, and the other bottom-bar controls collapse behind a lock icon.
+Every destination opened from home is a full-window panel that replaces the stage and bottom bar under the same title bar: Account (from the account indicator), Settings and History (from the bottom bar), and Logs (from Account). Each one-value edit or pick inside them is a panel too (API key, Model, Language, Words to expect, Server, Developer key, Microphone). A panel is a 48px header (back chevron, the title in title at 600, optional icon actions at the end), a scrolling list on an 8px inset, and an optional footer above a 1px rule (16px sides, 8px vertical). Lists group under section labels with a 24px gap above; each row is at least 48px with a 1px rule beneath, icon column first (16px icon, 24px to the label), value or control last. Every panel fits 420×600 without crowding, which is why Account folds version, update and logs into one App section.
+
+Spacing is a 4px grid (xs 4, sm 8, md 12, lg 16, xl 24, xxl 32). Window and dialog insets are 16px; controls are 40px tall and icon targets 40px square; icons are 18px (16px small, as in panel rows and menus; 14px in window buttons and cues). Recording uses the same layout: the pixel meter takes the stage, Stop replaces Record, and the other bottom-bar controls collapse behind a lock icon; panel rows that cannot change mid-recording disable and say `Stop recording to change`.
+
+### Named Rules
+**The Places Are Panels Rule.** Somewhere you go is a full-window panel with a back chevron, and Esc goes back. A dialog only asks or captures: confirmations, the sign-in failure notice, the shortcut recorder and the style editor.
 
 ## Elevation & Depth
 
-Flat. No shadows are drawn anywhere; where Material components take elevation it is zeroed or invisible, and surface tint is transparent. Depth is two tonal steps plus a hairline: ground (base), surface (anything floating) with a 1px rule border, band (caption, hover, pressed, selected).
+Flat. No shadows are drawn anywhere; where Material components take elevation it is zeroed or invisible, and surface tint is transparent. Depth is two tonal steps plus a hairline: ground (base), surface (anything floating) with a 1px rule border, band (caption, hover, pressed, selected). Full-window panels do not float: they sit on ground, edge to edge, and separate their parts with rules only.
 
 ### Named Rules
 **The No-Glow Rule.** No gradients, glows, glass, blur or soft shadows. A floating thing is a surface fill with a 1px rule, nothing more.
 
 ## Shapes
 
-Squared. One radius, 2px, on buttons, icon-button hover fills, dialogs, menus, menu rows, inputs, tooltips and snackbars; caption bands and keycaps are square-cornered rectangles. Circles exist only as status marks: the live record dot, the 8px account badge (with a 2px ground ring), and the switch. A disabled Record button keeps its mark as a crimson ring instead of a white dot. Unavailable controls get a 1px dashed outline (3px dash, 3px gap, outline colour) instead of a solid border; dashes land on whole pixels.
+Squared. One radius, 2px, on buttons, icon-button hover fills, dialogs, menus, menu rows, inputs, tooltips and snackbars; caption bands and keycaps are square-cornered rectangles. A signed-in person's avatar is a 40px square at 2px radius (their picture, else their initial on band), never a circle. Circles exist only as status marks: the live record dot, the 8px account badge (with a 2px ground ring), and the switch. A disabled Record button keeps its mark as a crimson ring instead of a white dot. Unavailable controls get a 1px dashed outline (3px dash, 3px gap, outline colour) instead of a solid border; dashes land on whole pixels.
 
 ## Components
 
@@ -247,14 +289,35 @@ Status in brackets, in caption size: `[ ready ]`. Three tones: muted (text-muted
 ### Keycap (`Keycap`)
 A shortcut set on a band rectangle with 8px side padding, label at weight 500, at the size of the surrounding line (title in the shortcut line, caption elsewhere).
 
-### Dialogs (`AppDialog`)
-The one dialog shell: surface fill, 1px rule border, 2px radius, 16px inset from the window. 48px header with the title in body at 600 and a close icon button, a 1px rule under it, a body, and an optional footer above a 1px rule with 16px padding.
+### Panels (`AppPanel`, `PanelSection`, `PanelRow`, `PanelToggleRow`, `ChoicePanel`, `FieldPanel`)
+The full-window page every destination uses. Open one with `AppPanel.push` (a 120ms ease-out fade in and out).
+- **`AppPanel`:** the title bar, then a 48px header: a back icon button with a white chevron, the title in title at 600 marked as a semantic header, and optional icon actions (Logs' copy all, Microphone's refresh). Content is a list on an 8px inset, or a custom body; an optional footer sits above a 1px rule. It takes focus on open so Esc pops it.
+- **`PanelSection`:** a label-style heading with 24px above and 4px below, then its rows.
+- **`PanelRow`:** at least 48px, 8px inner padding, a 1px rule beneath. A 16px muted icon (alert or amber when the row carries that meaning), 24px gap, the label in body with an optional caption subtitle beneath, then the current value in muted caption (capped at 168px, ellipsised), any trailing control (keycap, button), and a 16px faint chevron when it opens something. Hover, press and focus fill band at 2px radius, no splash. Disabled mutes the label and turns the icon faint but keeps the value readable; the subtitle says why.
+- **`PanelToggleRow`:** a row whose trailing control is a switch drawn at 40×24 so the row stays 48px. The whole row flips it and takes focus, and label and state announce as one.
+- **`ChoicePanel`:** pick one. The selected row carries a white 16px check and selected semantics; there are no chevrons; picking applies and goes back. An optional bracketed cue (`[ looking for microphones ]`, `[ no microphones found ]`) and a muted caption note sit under the list.
+- **`FieldPanel`:** edit one value: a label, a 40px field, a muted caption note, and a Cancel (outline) / Save (primary) footer. Save stays unavailable until the value is valid, and an error shows only once there is text. Secret fields mask with a show/hide eye button; rows show them back masked (`gsk_…3f2a`, or `••••` when short).
 
-### Inputs and Dropdowns (`AppDropdown`, theme)
-Inputs are ground-filled with a 1px rule border and 2px radius; focus shifts the border to text-muted; hints are muted body text. The dropdown trigger matches (ground fill, rule border, 40px, body text, chevron in muted/faint). Its menu is a surface panel with a rule border and 4px padding; rows are 2px-radius, muted by default, band-filled and white with a trailing check when selected.
+### Account Identity
+The first block in Account. A service shows its bare 16px glyph in the rows' icon column (alert when it needs the user) so its name lines up with the row labels below; a signed-in person shows the 40px square avatar. The name in body at 600, one caption status line beneath (muted, or alert when it needs the user), and a `Switch service` link at the end.
+
+### Links (`AppLink`)
+A quiet text action that sits beside content rather than ending a flow: caption at 500, underlined, a 40px target with 8px side padding, band on hover, no splash. White by default, alert for destructive actions, muted when unavailable.
+
+### Dialogs (`AppDialog`, `ConfirmDialog`)
+The one dialog shell: surface fill, 1px rule border, 2px radius, 16px inset from the window. 48px header with the title in body at 600 and a close icon button, a 1px rule under it, a body, and an optional footer above a 1px rule with 16px padding. `ConfirmDialog.ask` is the shrink-wrapped confirmation (at most 360px wide): one muted body sentence, then Cancel (outline) and the confirm label (primary); it resolves true only when confirmed.
+
+### Inputs (theme)
+Inputs are ground-filled with a 1px rule border and 2px radius, 40px tall (a 24px line with 8px above and below, 12px sides); focus shifts the border to text-muted; hints are muted body text. An error turns the border alert and sets the message beneath in alert caption.
+
+### Style Menu
+The output-style trigger in the bottom bar is transparent and 40px tall, band when hovered or open: a muted type glyph, the style name in caption at 500, and a chevron. Its menu is a surface panel with a rule border and 4px padding; rows are 2px-radius, band-filled when hovered or selected, with a white check on the selected style and a pencil on each custom style, which is where custom styles are edited.
 
 ### Switches
-Per the White Switch Rule.
+Per the White Switch Rule; in panels, always inside a `PanelToggleRow`.
+
+### Log Lines
+Mono at 12/17 in a selectable list: a fixed 128px `HH:mm:ss  LEVEL` column, then the message wrapping beside it. ERROR lines in alert, WARN in white, the rest muted. The list follows new lines only while already scrolled to the end.
 
 ### Tooltips and Snackbars
 Tooltips: band fill, caption text, 4px/8px padding, 400ms wait. Snackbars: floating, surface fill, rule border, caption text, 16px inset.
@@ -266,7 +329,7 @@ One 1.5-stroke line family: the bundled Lucide font, each glyph named in `AppIco
 The recording meter: 6px square blocks on an 8px pitch, mirrored about a centre row, scrolling continuously at display refresh on its own repaint layer (a vsync ticker, no widget rebuilds). Column bodies are coloured by age in flat tiers (bright under 10 columns old, mid under 26, then dim); sounding columns in the bright zone are capped with a light tip cell, silence never reads brighter, and a single white peak cell rides the newest column. One draw call per tier. Runs only while recording.
 
 ### Motion
-State swaps (hover, focus, panel open) take 120ms with ease-out cubic. Nothing pulses or animates decoratively; apart from the meter, states change whole.
+State swaps (hover, focus, panel open and close) take 120ms with ease-out cubic; panels fade, never slide. Nothing pulses or animates decoratively; apart from the meter, states change whole.
 
 ## Do's and Don'ts
 
@@ -277,6 +340,8 @@ State swaps (hover, focus, panel open) take 120ms with ease-out cubic. Nothing p
 - **Do** say status as a bracketed caption cue, and give every blocked state its one fix as a primary button.
 - **Do** mark unavailable controls with the dashed outline rather than lowering opacity.
 - **Do** take every colour, size, space, radius and duration from `app_tokens.dart` and every icon from `AppIcons`.
+- **Do** open a destination as a full-window `AppPanel` built from `PanelSection` and `PanelRow`; keep dialogs for confirmations and short captures.
+- **Do** ask with `ConfirmDialog.ask` before anything that cannot be undone.
 
 ### Don't:
 - **Don't** use gradients, glows, glass, blur or soft shadows, or non-zero Material elevation.
