@@ -82,4 +82,7 @@ abstract final class AppIcons {
 
   /// Create something new (a custom style).
   static const IconData plus = IconData(57661, fontFamily: _family);
+
+  /// Something failed (sign-in errors).
+  static const IconData circleAlert = IconData(57463, fontFamily: _family);
 }

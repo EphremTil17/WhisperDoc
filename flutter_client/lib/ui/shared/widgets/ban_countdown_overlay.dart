@@ -83,7 +83,7 @@ class _BanCountdownOverlayState extends State<BanCountdownOverlay> {
       decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadius.controlAll,
-        border: Border.fromBorderSide(BorderSide(color: AppColors.record)),
+        border: Border.fromBorderSide(BorderSide(color: AppColors.rule)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpace.xl),
