@@ -37,8 +37,6 @@ dependencies:
   characters: ^1.3.0
 
   material_ui: any
-  lucide_icons_flutter: ^4.0.3
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,6 +54,7 @@ flutter:
     - assets/audio/
     - assets/fonts/Lexend-OFL.txt
     - assets/fonts/JetBrainsMono-OFL.txt
+    - assets/fonts/Lucide-LICENSE.txt
 
   # Bundled so text never depends on a runtime download and always renders
   # with the same metrics the type scale was designed against.
@@ -70,3 +69,7 @@ flutter:
     - family: JetBrains Mono
       fonts:
         - asset: assets/fonts/JetBrainsMono-Regular.ttf
+    # Icon font: release builds tree-shake it to the glyphs AppIcons names.
+    - family: Lucide
+      fonts:
+        - asset: assets/fonts/Lucide.ttf

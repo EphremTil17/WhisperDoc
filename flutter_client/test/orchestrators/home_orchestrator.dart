@@ -126,9 +126,7 @@ class HomeOrchestrator {
         'assets/fonts/Lexend-Medium.ttf',
         'assets/fonts/Lexend-SemiBold.ttf',
       ],
-      'packages/lucide_icons_flutter/Lucide': [
-        'packages/lucide_icons_flutter/assets/lucide.ttf',
-      ],
+      'Lucide': ['assets/fonts/Lucide.ttf'],
     };
     for (final MapEntry(key: family, value: files) in families.entries) {
       final loader = FontLoader(family);

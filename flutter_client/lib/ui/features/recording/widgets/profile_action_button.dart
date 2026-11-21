@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
@@ -198,7 +198,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
                     ),
                   ),
                   Icon(
-                    _isMenuOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                    _isMenuOpen ? AppIcons.chevronUp : AppIcons.chevronDown,
                     size: ProfileActionButton._chevronSize,
                     color: AppColors.textMuted,
                   ),

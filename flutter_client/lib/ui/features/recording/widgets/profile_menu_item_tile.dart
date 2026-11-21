@@ -1,4 +1,4 @@
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/logic/mappers/dictation_profile_ui_mapper.dart';
 import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
@@ -153,7 +153,7 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
                     child: Padding(
                       padding: const EdgeInsets.only(left: 6, right: 4),
                       child: Icon(
-                        LucideIcons.pencil,
+                        AppIcons.pencil,
                         size: ProfileMenuItemTile._tileEditIconSize,
                         color: Colors.white.withValues(
                           alpha: ProfileMenuItemTile._tileEditIconAlpha,
@@ -175,7 +175,7 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
                 const Padding(
                   padding: EdgeInsets.only(left: 4),
                   child: Icon(
-                    LucideIcons.keyRound,
+                    AppIcons.keyRound,
                     size: ProfileMenuItemTile._tileBlockedIconSize,
                     color: Color(0xFF606068),
                   ),

@@ -1,4 +1,4 @@
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
@@ -87,7 +87,7 @@ class AppDialog extends StatelessWidget {
                       IconButton(
                         tooltip: 'Close',
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(LucideIcons.x),
+                        icon: const Icon(AppIcons.x),
                       ),
                     ],
                   ),

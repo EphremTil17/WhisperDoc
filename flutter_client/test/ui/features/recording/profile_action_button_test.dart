@@ -1,7 +1,7 @@
 // ignore_for_file: avoid-late-keyword, prefer-match-file-name
 import 'dart:ui';
 
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -62,7 +62,7 @@ void main() {
       await orchestrator.pumpButton();
 
       expect(find.text('Clean'), findsOneWidget);
-      expect(find.byIcon(LucideIcons.sparkles), findsOneWidget);
+      expect(find.byIcon(AppIcons.sparkles), findsOneWidget);
 
       // Profile menu overlay should not be visible yet
       expect(find.text('Clean disfluencies'), findsNothing);
@@ -135,7 +135,7 @@ void main() {
       expect(find.text('Verbatim transcription'), findsOneWidget);
 
       // Only the custom profile has the edit icon
-      expect(find.byIcon(LucideIcons.pencil), findsOneWidget);
+      expect(find.byIcon(AppIcons.pencil), findsOneWidget);
     },
   );
 
@@ -196,7 +196,7 @@ void main() {
     await orchestrator.pumpButton();
 
     expect(find.text('Engineering Spec'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.slidersHorizontal), findsOneWidget);
+    expect(find.byIcon(AppIcons.slidersHorizontal), findsOneWidget);
   });
 
   testWidgets('shows blocked state for LLM profile when Groq key is missing', (
@@ -216,7 +216,7 @@ void main() {
     verifyNever(
       () => mockSettings.setDictationProfile(DictationProfile.professional),
     );
-    expect(find.byIcon(LucideIcons.keyRound), findsWidgets);
+    expect(find.byIcon(AppIcons.keyRound), findsWidgets);
   });
 
   testWidgets(

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
@@ -84,7 +84,7 @@ class HomeBottomBar extends StatelessWidget {
                   child: SizedBox.square(
                     dimension: AppSizes.iconButton,
                     child: Icon(
-                      LucideIcons.lock,
+                      AppIcons.lock,
                       size: AppSizes.smallIconSize,
                       color: AppColors.textMuted,
                     ),
@@ -94,19 +94,19 @@ class HomeBottomBar extends StatelessWidget {
                 IconButton(
                   tooltip: 'History',
                   onPressed: () => unawaited(HomeNavigation.openHistory(context)),
-                  icon: const Icon(LucideIcons.history),
+                  icon: const Icon(AppIcons.history),
                 ),
                 IconButton(
                   tooltip: incognito ? 'Incognito: on' : 'Incognito: off',
                   isSelected: incognito,
                   onPressed: onIncognitoTap,
-                  icon: const Icon(LucideIcons.eyeOff),
+                  icon: const Icon(AppIcons.eyeOff),
                   color: incognito ? AppColors.text : null,
                 ),
                 IconButton(
                   tooltip: 'Settings',
                   onPressed: () => unawaited(HomeNavigation.openSettings(context)),
-                  icon: const Icon(LucideIcons.slidersHorizontal),
+                  icon: const Icon(AppIcons.slidersHorizontal),
                 ),
               ],
             ],

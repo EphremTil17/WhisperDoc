@@ -53,10 +53,12 @@ class AppConstants {
   static const double windowWidth = 420;
   static const double windowHeight = 600;
 
-  /// Bundled fonts and their licence files (registered with LicenseRegistry).
+  /// Bundled fonts (text and icons) and their licence files, registered with
+  /// LicenseRegistry.
   static const List<(String, String)> bundledFontLicenses = [
     ('Lexend', 'assets/fonts/Lexend-OFL.txt'),
     ('JetBrains Mono', 'assets/fonts/JetBrainsMono-OFL.txt'),
+    ('Lucide', 'assets/fonts/Lucide-LICENSE.txt'),
   ];
 
   // === OIDC / Identity Configuration ===

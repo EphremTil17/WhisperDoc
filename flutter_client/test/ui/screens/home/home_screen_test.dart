@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_client/ui/shared/widgets/caption_band.dart';
@@ -50,7 +50,7 @@ void main() {
       expect(find.text('Stop'), findsOneWidget);
       expect(find.byType(PixelMeter), findsOneWidget);
       expect(find.text('to stop'), findsOneWidget);
-      expect(find.byIcon(LucideIcons.lock), findsOneWidget);
+      expect(find.byIcon(AppIcons.lock), findsOneWidget);
       expect(find.byTooltip('History'), findsNothing);
     });
 

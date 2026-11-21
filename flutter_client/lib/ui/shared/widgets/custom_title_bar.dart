@@ -1,4 +1,4 @@
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
@@ -45,12 +45,12 @@ class CustomTitleBar extends StatelessWidget {
           ),
           ?trailing,
           WindowButton(
-            icon: LucideIcons.minus,
+            icon: AppIcons.minus,
             tooltip: 'Minimize',
             onPressed: () => WindowManager.instance.getCurrent()?.minimize(),
           ),
           WindowButton(
-            icon: LucideIcons.x,
+            icon: AppIcons.x,
             tooltip: 'Close',
             isClose: true,
             onPressed: () => WindowManager.instance.getCurrent()?.close(),

@@ -1,4 +1,4 @@
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
@@ -6,11 +6,11 @@ import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
 /// Presentation mapper translating [DictationProfileSpec] states into UI icons and descriptions.
 class DictationProfileUiMapper {
   static const Map<DictationProfile, IconData> profileIcons = {
-    DictationProfile.raw: LucideIcons.mic,
-    DictationProfile.clean: LucideIcons.sparkles,
-    DictationProfile.professional: LucideIcons.briefcase,
-    DictationProfile.casual: LucideIcons.messageCircle,
-    DictationProfile.technical: LucideIcons.code,
+    DictationProfile.raw: AppIcons.mic,
+    DictationProfile.clean: AppIcons.sparkles,
+    DictationProfile.professional: AppIcons.briefcase,
+    DictationProfile.casual: AppIcons.messageCircle,
+    DictationProfile.technical: AppIcons.code,
   };
 
   static const Map<DictationProfile, String> profileSubtitles = {
@@ -23,10 +23,10 @@ class DictationProfileUiMapper {
 
   static IconData iconFor(DictationProfileSpec spec) {
     if (spec is DictationProfile) {
-      return profileIcons[spec] ?? LucideIcons.mic;
+      return profileIcons[spec] ?? AppIcons.mic;
     }
 
-    return LucideIcons.slidersHorizontal;
+    return AppIcons.slidersHorizontal;
   }
 
   static String subtitleFor(

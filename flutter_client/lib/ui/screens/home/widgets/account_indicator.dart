@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
@@ -37,7 +37,7 @@ class AccountIndicator extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Icon(
-            isGroqMode ? LucideIcons.cloud : LucideIcons.user,
+            isGroqMode ? AppIcons.cloud : AppIcons.user,
             color: AppColors.text,
             size: AppSizes.iconSize,
           ),

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_hub_dialog_content.dart';
@@ -43,7 +43,7 @@ class ProfileHubDialog extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => _openLogs(context),
                 icon: const Icon(
-                  LucideIcons.fileText,
+                  AppIcons.fileText,
                   size: AppSizes.smallIconSize,
                 ),
                 label: const Text('Logs', style: AppType.caption),

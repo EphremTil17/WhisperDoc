@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
@@ -57,7 +57,7 @@ class _LastTranscriptState extends State<LastTranscript> {
           children: [
             if (autoCopy || _copied)
               const Icon(
-                LucideIcons.check,
+                AppIcons.check,
                 size: _checkSize,
                 color: AppColors.textMuted,
               ),
@@ -69,7 +69,7 @@ class _LastTranscriptState extends State<LastTranscript> {
               tooltip: _copied ? 'Copied' : 'Copy again',
               onPressed: () => unawaited(_copy()),
               icon: Icon(
-                _copied ? LucideIcons.check : LucideIcons.copy,
+                _copied ? AppIcons.check : AppIcons.copy,
                 size: AppSizes.smallIconSize,
                 color: AppColors.text,
               ),
