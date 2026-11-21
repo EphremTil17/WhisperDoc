@@ -1,15 +1,19 @@
 import 'dart:async';
 
-import 'package:material_ui/material_ui.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
+import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/app_link.dart';
+import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
 
-/// Modal dialog for creating and editing user custom dictation profiles.
-/// Built on the standard [AppDialog] shell.
+/// Creates or edits a custom output style: a name and the instructions the
+/// transcript is rewritten with. Saving also makes it the active style.
 class ProfileEditorDialog extends StatefulWidget {
   const ProfileEditorDialog({super.key, required this.slotKey, this.existing});
 
@@ -24,310 +28,151 @@ class ProfileEditorDialog extends StatefulWidget {
 }
 
 class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
+  static const double _maxWidth = 380;
+  static const int _promptMinLines = 4;
+  static const int _promptMaxLines = 6;
+  static const double _noteIconSize = 14;
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _promptController = TextEditingController();
 
-  static const double _dialogMaxWidth = 380;
-  static const double _fieldBorderRadius = 8;
-  static const double _fieldBorderAlpha = 0.15;
-  static const double _fieldFillAlpha = 0.05;
-  static const double _disabledControlAlpha = 0.08;
-  static const double _safetyBgAlpha = 0.03;
-  static const double _safetyBorderAlpha = 0.08;
-  static const int _promptMaxLines = 6;
-  static const double _buttonBorderRadius = 6;
-  static const double _counterFontSize = 10;
-  static const double _buttonFontSize = 11;
+  /// Either field changing rebuilds the counter and the Save button.
+  Listenable _fields = Listenable.merge(const []);
 
   bool get _isEditMode => widget.existing != null;
-  bool _canSave = false;
 
-  bool _evaluateCanSave() {
-    final name = _nameController.text.trim();
-    final prompt = _promptController.text.trim();
-
-    return name.isNotEmpty && prompt.isNotEmpty;
-  }
+  bool get _canSave =>
+      _nameController.text.trim().isNotEmpty &&
+      _promptController.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    final initialName =
-        widget.existing?.name ??
-        CustomProfile.defaultNameForSlot(widget.slotKey);
-    final initialPrompt = widget.existing?.userPrompt ?? '';
-
-    _nameController.text = initialName;
-    _promptController.text = initialPrompt;
-    _canSave = _evaluateCanSave();
-
-    _nameController.addListener(_onTextChanged);
-    _promptController.addListener(_onTextChanged);
-  }
-
-  void _onTextChanged() {
-    setState(() {
-      _canSave = _evaluateCanSave();
-    });
+    _nameController.text =
+        widget.existing?.name ?? CustomProfile.defaultNameForSlot(widget.slotKey);
+    _promptController.text = widget.existing?.userPrompt ?? '';
+    _fields = Listenable.merge([_nameController, _promptController]);
   }
 
   @override
   void dispose() {
-    _nameController.removeListener(_onTextChanged);
-    _promptController.removeListener(_onTextChanged);
     _nameController.dispose();
     _promptController.dispose();
     super.dispose();
   }
 
-  void _onSave() {
-    unawaited(_handleSave());
-  }
-
-  void _onDelete() {
-    unawaited(_handleDelete());
-  }
-
-  Future<void> _handleSave() async {
+  Future<void> _save() async {
     if (!_canSave) return;
-
     final profile = CustomProfile(
       storageKey: widget.slotKey,
       name: _nameController.text.trim(),
       userPrompt: _promptController.text.trim(),
     );
-
     final settings = context.read<SettingsService>();
     await settings.saveCustomProfile(profile);
     await settings.setDictationProfile(profile);
-
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    if (mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _handleDelete() async {
-    final settings = context.read<SettingsService>();
-    await settings.deleteCustomProfile(widget.slotKey);
-
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+  Future<void> _delete() async {
+    await context.read<SettingsService>().deleteCustomProfile(widget.slotKey);
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final promptChars = _promptController.text.length;
-    final estimatedTokens =
-        (promptChars / AppConstants.groqTransformCharsPerToken).ceil();
+    final muted = AppType.caption.copyWith(color: AppColors.textMuted);
 
-    final borderSide = BorderSide(
-      color: Colors.white.withValues(alpha: _fieldBorderAlpha),
-    );
-    const borderRadius = BorderRadius.all(Radius.circular(_fieldBorderRadius));
-    final defaultBorder = OutlineInputBorder(
-      borderRadius: borderRadius,
-      borderSide: borderSide,
-    );
-    const focusedBorder = OutlineInputBorder(
-      borderRadius: borderRadius,
-      borderSide: BorderSide(color: AppColors.record),
-    );
-    final fieldFillColor = Colors.white.withValues(alpha: _fieldFillAlpha);
-    final disabledBgColor = Colors.white.withValues(
-      alpha: _disabledControlAlpha,
-    );
+    return ListenableBuilder(
+      listenable: _fields,
+      builder: (context, _) {
+        final chars = _promptController.text.length;
 
-    return AppDialog(
-      title: _isEditMode ? 'Edit Custom Profile' : 'New Custom Profile',
-      shrinkWrap: true,
-      maxWidth: _dialogMaxWidth,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Profile Name Input
-            const Text(
-              'PROFILE NAME',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _nameController,
-              maxLength: AppConstants.customProfileMaxNameLength,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                height: 1.2,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                counterText: '',
-                hintText: 'e.g. Jira Ticket, Executive Email',
-                hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
-                filled: true,
-                fillColor: fieldFillColor,
-                contentPadding: const EdgeInsets.all(12),
-                border: defaultBorder,
-                enabledBorder: defaultBorder,
-                focusedBorder: focusedBorder,
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // System Prompt Input
-            const Text(
-              'SYSTEM PROMPT',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _promptController,
-              maxLength: AppConstants.customProfileMaxPromptLength,
-              maxLines: _promptMaxLines,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                height: 1.4,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                counterText: '',
-                hintText: "Describe how the transcript should be rewritten, e.g. 'Rewrite into clean bullet points with zero conversational filler.'",
-                hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
-                filled: true,
-                fillColor: fieldFillColor,
-                contentPadding: const EdgeInsets.all(10),
-                border: defaultBorder,
-                enabledBorder: defaultBorder,
-                focusedBorder: focusedBorder,
-              ),
-            ),
-            const SizedBox(height: 4),
-
-            // Live Character / Token Counter
-            Text(
-              '$promptChars / ${AppConstants.customProfileMaxPromptLength} chars · ~$estimatedTokens tokens',
-              style: const TextStyle(
-                color: Colors.white38,
-                fontSize: _counterFontSize,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Safety Preamble Notice
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: _safetyBgAlpha),
-                borderRadius: const BorderRadius.all(Radius.circular(6)),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: _safetyBorderAlpha),
+        return AppDialog(
+          title: _isEditMode ? 'Edit style' : 'New style',
+          shrinkWrap: true,
+          maxWidth: _maxWidth,
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const CrispText('Name', style: AppType.label),
+                const SizedBox(height: AppSpace.sm),
+                TextField(
+                  controller: _nameController,
+                  maxLength: AppConstants.customProfileMaxNameLength,
+                  style: AppType.body,
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    hintText: 'e.g. Jira ticket',
+                  ),
                 ),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.security_rounded, size: 13, color: Colors.white38),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'The transcript is passed strictly as data, never as instructions. Your prompt is appended to WhisperDoc\'s safety preamble.',
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 9.5,
-                        height: 1.3,
+                const SizedBox(height: AppSpace.lg),
+                const CrispText('Instructions', style: AppType.label),
+                const SizedBox(height: AppSpace.sm),
+                TextField(
+                  controller: _promptController,
+                  maxLength: AppConstants.customProfileMaxPromptLength,
+                  minLines: _promptMinLines,
+                  maxLines: _promptMaxLines,
+                  style: AppType.body,
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    hintText: 'How to rewrite the transcript, '
+                        'e.g. clean bullet points, no filler.',
+                  ),
+                ),
+                const SizedBox(height: AppSpace.xs),
+                CrispText(
+                  '$chars / ${AppConstants.customProfileMaxPromptLength} chars',
+                  style: muted,
+                ),
+                const SizedBox(height: AppSpace.md),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: AppSpace.sm,
+                  children: [
+                    const Icon(
+                      AppIcons.shieldCheck,
+                      size: _noteIconSize,
+                      color: AppColors.textMuted,
+                    ),
+                    Expanded(
+                      child: CrispText(
+                        'Only these instructions shape the text. Anything '
+                        'you say while recording is never taken as one.',
+                        style: muted,
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-      footer: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Delete action (Edit mode only)
-          if (_isEditMode)
-            TextButton.icon(
-              onPressed: _onDelete,
-              icon: const Icon(
-                Icons.delete_outline_rounded,
-                size: 14,
-                color: AppColors.record,
-              ),
-              label: const Text(
-                'Delete',
-                style: TextStyle(
-                  color: AppColors.record,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              ),
-            )
-          else
-            const SizedBox.shrink(),
-
-          Row(
+          ),
+          footer: Row(
+            spacing: AppSpace.sm,
             children: [
-              TextButton(
+              if (_isEditMode)
+                AppLink(
+                  label: 'Delete',
+                  color: AppColors.alert,
+                  onPressed: () => unawaited(_delete()),
+                ),
+              const Spacer(),
+              AppButton(
+                label: 'Cancel',
+                tone: AppButtonTone.outline,
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.white60, fontSize: 11),
-                ),
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _canSave ? _onSave : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.record,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: disabledBgColor,
-                  disabledForegroundColor: Colors.white38,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: const BorderRadius.all(
-                      Radius.circular(_buttonBorderRadius),
-                    ),
-                    side: BorderSide(
-                      color: _canSave ? Colors.transparent : disabledBgColor,
-                    ),
-                  ),
-                ),
-                child: Text(
-                  'Save',
-                  style: TextStyle(
-                    color: _canSave ? Colors.white : Colors.white38,
-                    fontSize: _buttonFontSize,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              AppButton(
+                label: 'Save',
+                onPressed: _canSave ? () => unawaited(_save()) : null,
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

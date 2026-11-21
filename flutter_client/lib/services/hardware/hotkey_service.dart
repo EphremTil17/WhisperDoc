@@ -28,6 +28,9 @@ class HotkeyService {
   final StreamController<int> _hotkeyStreamController =
       StreamController<int>.broadcast();
 
+  /// The last binding passed to [start], so [resume] can restore it.
+  ({int id, int modifiers, int vKey})? _binding;
+
   Stream<int> get onHotkeyPressed => _hotkeyStreamController.stream;
   bool get isRunning => _isolate != null;
 
@@ -45,6 +48,7 @@ class HotkeyService {
     if (isRunning) {
       await stop();
     }
+    _binding = (id: id, modifiers: modifiers, vKey: vKey);
 
     LoggingService().info('Starting HotkeyService (Native Blocking Loop)...');
 
@@ -95,6 +99,18 @@ class HotkeyService {
     if (_isolateThreadId != null) {
       LoggingService().info('HotkeyService started successfully.');
     }
+  }
+
+  /// Restarts the last binding after a [stop] (for example once the shortcut
+  /// recorder closes without a new one). Does nothing if already running.
+  Future<void> resume() async {
+    final binding = _binding;
+    if (binding == null || isRunning) return;
+    await start(
+      id: binding.id,
+      modifiers: binding.modifiers,
+      vKey: binding.vKey,
+    );
   }
 
   /// Stops the hotkey listener by posting a Quit message to the thread.

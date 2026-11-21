@@ -24,7 +24,6 @@ class AppDialog extends StatelessWidget {
   });
 
   static const double _defaultMaxWidth = 500;
-  static const double _headerHeight = 48;
 
   /// The title displayed in the dialog header.
   final String title;
@@ -65,7 +64,7 @@ class AppDialog extends StatelessWidget {
             DecoratedBox(
               decoration: const BoxDecoration(border: Border(bottom: rule)),
               child: SizedBox(
-                height: _headerHeight,
+                height: AppSizes.header,
                 child: Padding(
                   padding: const EdgeInsetsDirectional.only(
                     start: AppSpace.lg,

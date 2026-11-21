@@ -22,6 +22,7 @@ class UpdateService extends ChangeNotifier {
 
   UpdateStatus get status => _status;
   String? get latestDownloadUrl => _latestDownloadUrl;
+  String? get latestVersion => _githubVersion;
 
   UpdateService(this._wsService) {
     _wsService.addListener(_onServiceStateChanged);

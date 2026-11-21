@@ -1,27 +1,55 @@
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
+import 'package:material_ui/material_ui.dart';
 
-/// Confirms turning incognito on, because it deletes local history.
-/// Pops `true` to turn it on, `false` to cancel.
-class IncognitoToggleDialog extends StatelessWidget {
-  const IncognitoToggleDialog({super.key});
+/// Asks before something that cannot be undone. Pops `true` to go ahead.
+///
+/// ```dart
+/// final ok = await ConfirmDialog.ask(context, title: 'Remove key?', ...);
+/// ```
+class ConfirmDialog extends StatelessWidget {
+  const ConfirmDialog({
+    super.key,
+    required this.title,
+    required this.message,
+    required this.confirmLabel,
+  });
 
   static const double _maxWidth = 360;
+
+  final String title;
+  final String message;
+  final String confirmLabel;
+
+  /// Shows the dialog; true only when the user confirmed.
+  static Future<bool> ask(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (_) => ConfirmDialog(
+          title: title,
+          message: message,
+          confirmLabel: confirmLabel,
+        ),
+      ) ??
+      false;
 
   @override
   Widget build(BuildContext context) {
     return AppDialog(
-      title: 'Turn on incognito?',
+      title: title,
       shrinkWrap: true,
       maxWidth: _maxWidth,
       body: Padding(
         padding: const EdgeInsets.all(AppSpace.lg),
         child: CrispText(
-          'This permanently deletes your local transcription history. '
-          'Nothing new is saved while incognito is on.',
+          message,
           style: AppType.body.copyWith(color: AppColors.textMuted),
         ),
       ),
@@ -35,7 +63,7 @@ class IncognitoToggleDialog extends StatelessWidget {
             onPressed: () => Navigator.of(context).pop(false),
           ),
           AppButton(
-            label: 'Turn on',
+            label: confirmLabel,
             onPressed: () => Navigator.of(context).pop(true),
           ),
         ],

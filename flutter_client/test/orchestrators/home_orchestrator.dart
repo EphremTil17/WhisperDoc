@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_client/controllers/profile_controller.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
@@ -24,6 +25,10 @@ import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
 class _MockRecordingController extends Mock
     with ChangeNotifier
     implements RecordingController {}
+
+class _MockProfileController extends Mock
+    with ChangeNotifier
+    implements ProfileController {}
 
 class _MockSettingsService extends Mock
     with ChangeNotifier
@@ -48,9 +53,9 @@ class _MockAudioService extends Mock implements AudioService {}
 class _MockHandshakeStateMachine extends Mock
     implements HandshakeStateMachine {}
 
-/// Pumps the composed home screen (title bar, stage, bottom bar) at the
-/// window's real 420×600 client size over mocked services, and exposes the
-/// knobs that move it between phases.
+/// Pumps the composed home screen (title bar, stage, bottom bar), or one of
+/// the panels it opens, at the window's real 420×600 client size over mocked
+/// services, and exposes the knobs that move it between states.
 class HomeOrchestrator {
   HomeOrchestrator(this.tester) {
     when(() => recording.inputStatus).thenReturn(AudioInputStatus.available);
@@ -71,6 +76,21 @@ class HomeOrchestrator {
     when(() => settings.customProfiles).thenReturn([]);
     when(settings.nextFreeCustomSlot).thenReturn('custom1');
     when(() => settings.cachedGroqApiKey).thenReturn('test-key');
+    when(() => settings.groqModel).thenReturn('whisper-large-v3-turbo');
+    when(() => settings.groqLanguage).thenReturn('');
+    when(() => settings.groqPrompt).thenReturn('');
+    when(() => settings.appVersion).thenReturn('3.1.0');
+    when(() => settings.serverUri).thenReturn('wss://whisper.example.com/ws');
+    when(() => settings.cachedApiKey).thenReturn(null);
+    when(() => settings.microphoneId).thenReturn(null);
+    when(() => settings.microphoneLabel).thenReturn(null);
+    when(() => settings.autoPaste).thenReturn(true);
+
+    when(() => profile.isAuthenticated).thenReturn(false);
+    when(() => profile.currentUser).thenReturn(null);
+    when(() => profile.updateStatus).thenReturn(UpdateStatus.upToDate);
+    when(() => profile.latestVersion).thenReturn(null);
+    when(() => profile.latestDownloadUrl).thenReturn(null);
 
     final handshake = _MockHandshakeStateMachine();
     when(() => handshake.state).thenReturn(HandshakeState.locked);
@@ -87,6 +107,7 @@ class HomeOrchestrator {
   final WidgetTester tester;
   final RecordingController recording = _MockRecordingController();
   final SettingsService settings = _MockSettingsService();
+  final ProfileController profile = _MockProfileController();
   final WebSocketService ws = _MockWebSocketService();
   final UpdateService update = _MockUpdateService();
   final GroqTranscriptionService groq = _MockGroqTranscriptionService();
@@ -107,6 +128,7 @@ class HomeOrchestrator {
 
   void removeGroqKey() {
     when(() => groq.hasValidCredentials).thenReturn(false);
+    when(() => settings.cachedGroqApiKey).thenReturn(null);
   }
 
   void unplugMicrophone() {
@@ -115,11 +137,13 @@ class HomeOrchestrator {
 
   void offerUpdate() {
     when(() => update.status).thenReturn(UpdateStatus.advisory);
+    when(() => profile.updateStatus).thenReturn(UpdateStatus.advisory);
+    when(() => profile.latestVersion).thenReturn('3.2.0');
   }
 
   static bool _fontsLoaded = false;
 
-  /// Real Lexend and Lucide instead of the test font, so widths (and any
+  /// Real Lexend, Lucide and JetBrains Mono instead of the test font, so widths (and any
   /// captured pixels) match the app.
   static Future<void> _loadFonts() async {
     if (_fontsLoaded) return;
@@ -130,6 +154,7 @@ class HomeOrchestrator {
         'assets/fonts/Lexend-SemiBold.ttf',
       ],
       'Lucide': ['assets/fonts/Lucide.ttf'],
+      'JetBrains Mono': ['assets/fonts/JetBrainsMono-Regular.ttf'],
     };
     for (final MapEntry(key: family, value: files) in families.entries) {
       final loader = FontLoader(family);
@@ -141,7 +166,23 @@ class HomeOrchestrator {
     _fontsLoaded = true;
   }
 
-  Future<void> pump() async {
+  /// The home screen as the window shows it.
+  Future<void> pump() => _pumpApp(
+    Scaffold(
+      body: Column(
+        children: [
+          const CustomTitleBar(trailing: AccountIndicator()),
+          const Expanded(child: HomeStage()),
+          HomeBottomBar(onIncognitoTap: () => incognitoTaps++),
+        ],
+      ),
+    ),
+  );
+
+  /// One panel (Account, Settings, …) filling the window.
+  Future<void> pumpPanel(Widget panel) => _pumpApp(panel);
+
+  Future<void> _pumpApp(Widget home) async {
     await tester.runAsync(_loadFonts);
     tester.view.physicalSize = window;
     tester.view.devicePixelRatio = 1;
@@ -153,6 +194,7 @@ class HomeOrchestrator {
         providers: [
           ChangeNotifierProvider<RecordingController>.value(value: recording),
           ChangeNotifierProvider<SettingsService>.value(value: settings),
+          ChangeNotifierProvider<ProfileController>.value(value: profile),
           ChangeNotifierProvider<WebSocketService>.value(value: ws),
           ChangeNotifierProvider<UpdateService>.value(value: update),
           ChangeNotifierProvider<GroqTranscriptionService>.value(value: groq),
@@ -161,15 +203,7 @@ class HomeOrchestrator {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: AppTheme.darkTheme,
-          home: Scaffold(
-            body: Column(
-              children: [
-                const CustomTitleBar(trailing: AccountIndicator()),
-                const Expanded(child: HomeStage()),
-                HomeBottomBar(onIncognitoTap: () => incognitoTaps++),
-              ],
-            ),
-          ),
+          home: home,
         ),
       ),
     );

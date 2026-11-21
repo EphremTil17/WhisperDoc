@@ -9,11 +9,13 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/auth_error_dialog.dart';
-import 'package:flutter_client/ui/screens/home/dialogs/incognito_toggle_dialog.dart';
 import 'package:flutter_client/ui/screens/home/widgets/account_indicator.dart';
 import 'package:flutter_client/ui/screens/home/widgets/ban_overlay.dart';
 import 'package:flutter_client/ui/screens/home/widgets/home_bottom_bar.dart';
 import 'package:flutter_client/ui/screens/home/widgets/home_stage.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
+import 'package:flutter_client/ui/shared/widgets/confirm_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 import 'package:flutter_client/ui/shared/widgets/custom_title_bar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -137,7 +139,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// One look for every notice (set by the snackbar theme).
   void _notify(String message, Duration duration) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: duration),
+      SnackBar(
+        content: CrispText(message, style: AppType.caption),
+        duration: duration,
+      ),
     );
   }
 
@@ -155,11 +160,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (controller.incognitoMode) {
       await controller.disableIncognitoMode();
     } else {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => const IncognitoToggleDialog(),
+      final confirmed = await ConfirmDialog.ask(
+        context,
+        title: 'Turn on incognito?',
+        message:
+            'This permanently deletes your local transcription history. '
+            'Nothing new is saved while incognito is on.',
+        confirmLabel: 'Turn on',
       );
-      if (confirmed == true) {
+      if (confirmed) {
         await controller.enableIncognitoMode();
       }
     }

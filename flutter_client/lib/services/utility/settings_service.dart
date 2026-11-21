@@ -44,7 +44,10 @@ class SettingsService extends ChangeNotifier {
   static const bool _defaultAutoPaste = true;
   static const bool _defaultShowVisualizer = true;
   static const bool _defaultIncognitoMode = false;
-  static const String _defaultTranscriptionMode = 'backend';
+  /// Transcription modes: the user's own WhisperDoc server, or Groq Cloud.
+  static const String backendMode = 'backend';
+  static const String groqMode = 'groq';
+  static const String _defaultTranscriptionMode = backendMode;
   static const String _defaultGroqLanguage = '';
   static const String _defaultGroqPrompt = '';
   static const String _defaultGroqModel = AppConstants.groqDefaultModel;
@@ -92,7 +95,7 @@ class SettingsService extends ChangeNotifier {
   String? get cachedApiKey => _apiKey;
   SecureVaultService get vault => _requireVault();
   String get transcriptionMode => _transcriptionMode;
-  bool get isGroqMode => _transcriptionMode == 'groq';
+  bool get isGroqMode => _transcriptionMode == groqMode;
   String? get cachedGroqApiKey => _groqApiKey;
   String get groqLanguage => _groqLanguage;
   String get groqPrompt => _groqPrompt;

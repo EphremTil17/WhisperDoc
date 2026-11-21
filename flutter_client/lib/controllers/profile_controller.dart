@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
-import 'package:flutter_client/logic/mappers/update_mapper.dart';
 
 class ProfileController extends ChangeNotifier {
   final AuthService _authService;
@@ -14,7 +13,9 @@ class ProfileController extends ChangeNotifier {
   // Update delegation
   UpdateStatus get updateStatus => _updateService.status;
   String? get latestDownloadUrl => _updateService.latestDownloadUrl;
-  UpdateUIDescriptor get updateUI => UpdateMapper.map(_updateService.status);
+
+  /// The newest released version, once GitHub has been asked.
+  String? get latestVersion => _updateService.latestVersion;
 
   ProfileController({
     required this._authService,
@@ -24,6 +25,7 @@ class ProfileController extends ChangeNotifier {
     _updateService.addListener(notifyListeners);
   }
 
+  Future<void> signIn() => _authService.signIn();
   Future<void> signOut() => _authService.signOut();
 
   @override

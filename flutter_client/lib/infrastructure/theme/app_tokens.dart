@@ -112,6 +112,15 @@ abstract final class AppType {
     color: AppColors.text,
   );
 
+  /// 12/17 mono: log lines.
+  static const TextStyle mono = TextStyle(
+    fontFamily: monoFamily,
+    fontSize: _captionSize,
+    height: 17 / _captionSize,
+    leadingDistribution: TextLeadingDistribution.even,
+    color: AppColors.text,
+  );
+
   /// 28/37: the recording timer.
   static const TextStyle display = TextStyle(
     fontFamily: family,
@@ -143,6 +152,12 @@ abstract final class AppRadius {
 abstract final class AppSizes {
   static const double titleBar = 40;
   static const double bottomBar = 64;
+
+  /// Dialog and panel headers.
+  static const double header = 48;
+
+  /// One row in a panel list.
+  static const double row = 48;
   static const double iconButton = 40;
   static const double controlHeight = 40;
   static const double iconSize = 18;

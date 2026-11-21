@@ -177,7 +177,7 @@ void main() {
 
       // ProfileEditorDialog should be visible
       expect(find.byType(ProfileEditorDialog), findsOneWidget);
-      expect(find.text('Edit Custom Profile'), findsOneWidget);
+      expect(find.text('Edit style'), findsOneWidget);
       expect(find.text('Jira Format'), findsOneWidget);
     },
   );

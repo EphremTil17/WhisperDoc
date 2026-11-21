@@ -1,5 +1,7 @@
 // ignore_for_file: avoid-late-keyword, prefer-match-file-name
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_client/ui/shared/widgets/app_button.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
@@ -50,13 +52,13 @@ void main() {
         final orchestrator = createOrchestrator(tester);
         await orchestrator.pumpDialog(slotKey: 'custom1');
 
-        expect(find.text('New Custom Profile'), findsOneWidget);
+        expect(find.text('New style'), findsOneWidget);
         expect(find.text('Custom 1'), findsOneWidget);
         expect(find.text('Delete'), findsNothing);
 
         // Save button is disabled because prompt is empty
-        final saveButton = tester.widget<ElevatedButton>(
-          find.widgetWithText(ElevatedButton, 'Save'),
+        final saveButton = tester.widget<AppButton>(
+          find.widgetWithText(AppButton, 'Save'),
         );
         expect(saveButton.onPressed, isNull);
       },
@@ -77,8 +79,8 @@ void main() {
 
         expect(find.textContaining('28 / 2000 chars'), findsOneWidget);
 
-        final saveButton = tester.widget<ElevatedButton>(
-          find.widgetWithText(ElevatedButton, 'Save'),
+        final saveButton = tester.widget<AppButton>(
+          find.widgetWithText(AppButton, 'Save'),
         );
         expect(saveButton.onPressed, isNotNull);
       },
@@ -109,7 +111,7 @@ void main() {
       final orchestrator = createOrchestrator(tester);
       await orchestrator.openViaShowDialog(slotKey: 'custom1');
 
-      final dialogTitle = find.text('New Custom Profile');
+      final dialogTitle = find.text('New style');
       expect(dialogTitle, findsOneWidget);
 
       await orchestrator.tapCancel();
@@ -135,13 +137,13 @@ void main() {
           existing: existingProfile,
         );
 
-        expect(find.text('Edit Custom Profile'), findsOneWidget);
+        expect(find.text('Edit style'), findsOneWidget);
         expect(find.text('Existing Name'), findsOneWidget);
         expect(find.text('Existing Prompt Content'), findsOneWidget);
         expect(find.text('Delete'), findsOneWidget);
 
-        final saveButton = tester.widget<ElevatedButton>(
-          find.widgetWithText(ElevatedButton, 'Save'),
+        final saveButton = tester.widget<AppButton>(
+          find.widgetWithText(AppButton, 'Save'),
         );
         expect(saveButton.onPressed, isNotNull);
       },
@@ -173,14 +175,14 @@ void main() {
 
       await orchestrator.enterPrompt('   ');
 
-      final saveButtonFinder = find.widgetWithText(ElevatedButton, 'Save');
-      final saveButton = tester.widget<ElevatedButton>(saveButtonFinder);
+      final saveButtonFinder = find.widgetWithText(AppButton, 'Save');
+      final saveButton = tester.widget<AppButton>(saveButtonFinder);
       expect(saveButton.onPressed, isNull);
 
       final saveText = tester.widget<Text>(
         find.descendant(of: saveButtonFinder, matching: find.byType(Text)),
       );
-      expect(saveText.style?.color, Colors.white38);
+      expect(saveText.style?.color, AppColors.textMuted);
     });
 
     testWidgets('clearing name disables and grays out Save button', (
@@ -194,14 +196,14 @@ void main() {
 
       await orchestrator.enterName('   ');
 
-      final saveButtonFinder = find.widgetWithText(ElevatedButton, 'Save');
-      final saveButton = tester.widget<ElevatedButton>(saveButtonFinder);
+      final saveButtonFinder = find.widgetWithText(AppButton, 'Save');
+      final saveButton = tester.widget<AppButton>(saveButtonFinder);
       expect(saveButton.onPressed, isNull);
 
       final saveText = tester.widget<Text>(
         find.descendant(of: saveButtonFinder, matching: find.byType(Text)),
       );
-      expect(saveText.style?.color, Colors.white38);
+      expect(saveText.style?.color, AppColors.textMuted);
     });
   });
 }

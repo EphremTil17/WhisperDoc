@@ -1,10 +1,30 @@
 /// Wall-clock formatting shared by logs and history.
 abstract final class ClockTime {
   static const int _componentWidth = 2;
+  static const List<String> _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
 
   /// `HH:mm:ss`, zero-padded, in the time zone of [time].
   static String hms(DateTime time) =>
       '${_pad(time.hour)}:${_pad(time.minute)}:${_pad(time.second)}';
+
+  /// When a history entry was made, as specific as it needs to be:
+  /// `14:32` today, `Yesterday 14:32`, `20 Nov 14:32` before that.
+  static String stamp(DateTime time, DateTime now) {
+    final clock = '${_pad(time.hour)}:${_pad(time.minute)}';
+    // Calendar days, compared as UTC dates so a DST change cannot shorten one.
+    final days = DateTime.utc(now.year, now.month, now.day)
+        .difference(DateTime.utc(time.year, time.month, time.day))
+        .inDays;
+
+    return switch (days) {
+      0 => clock,
+      1 => 'Yesterday $clock',
+      _ => '${time.day} ${_months[time.month - 1]} $clock',
+    };
+  }
 
   /// `m:ss` for an elapsed [duration], e.g. a recording timer.
   static String minutesSeconds(Duration duration) =>

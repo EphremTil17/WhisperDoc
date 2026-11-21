@@ -28,4 +28,26 @@ void main() {
       expect(ClockTime.ago(const Duration(hours: 3, minutes: 5)), '3 h ago');
     });
   });
+
+  group('ClockTime.stamp', () {
+    final now = DateTime(2026, 11, 21, 9, 5);
+
+    test('is only the time today', () {
+      expect(ClockTime.stamp(DateTime(2026, 11, 21, 8, 3), now), '08:03');
+    });
+
+    test('says yesterday across midnight', () {
+      expect(
+        ClockTime.stamp(DateTime(2026, 11, 20, 23, 59), now),
+        'Yesterday 23:59',
+      );
+    });
+
+    test('names the day and month before that', () {
+      expect(
+        ClockTime.stamp(DateTime(2026, 11, 2, 14, 32), now),
+        '2 Nov 14:32',
+      );
+    });
+  });
 }

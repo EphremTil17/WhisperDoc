@@ -1,5 +1,6 @@
 // ignore_for_file: avoid-top-level-members-in-tests, prefer-moving-to-variable
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
@@ -51,7 +52,7 @@ class ProfileEditorDialogOrchestrator {
 
   /// Taps the Save elevated button and settles.
   Future<void> tapSave() async {
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
+    await tester.tap(find.widgetWithText(AppButton, 'Save'));
     await tester.pumpAndSettle();
   }
 

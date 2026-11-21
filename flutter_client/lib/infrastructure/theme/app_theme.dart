@@ -71,8 +71,23 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.ground,
+        isDense: true,
+        // 24px line + 8px above and below: a 40px control.
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md,
+          vertical: AppSpace.sm,
+        ),
         // Placeholders must not read as values.
         hintStyle: AppType.body.copyWith(color: AppColors.textMuted),
+        errorStyle: AppType.caption.copyWith(color: AppColors.alert),
+        errorBorder: const OutlineInputBorder(
+          borderRadius: AppRadius.controlAll,
+          borderSide: BorderSide(color: AppColors.alert),
+        ),
+        focusedErrorBorder: const OutlineInputBorder(
+          borderRadius: AppRadius.controlAll,
+          borderSide: BorderSide(color: AppColors.alert),
+        ),
         border: const OutlineInputBorder(
           borderRadius: AppRadius.controlAll,
           borderSide: BorderSide(color: AppColors.rule),
@@ -88,14 +103,25 @@ class AppTheme {
       ),
       switchTheme: SwitchThemeData(
         // "On" is white, not crimson: crimson means recording or "needs you".
+        // Disabled reads as off whatever the value, so it never shows white.
         thumbColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) ? AppColors.ground : AppColors.iconFaint,
+          (s) => s.contains(WidgetState.selected) &&
+                  !s.contains(WidgetState.disabled)
+              ? AppColors.ground
+              : AppColors.iconFaint,
         ),
         trackColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) ? AppColors.text : Colors.transparent,
+          (s) => s.contains(WidgetState.selected) &&
+                  !s.contains(WidgetState.disabled)
+              ? AppColors.text
+              : Colors.transparent,
         ),
         trackOutlineColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) ? AppColors.text : AppColors.outline,
+          (s) => switch (s) {
+            _ when s.contains(WidgetState.disabled) => AppColors.rule,
+            _ when s.contains(WidgetState.selected) => AppColors.text,
+            _ => AppColors.outline,
+          },
         ),
       ),
       dividerTheme: const DividerThemeData(color: AppColors.rule, space: 1),
