@@ -1,5 +1,5 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 
 class AppTheme {
   static const Color crimsonPrimary = Color(0xFFDC143C); // Crimson
@@ -10,21 +10,58 @@ class AppTheme {
   static const Color glassBorder = Color(0x1AFFFFFF); // White with low opacity
   static const Color cardBackground = Color(0x0DFFFFFF); // Very subtle white
 
+  static const double _selectionAlpha = 0.45;
   static const double _shadowAlpha = 0.2;
   static const double _shadowBlur = 16;
 
   static ThemeData get darkTheme {
+    final base = ThemeData.dark().textTheme;
+
     return ThemeData(
       brightness: Brightness.dark,
       useMaterial3: true,
-      scaffoldBackgroundColor: Colors.transparent, // For custom gradients
+      scaffoldBackgroundColor: AppColors.ground,
       colorScheme: const ColorScheme.dark(
         primary: crimsonPrimary,
         secondary: crimsonDark,
         surface: surface,
         onSurface: Colors.white,
       ),
-      fontFamily: GoogleFonts.lexend().fontFamily,
+      fontFamily: AppType.family,
+      // Theme the parts we did not draw: selection and the caret.
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: AppColors.text,
+        selectionColor: AppColors.record.withValues(alpha: _selectionAlpha),
+        selectionHandleColor: AppColors.record,
+      ),
+      // Every IconButton: 40px square target, flat hover, no ink splash.
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          fixedSize: const Size.square(AppSizes.iconButton),
+          iconSize: AppSizes.iconSize,
+          padding: EdgeInsets.zero,
+          foregroundColor: AppColors.textMuted,
+          disabledForegroundColor: AppColors.iconFaint,
+          hoverColor: AppColors.band,
+          highlightColor: AppColors.band,
+          shape: const RoundedRectangleBorder(
+            borderRadius: AppRadius.controlAll,
+          ),
+          splashFactory: NoSplash.splashFactory,
+        ),
+      ),
+      tooltipTheme: const TooltipThemeData(
+        decoration: BoxDecoration(
+          color: AppColors.band,
+          borderRadius: AppRadius.controlAll,
+        ),
+        textStyle: AppType.caption,
+        padding: EdgeInsets.symmetric(
+          horizontal: AppSpace.sm,
+          vertical: AppSpace.xs,
+        ),
+        waitDuration: Duration(milliseconds: 400),
+      ),
       // Shared look for settings inputs and dropdowns; fields override only
       // what differs (padding, hints, error borders).
       inputDecorationTheme: const InputDecorationTheme(
@@ -35,8 +72,11 @@ class AppTheme {
           borderSide: BorderSide.none,
         ),
       ),
-      textTheme: GoogleFonts.lexendTextTheme(ThemeData.dark().textTheme)
-          .apply(bodyColor: Colors.white, displayColor: Colors.white),
+      textTheme: base.apply(
+        fontFamily: AppType.family,
+        bodyColor: AppColors.text,
+        displayColor: AppColors.text,
+      ),
       iconTheme: const IconThemeData(color: Colors.white70),
     );
   }

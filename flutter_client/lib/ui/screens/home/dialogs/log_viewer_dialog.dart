@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class LogViewerDialog extends StatefulWidget {
   const LogViewerDialog({super.key});
@@ -96,10 +96,8 @@ abstract final class _LogStyles {
   static const _fontSize = 11.0;
   static const _lineHeight = 1.5;
 
-  static final String? _mono = GoogleFonts.jetBrainsMono().fontFamily;
-
-  static final TextStyle _base = TextStyle(
-    fontFamily: _mono,
+  static const TextStyle _base = TextStyle(
+    fontFamily: AppType.monoFamily,
     fontSize: _fontSize,
     height: _lineHeight,
   );

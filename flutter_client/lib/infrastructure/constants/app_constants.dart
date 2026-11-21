@@ -48,9 +48,16 @@ class AppConstants {
   static const Duration audioDeviceChangeSettle = Duration(milliseconds: 250);
 
   // === UI ===
-  /// Default window size for the main application.
+  /// Client-area size the layout is designed for. The window frame is grown
+  /// around it at startup (see main.dart).
   static const double windowWidth = 420;
   static const double windowHeight = 600;
+
+  /// Bundled fonts and their licence files (registered with LicenseRegistry).
+  static const List<(String, String)> bundledFontLicenses = [
+    ('Lexend', 'assets/fonts/Lexend-OFL.txt'),
+    ('JetBrains Mono', 'assets/fonts/JetBrainsMono-OFL.txt'),
+  ];
 
   // === OIDC / Identity Configuration ===
   /// Upper bound for each OIDC HTTP call (discovery, token exchange). Without

@@ -1,9 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/formatters/clock_time.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
 import 'package:flutter_client/ui/shared/widgets/glass_dialog.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 class HistoryDialog extends StatefulWidget {
@@ -26,10 +26,10 @@ class _HistoryDialogState extends State<HistoryDialog> {
   static const _badgeBackgroundAlpha = 0.2;
   static const _badgeFontSize = 9.0;
 
-  static final TextStyle _timestampStyle = TextStyle(
+  static const TextStyle _timestampStyle = TextStyle(
     color: Colors.white38,
     fontSize: 10,
-    fontFamily: GoogleFonts.jetBrainsMono().fontFamily,
+    fontFamily: AppType.monoFamily,
   );
 
   /// Plaintext per entry, decrypted at most once while the dialog is open.

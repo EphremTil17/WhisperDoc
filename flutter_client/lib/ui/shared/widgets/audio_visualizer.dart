@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_client/logic/processors/level_normalizer.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 
@@ -10,6 +10,7 @@ import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 ///
 /// Optimizations:
 /// - O(1) circular buffer (no array shifting)
+/// - Input-adaptive levels via [LevelNormalizer] (any mic fills the range)
 /// - Throttled setState (~60fps, see [WaveformConfig.throttleMs])
 /// - Single amplitude subscription for the widget's lifetime
 /// - Pre-allocated Paint objects
@@ -35,6 +36,11 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
 
   StreamSubscription<double>? _subscription;
 
+  // Raw amplitude depends on the mic's gain; the normalizer maps it onto the
+  // visual range using the real time between samples.
+  final LevelNormalizer _normalizer = LevelNormalizer();
+  final Stopwatch _clock = Stopwatch()..start();
+
   @override
   void initState() {
     super.initState();
@@ -45,15 +51,7 @@ class _AudioVisualizerState extends State<AudioVisualizer> {
   }
 
   void _onAmplitude(double rawAmplitude) {
-    // Logarithmic scaling with configurable gain
-    _pendingAmplitude = rawAmplitude > WaveformConfig.amplitudeInputFloor
-        ? (math.log(
-                    rawAmplitude * WaveformConfig.gainMultiplier +
-                        WaveformConfig.logOffset,
-                  ) /
-                  math.log(WaveformConfig.logNormalizationBase))
-              .clamp(0.0, 1.0)
-        : 0.0;
+    _pendingAmplitude = _normalizer.normalize(rawAmplitude, _clock.elapsed);
     _hasPendingUpdate = true;
 
     // Throttle updates to reduce setState calls
@@ -219,10 +217,6 @@ class WaveformConfig {
   static const double barGap = 2.0;
   static const double minBarHeight = 3.0;
   static const double maxBarHeightRatio = 0.9;
-  static const double gainMultiplier = 500.0; // Reduce for less sensitivity
-  static const double amplitudeInputFloor = 0.0001;
-  static const double logOffset = 1.0;
-  static const double logNormalizationBase = 11.0;
   static const double halfDivisor = 2.0;
   static const double activeBarOpacity = 1.0;
   static const double inactiveBarOpacity = 0.3;
