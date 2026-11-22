@@ -1,5 +1,9 @@
+// Each notifyListeners() announces a different state change and returns
+// nothing, so the repeats have no value to share.
+// ignore_for_file: prefer-moving-to-variable
 import 'dart:async';
 
+import 'package:characters/characters.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
@@ -39,6 +43,9 @@ class AuthService extends ChangeNotifier {
     _logger.info('AuthService initialized');
   }
 
+  /// Runs the browser sign-in. Throws when it fails for any reason other than
+  /// the user closing the browser, so the caller can say so; the cause is
+  /// logged here.
   Future<void> signIn() async {
     if (_isAuthenticating) {
       return;
@@ -88,9 +95,9 @@ class AuthService extends ChangeNotifier {
         '(Refresh Token: ${tokens['refresh_token'] != null ? 'YES' : 'NO'})',
       );
     } catch (e) {
-      if (!e.toString().contains('CANCELED')) {
-        _logger.error('OIDC Sign-in failed', error: e);
-      }
+      if (e.toString().contains('CANCELED')) return;
+      _logger.error('OIDC Sign-in failed', error: e);
+      rethrow;
     } finally {
       _isAuthenticating = false;
       notifyListeners();
@@ -184,15 +191,19 @@ class AuthService extends ChangeNotifier {
     return _idToken;
   }
 
-  String _formatPrincipal(Map<String, dynamic>? user) {
-    // SessionManager.extractUser stores the OIDC subject under 'id'.
-    final sub = (user?['id'] ?? 'unknown').toString();
-    final email = user?['email']?.toString().trim();
-    if (email != null && email.isNotEmpty) {
-      return 'sub=$sub email=$email';
-    }
+  static const int _loggedSubPrefixLength = 8;
 
-    return 'sub=$sub';
+  String _formatPrincipal(Map<String, dynamic>? user) {
+    // Log a truncated subject prefix only — omit email and full subject so
+    // copying LogsPanel for troubleshooting does not leak PII.
+    final rawSub = user?['id']?.toString().trim() ?? '';
+    if (rawSub.isEmpty) return 'sub=unknown';
+    final chars = rawSub.characters;
+    final prefix = chars.length <= _loggedSubPrefixLength
+        ? rawSub
+        : '${chars.take(_loggedSubPrefixLength)}…';
+
+    return 'sub=$prefix';
   }
 
   /// Restores the stored session without network IO so startup never waits on

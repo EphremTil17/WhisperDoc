@@ -1,4 +1,5 @@
-// ignore_for_file: avoid-late-keyword
+// A shared harness library, not a test: its public class is the point.
+// ignore_for_file: avoid-top-level-members-in-tests
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -72,6 +73,7 @@ class HomeOrchestrator {
     when(() => settings.dictationProfile).thenReturn(DictationProfile.raw);
     when(() => settings.globalHotkey).thenReturn('Ctrl+Q');
     when(() => settings.showVisualizer).thenReturn(true);
+    when(() => settings.animateBackground).thenReturn(true);
     when(() => settings.autoCopy).thenReturn(true);
     when(() => settings.customProfiles).thenReturn([]);
     when(settings.nextFreeCustomSlot).thenReturn('custom1');

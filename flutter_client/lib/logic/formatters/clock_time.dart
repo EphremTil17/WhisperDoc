@@ -1,6 +1,7 @@
 /// Wall-clock formatting shared by logs and history.
 abstract final class ClockTime {
   static const int _componentWidth = 2;
+  static const int _millisWidth = 3;
   static const List<String> _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -9,6 +10,11 @@ abstract final class ClockTime {
   /// `HH:mm:ss`, zero-padded, in the time zone of [time].
   static String hms(DateTime time) =>
       '${_pad(time.hour)}:${_pad(time.minute)}:${_pad(time.second)}';
+
+  /// `HH:mm:ss.SSS`: [hms] with milliseconds, for logs that are compared
+  /// against each other.
+  static String hmsMillis(DateTime time) =>
+      '${hms(time)}.${time.millisecond.toString().padLeft(_millisWidth, '0')}';
 
   /// When a history entry was made, as specific as it needs to be:
   /// `14:32` today, `Yesterday 14:32`, `20 Nov 14:32` before that.

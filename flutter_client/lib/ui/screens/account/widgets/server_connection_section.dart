@@ -5,6 +5,7 @@ import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/account/account_fields.dart';
+import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/panel_row.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/panel_section.dart';
 import 'package:material_ui/material_ui.dart';
@@ -14,6 +15,23 @@ import 'package:provider/provider.dart';
 /// key for servers without sign-in.
 class ServerConnectionSection extends StatelessWidget {
   const ServerConnectionSection({super.key});
+
+  /// The cause is in the log; the user only needs to know it did not work.
+  static Future<void> _signIn(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<ProfileController>().signIn();
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: CrispText(
+            "Couldn't sign in. Details are in Logs.",
+            style: AppType.caption,
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +60,7 @@ class ServerConnectionSection extends StatelessWidget {
             label: 'Sign in',
             value: 'Passkey or Google',
             valueColor: needsSignIn ? AppColors.alert : null,
-            onTap: () => unawaited(profile.signIn()),
+            onTap: () => unawaited(_signIn(context)),
           ),
         PanelRow(
           icon: AppIcons.keyRound,

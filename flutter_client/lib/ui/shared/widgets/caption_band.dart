@@ -32,7 +32,9 @@ class CaptionBand extends LeafRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderCaptionBand renderObject) {
     renderObject
-      ..update(text: text, style: style, maxLines: maxLines)
+      ..text = text
+      ..style = style
+      ..maxLines = maxLines
       ..textDirection = Directionality.of(context)
       ..devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
   }
@@ -46,6 +48,7 @@ class RenderCaptionBand extends RenderBox {
     required TextDirection textDirection,
     required this._devicePixelRatio,
   }) : _text = text,
+       _style = style,
        _painter = TextPainter(
          text: TextSpan(text: text, style: style),
          textAlign: TextAlign.center,
@@ -62,24 +65,31 @@ class RenderCaptionBand extends RenderBox {
 
   final TextPainter _painter;
   String _text;
+  TextStyle _style;
   double _devicePixelRatio;
 
-  void update({
-    required String text,
-    required TextStyle style,
-    required int maxLines,
-  }) {
-    final span = TextSpan(text: text, style: style);
-    if (text == _text && maxLines == _painter.maxLines &&
-        span == _painter.text) {
-      return;
-    }
-    _text = text;
-    _painter
-      ..text = span
-      ..maxLines = maxLines;
-    markNeedsLayout();
+  set text(String value) {
+    if (value == _text) return;
+    _text = value;
+    _relayoutText();
     markNeedsSemanticsUpdate();
+  }
+
+  set style(TextStyle value) {
+    if (value == _style) return;
+    _style = value;
+    _relayoutText();
+  }
+
+  set maxLines(int value) {
+    if (value == _painter.maxLines) return;
+    _painter.maxLines = value;
+    markNeedsLayout();
+  }
+
+  void _relayoutText() {
+    _painter.text = TextSpan(text: _text, style: _style);
+    markNeedsLayout();
   }
 
   set textDirection(TextDirection value) {

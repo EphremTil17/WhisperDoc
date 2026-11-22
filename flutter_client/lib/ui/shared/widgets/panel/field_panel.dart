@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
+import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/app_panel.dart';
@@ -46,6 +47,11 @@ class _FieldPanelState extends State<FieldPanel> {
   final TextEditingController _controller = TextEditingController();
   bool _hidden = false;
 
+  /// True from the first save until the panel closes: Enter then a click on
+  /// Save must not save twice and pop the panel underneath.
+  bool _saving = false;
+  String? _saveError;
+
   @override
   void initState() {
     super.initState();
@@ -57,8 +63,24 @@ class _FieldPanelState extends State<FieldPanel> {
 
   Future<void> _save() async {
     final value = _controller.text.trim();
-    if (_errorFor(value) != null) return;
-    await widget.onSave(value);
+    if (_saving || _errorFor(value) != null) return;
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      await widget.onSave(value);
+    } catch (e) {
+      LoggingService().error('Could not save ${widget.title}', error: e);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _saveError = "Couldn't save. Try again.";
+        });
+      }
+
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -76,9 +98,9 @@ class _FieldPanelState extends State<FieldPanel> {
       valueListenable: _controller,
       builder: (context, editing, _) {
         final problem = _errorFor(editing.text);
-        final canSave = problem == null;
+        final canSave = problem == null && !_saving;
         // An empty field shows no error until there is something to judge.
-        final error = editing.text.isEmpty ? null : problem;
+        final error = (editing.text.isEmpty ? null : problem) ?? _saveError;
 
         return AppPanel(
           title: widget.title,

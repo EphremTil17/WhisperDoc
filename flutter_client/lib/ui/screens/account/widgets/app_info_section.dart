@@ -21,9 +21,14 @@ import 'package:url_launcher/url_launcher.dart';
 class AppInfoSection extends StatelessWidget {
   const AppInfoSection({super.key});
 
-  static void _open(String url) => unawaited(
-    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-  );
+  static void _open(String url) {
+    final target = UpdateService.isTrustedReleaseUrl(url)
+        ? url
+        : AppConstants.updateUrl;
+    unawaited(
+      launchUrl(Uri.parse(target), mode: LaunchMode.externalApplication),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +79,7 @@ class AppInfoSection extends StatelessWidget {
           icon: AppIcons.fileText,
           label: 'Logs',
           value: 'For troubleshooting',
+          rule: false,
           onTap: () =>
               unawaited(AppPanel.push<void>(context, const LogsPanel())),
         ),

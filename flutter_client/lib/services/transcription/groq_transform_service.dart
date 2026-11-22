@@ -61,12 +61,12 @@ class GroqTransformService {
         .split(RegExp(r'\s+'))
         .where((w) => w.isNotEmpty)
         .length;
+    const base = AppConstants.groqTransformTimeoutBase;
     final timeoutMs =
-        (AppConstants.groqTransformTimeoutBase.inMilliseconds +
-                (AppConstants.groqTransformTimeoutPerWord.inMilliseconds *
-                    words))
+        (base.inMilliseconds +
+                AppConstants.groqTransformTimeoutPerWord.inMilliseconds * words)
             .clamp(
-              AppConstants.groqTransformTimeoutBase.inMilliseconds,
+              base.inMilliseconds,
               AppConstants.groqTransformTimeoutMax.inMilliseconds,
             );
     final timeout = Duration(milliseconds: timeoutMs);

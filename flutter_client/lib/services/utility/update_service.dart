@@ -11,6 +11,24 @@ class UpdateService extends ChangeNotifier {
   static const int _githubCooldownHours = 6;
   static const int _httpOkStatusCode = 200;
   static const int _semverPartsToCompare = 3;
+  static const Duration _githubTimeout = Duration(seconds: 10);
+  static const int _httpsPort = 443;
+
+  /// Verifies that a release or installer URL is an HTTPS page or asset of
+  /// this app's own GitHub repository before the OS shell opens it.
+  ///
+  /// Only github.com: the API's `browser_download_url` always points there,
+  /// and the asset CDN hosts are redirect targets the browser follows on its
+  /// own. Allowing them would let a forged response name any user's asset.
+  static bool isTrustedReleaseUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https') return false;
+    if (uri.userInfo.isNotEmpty || uri.port != _httpsPort) return false;
+    if (uri.host.toLowerCase() != 'github.com') return false;
+    final repoPrefix = '/${AppConstants.githubRepo.toLowerCase()}/';
+
+    return uri.path.toLowerCase().startsWith(repoPrefix);
+  }
 
   final WebSocketService _wsService;
   UpdateStatus _status = UpdateStatus.upToDate;
@@ -19,6 +37,7 @@ class UpdateService extends ChangeNotifier {
   String? _lastCheckedMin;
   String? _lastCheckedServer;
   String? _githubVersion;
+  bool _disposed = false;
 
   UpdateStatus get status => _status;
   String? get latestDownloadUrl => _latestDownloadUrl;
@@ -57,6 +76,7 @@ class UpdateService extends ChangeNotifier {
 
   Future<void> _checkVersion({bool forceGithub = false}) async {
     final info = await PackageInfo.fromPlatform();
+    if (_disposed) return;
     final current = info.version;
     final min = _wsService.backendMinVersion;
     final sec = _wsService.backendSecVersion;
@@ -95,9 +115,10 @@ class UpdateService extends ChangeNotifier {
   Future<void> _discoverLatestAsset() async {
     _lastGithubCheck = DateTime.now();
     try {
-      final response = await http.get(
-        Uri.parse(AppConstants.githubApiLatestRelease),
-      );
+      final response = await http
+          .get(Uri.parse(AppConstants.githubApiLatestRelease))
+          .timeout(_githubTimeout);
+      if (_disposed) return;
 
       if (response.statusCode == _httpOkStatusCode) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -120,7 +141,10 @@ class UpdateService extends ChangeNotifier {
         }
 
         if (exeAsset != null) {
-          _latestDownloadUrl = exeAsset['browser_download_url'] as String;
+          final candidate = exeAsset['browser_download_url'];
+          if (candidate is String && isTrustedReleaseUrl(candidate)) {
+            _latestDownloadUrl = candidate;
+          }
         }
 
         unawaited(_checkVersion());
@@ -128,6 +152,13 @@ class UpdateService extends ChangeNotifier {
     } catch (_) {
       // Fail silently to avoid UI noise
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _wsService.removeListener(_onServiceStateChanged);
+    super.dispose();
   }
 
   /// Simple SemVer comparison (major.minor.patch)

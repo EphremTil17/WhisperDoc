@@ -97,6 +97,9 @@ abstract final class AppIcons {
   /// Settings: shortcut.
   static const IconData keyboard = IconData(57988, fontFamily: _family);
 
+  /// Settings: the moving contour background.
+  static const IconData mountain = IconData(57905, fontFamily: _family);
+
   /// Settings: level meter.
   static const IconData audioLines = IconData(58714, fontFamily: _family);
 

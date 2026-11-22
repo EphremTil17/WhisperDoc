@@ -35,13 +35,19 @@ class ServiceLocator {
     getIt.registerSingleton<AudioDeviceMonitor>(AudioDeviceMonitor()..start());
 
     final audioCueService = AudioCueService();
-    await audioCueService.initialize();
-    getIt.registerSingleton<AudioCueService>(audioCueService);
-
     final authService = AuthService(
       session: SessionManager(vault: settingsService.vault),
     );
-    await authService.initialize();
+    final historyService = HistoryService(settingsService.vault);
+
+    // Run independent I/O initializers concurrently to trim startup latency.
+    await Future.wait([
+      audioCueService.initialize(),
+      authService.initialize(),
+      historyService.initialize(),
+    ]);
+
+    getIt.registerSingleton<AudioCueService>(audioCueService);
     getIt.registerSingleton<AuthService>(authService);
 
     // 3. Services with dependencies
@@ -53,8 +59,6 @@ class ServiceLocator {
       AutomationService(getIt<SettingsService>()),
     );
 
-    final historyService = HistoryService(getIt<SettingsService>().vault);
-    await historyService.initialize();
     getIt.registerSingleton<HistoryService>(historyService);
 
     getIt.registerSingleton<UpdateService>(

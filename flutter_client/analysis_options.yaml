@@ -10,6 +10,7 @@ linter:
     prefer_const_literals_to_create_immutables: true
 
 dcm:
+  # Provider, not bloc: no bloc rules (they misfire on every Flutter State).
   rules:
     - avoid-assignments-as-conditions
     - avoid-cascade-after-if-null
@@ -49,7 +50,12 @@ dcm:
     - avoid-unused-parameters
     - binary-expression-operand-order
     - double-literal-format
-    - missing-test-assertion
+    # mocktail's verify calls are assertions too.
+    - missing-test-assertion:
+        include-assertions:
+          - verify
+          - verifyNever
+          - verifyInOrder
     - newline-before-return
     - no-boolean-literal-compare
     - no-empty-block
@@ -88,28 +94,6 @@ dcm:
     - prefer-text-rich
     - prefer-using-list-view
     - use-setstate-synchronously
-    - avoid-bloc-public-fields
-    - avoid-bloc-public-methods
-    - avoid-cubits
-    - avoid-duplicate-bloc-event-handlers
-    - avoid-empty-build-when
-    - avoid-existing-instances-in-bloc-provider
-    - avoid-instantiating-in-bloc-value-provider
-    - avoid-passing-bloc-to-bloc
-    - avoid-passing-build-context-to-blocs
-    - avoid-returning-value-from-cubit-methods
-    - check-is-not-closed-after-async-gap
-    - emit-new-bloc-state-instances
-    - handle-bloc-event-subclasses
-    - prefer-bloc-event-suffix
-    - prefer-bloc-extensions
-    - prefer-bloc-state-suffix
-    - prefer-correct-bloc-provider
-    - prefer-immutable-bloc-events
-    - prefer-immutable-bloc-state
-    - prefer-multi-bloc-provider
-    - prefer-sealed-bloc-events
-    - prefer-sealed-bloc-state
 analyzer:
   exclude:
     - build/**

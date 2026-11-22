@@ -28,12 +28,11 @@ class Win32Window {
   Win32Window();
   virtual ~Win32Window();
 
-  // Creates a win32 window with |title| that is positioned and sized using
-  // |origin| and |size|. New windows are created on the default monitor. Window
-  // sizes are specified to the OS in physical pixels, hence to ensure a
-  // consistent size this function will scale the inputted width and height as
-  // as appropriate for the default monitor. The window is invisible until
-  // |Show| is called. Returns true if the window was created successfully.
+  // Creates a borderless, fixed-size popup window with |title| (no caption,
+  // frame or drop shadow) that is exactly |size| logical pixels, centred on
+  // the monitor nearest |origin|. Sizes are scaled to that monitor's DPI, and
+  // refitted when the DPI changes. The window is invisible until |Show| is
+  // called. Returns true if the window was created successfully.
   bool Create(const std::wstring& title, const Point& origin, const Size& size);
 
   // Show the current window. Returns true if the window was successfully shown.
@@ -91,6 +90,9 @@ class Win32Window {
   static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
+
+  // Client area size in logical pixels, kept exact across DPI changes.
+  Size client_size_{0, 0};
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

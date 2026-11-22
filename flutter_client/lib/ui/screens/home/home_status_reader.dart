@@ -9,31 +9,55 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 
 /// Reads the services the home screen depends on and maps them to a
-/// [HomeStatus]. Each caller rebuilds when any of those services change, so
-/// the stage, bottom bar and account indicator always agree.
+/// [HomeStatus]. Selects only the fields [HomeSignals] consumes so unrelated
+/// changes (e.g. copy/paste toggles, prompt edits, history appends) do not
+/// rebuild the stage, bottom bar or account indicator.
 extension HomeStatusReader on BuildContext {
   HomeStatus watchHomeStatus() {
-    final settings = watch<SettingsService>();
-    final recording = watch<RecordingController>();
-    final groq = watch<GroqTranscriptionService>();
-    final ws = watch<WebSocketService>();
-    final update = watch<UpdateService>();
-    final style = settings.dictationProfile;
+    final (isGroqMode, style) = select(
+      (SettingsService s) => (s.isGroqMode, s.dictationProfile),
+    );
+    final hasGroqKey = select(
+      (GroqTranscriptionService g) => g.hasValidCredentials,
+    );
+    final (isSignedIn, handshakeFailed, isBanned) = select(
+      (WebSocketService ws) => (
+        ws.isAuthenticatedSession,
+        ws.handshakeState.state == HandshakeState.failed,
+        ws.status == ConnectionStatus.banned,
+      ),
+    );
+    final updateStatus = select((UpdateService u) => u.status);
+    final (
+      inputStatus,
+      isRecording,
+      isTranscribing,
+      hasText,
+      showSilenceWarning,
+    ) = select(
+      (RecordingController r) => (
+        r.inputStatus,
+        r.isRecording,
+        r.isTranscribing,
+        r.currentText.isNotEmpty,
+        r.showSilenceWarning,
+      ),
+    );
 
     return HomeStatusMapper.map(
       HomeSignals(
-        isGroqMode: settings.isGroqMode,
-        hasGroqKey: groq.hasValidCredentials,
-        isSignedIn: ws.isAuthenticatedSession,
-        handshakeFailed: ws.handshakeState.state == HandshakeState.failed,
-        isBanned: ws.status == ConnectionStatus.banned,
-        updateStatus: update.status,
-        inputStatus: recording.inputStatus,
-        isRecording: recording.isRecording,
-        isTranscribing: recording.isTranscribing,
+        isGroqMode: isGroqMode,
+        hasGroqKey: hasGroqKey,
+        isSignedIn: isSignedIn,
+        handshakeFailed: handshakeFailed,
+        isBanned: isBanned,
+        updateStatus: updateStatus,
+        inputStatus: inputStatus,
+        isRecording: isRecording,
+        isTranscribing: isTranscribing,
         // Text arrives before an LLM style rewrites it.
-        isPolishing: style.requiresLlm && recording.currentText.isNotEmpty,
-        showSilenceWarning: recording.showSilenceWarning,
+        isPolishing: style.requiresLlm && hasText,
+        showSilenceWarning: showSilenceWarning,
         styleLabel: style.label,
       ),
     );

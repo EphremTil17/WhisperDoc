@@ -63,10 +63,19 @@ void main() {
       final publicHostStatus = await service.validateServerUri(
         'ws://whisperdoc.com/ws',
       );
+      final spoofedLoopbackPrefix = await service.validateServerUri(
+        'ws://127.evil.example/ws',
+      );
 
       final blockedStatus = equals(SecurityStatus.blocked);
       expect(publicIpStatus, blockedStatus);
       expect(publicHostStatus, blockedStatus);
+      expect(spoofedLoopbackPrefix, blockedStatus);
+    });
+
+    test('WS is allowed for IPv6 loopback', () async {
+      final status = await service.validateServerUri('ws://[::1]:9989/ws');
+      expect(status, equals(SecurityStatus.localDev));
     });
 
     test('Custom whitelist allows WS', () async {

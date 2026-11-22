@@ -55,6 +55,20 @@ void main() {
     return lastSpeech;
   }
 
+  /// Runs [speechPattern] on a fresh normalizer, as a newly opened mic would.
+  double freshSpeechPattern({
+    required double speechDb,
+    required double pauseDb,
+    Duration step = defaultStep,
+  }) {
+    return speechPattern(
+      LevelNormalizer(),
+      speechDb: speechDb,
+      pauseDb: pauseDb,
+      step: step,
+    );
+  }
+
   group('LevelNormalizer', () {
     test('treats an exact zero as the reset signal and returns zero', () {
       final normalizer = LevelNormalizer();
@@ -71,13 +85,11 @@ void main() {
     });
 
     test('a quiet mic and a loud mic fill the meter the same way', () {
-      final quiet = speechPattern(
-        LevelNormalizer(),
+      final quiet = freshSpeechPattern(
         speechDb: quietSpeechDb,
         pauseDb: quietPauseDb,
       );
-      final loud = speechPattern(
-        LevelNormalizer(),
+      final loud = freshSpeechPattern(
         speechDb: loudSpeechDb,
         pauseDb: loudPauseDb,
       );
@@ -106,14 +118,12 @@ void main() {
     });
 
     test('output does not depend on how often samples arrive', () {
-      final fast = speechPattern(
-        LevelNormalizer(),
+      final fast = freshSpeechPattern(
         speechDb: midSpeechDb,
         pauseDb: midPauseDb,
         step: fastStep,
       );
-      final slow = speechPattern(
-        LevelNormalizer(),
+      final slow = freshSpeechPattern(
         speechDb: midSpeechDb,
         pauseDb: midPauseDb,
         step: slowStep,
@@ -131,6 +141,21 @@ void main() {
       normalizer.reset();
 
       expect(normalizer.normalize(probe, Duration.zero), fresh);
+    });
+
+    test('ignores non-finite and negative samples without poisoning state', () {
+      final normalizer = LevelNormalizer();
+      speechPattern(normalizer, speechDb: midSpeechDb, pauseDb: midPauseDb);
+      final valid = raw(midSpeechDb);
+      final before = normalizer.normalize(valid, afterRun);
+
+      expect(normalizer.normalize(double.nan, afterRun + defaultStep), 0);
+      expect(normalizer.normalize(double.infinity, afterRun + defaultStep), 0);
+      expect(normalizer.normalize(-1, afterRun + defaultStep), 0);
+
+      final after = normalizer.normalize(valid, afterRun + slowStep);
+      expect(after.isFinite, isTrue);
+      expect(after, closeTo(before, rateTolerance));
     });
   });
 }

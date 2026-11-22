@@ -149,7 +149,7 @@ void main() {
       },
     );
 
-    testWidgets('tapping Delete calls deleteCustomProfile with slotKey', (
+    testWidgets('confirming Delete calls deleteCustomProfile with slotKey', (
       tester,
     ) async {
       final orchestrator = createOrchestrator(tester);
@@ -159,6 +159,7 @@ void main() {
       );
 
       await orchestrator.tapDelete();
+      await orchestrator.confirmDelete();
 
       verify(() => mockSettings.deleteCustomProfile('custom2')).called(1);
       expect(find.byType(ProfileEditorDialog), findsNothing);

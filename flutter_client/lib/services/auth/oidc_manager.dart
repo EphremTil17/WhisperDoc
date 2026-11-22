@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:characters/characters.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ class OidcManager {
   static const int _httpOk = 200;
   static const int _httpBadRequest = 400; // OAuth invalid_grant
   static const int _httpUnauthorized = 401; // OAuth invalid_client
+  static const int _maxErrorSummaryLength = 160;
 
   static Uri get _configuredIssuerUri =>
       _normalizeUri(Uri.parse(AppConstants.oidcIssuer));
@@ -20,6 +22,11 @@ class OidcManager {
 
   /// Discovers OIDC endpoints from the issuer.
   Future<Map<String, dynamic>> discover() async {
+    // Set at build time (--dart-define-from-file=env.json); a build without
+    // it cannot sign in, and should say so rather than fail on a bad URI.
+    if (AppConstants.oidcIssuer.isEmpty) {
+      throw StateError('This build has no sign-in server (OIDC_ISSUER unset)');
+    }
     final discoveryUri = Uri.parse(AppConstants.oidcDiscoveryUrl);
     _validateTrustedUri(
       discoveryUri,
@@ -31,7 +38,10 @@ class OidcManager {
         .get(discoveryUri)
         .timeout(AppConstants.oidcHttpTimeout);
     if (response.statusCode != _httpOk) {
-      throw Exception('Failed to discover OIDC endpoints: ${response.body}');
+      throw Exception(
+        'Failed to discover OIDC endpoints (${response.statusCode}): '
+        '${summarizeErrorBody(response.body)}',
+      );
     }
 
     final decoded = jsonDecode(response.body);
@@ -123,10 +133,12 @@ class OidcManager {
 
     final status = response.statusCode;
     if (status == _httpBadRequest || status == _httpUnauthorized) {
-      throw OidcRejectedException(status, response.body);
+      throw OidcRejectedException(status, summarizeErrorBody(response.body));
     }
     if (status != _httpOk) {
-      throw Exception('Token exchange failed: ${response.body}');
+      throw Exception(
+        'Token exchange failed ($status): ${summarizeErrorBody(response.body)}',
+      );
     }
 
     return jsonDecode(response.body);
@@ -247,6 +259,37 @@ class OidcManager {
     return normalizedHost == 'localhost' ||
         normalizedHost == '127.0.0.1' ||
         normalizedHost == '::1';
+  }
+
+  /// Extracts bounded OAuth `error` / `error_description` fields so arbitrary
+  /// raw provider responses (HTML, echoed params) never end up in in-app logs.
+  static String summarizeErrorBody(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final code = decoded['error']?.toString().trim();
+        final desc = decoded['error_description']?.toString().trim();
+        final parts = [
+          if (code != null && code.isNotEmpty) code,
+          if (desc != null && desc.isNotEmpty) desc,
+        ];
+        if (parts.isNotEmpty) {
+          return _cleanSummary(parts.join(': '));
+        }
+      }
+    } catch (_) {
+      // Non-JSON response body (e.g. HTML error page): do not dump raw body.
+    }
+
+    return 'provider error';
+  }
+
+  static String _cleanSummary(String raw) {
+    final singleLine = raw.replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), ' ').trim();
+    final chars = singleLine.characters;
+    if (chars.length <= _maxErrorSummaryLength) return singleLine;
+
+    return '${chars.take(_maxErrorSummaryLength)}…';
   }
 
   String _requireString(Object? value, String fieldName) {

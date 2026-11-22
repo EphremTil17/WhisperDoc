@@ -40,10 +40,21 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
   HotkeyBinding? _binding;
 
   void _onKey(KeyEvent event) {
-    if (event is! KeyDownEvent || _modifierKeys.contains(event.logicalKey)) {
+    // Esc cancels, like any dialog (it is never a shortcut on its own).
+    if (event case KeyDownEvent(logicalKey: LogicalKeyboardKey.escape)) {
+      Navigator.of(context).pop();
+
       return;
     }
-    final vKey = Win32KeyMapper.mapToWin32VKey(event.logicalKey);
+    // Only a key going down counts, and a modifier alone is not a shortcut.
+    final key = switch (event) {
+      KeyDownEvent(:final logicalKey)
+          when !_modifierKeys.contains(logicalKey) =>
+        logicalKey,
+      _ => null,
+    };
+    if (key == null) return;
+    final vKey = Win32KeyMapper.mapToWin32VKey(key);
     final keyboard = HardwareKeyboard.instance;
     final held = [
       if (keyboard.isControlPressed) ('Ctrl', _modControl),
@@ -57,7 +68,7 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
       _binding = (
         display: [
           for (final (name, _) in held) name,
-          event.logicalKey.keyLabel.toUpperCase(),
+          key.keyLabel.toUpperCase(),
         ].join('+'),
         modifiers: held.fold(0, (mods, m) => mods | m.$2),
         vKey: vKey,

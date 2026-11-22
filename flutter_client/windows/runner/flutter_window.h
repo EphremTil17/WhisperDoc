@@ -37,6 +37,13 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       audio_devices_channel_;
   AudioDeviceWatcher* audio_device_watcher_ = nullptr;
+
+  // Tracks the hotkey isolate's Win32 thread ID so OnDestroy can wake its
+  // blocking GetMessageW loop (WM_QUIT) before tearing down the Dart VM,
+  // even when the window closes via Alt+F4 or the taskbar.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      hotkey_lifecycle_channel_;
+  DWORD hotkey_thread_id_ = 0;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

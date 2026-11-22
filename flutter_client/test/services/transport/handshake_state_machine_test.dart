@@ -91,7 +91,7 @@ void main() {
   });
 
   group('HandshakeStateMachine - Timeout', () {
-    test('should transition to failed after timeout', () async {
+    test('should transition to failed after timeout', () {
       // Note: This test uses the real Timer.
       // In a production test suite, we'd use fake_async,
       // but here we verify the logic exists.

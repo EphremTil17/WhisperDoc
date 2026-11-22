@@ -56,6 +56,10 @@ flutter:
     - assets/fonts/JetBrainsMono-OFL.txt
     - assets/fonts/Lucide-LICENSE.txt
 
+  # Drawn on the GPU: the idle home screen's contour background.
+  shaders:
+    - shaders/topography.frag
+
   # Bundled so text never depends on a runtime download and always renders
   # with the same metrics the type scale was designed against.
   fonts:

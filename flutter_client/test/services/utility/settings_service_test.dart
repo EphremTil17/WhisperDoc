@@ -224,7 +224,7 @@ void main() {
       expect(() => settings.saveCustomProfile(p4), throwsArgumentError);
     });
 
-    test('saveCustomProfile rejects blank name or blank prompt or prompt > 2000 chars', () async {
+    test('saveCustomProfile rejects blank name or blank prompt or prompt > 2000 chars', () {
       expect(
         () => settings.saveCustomProfile(
           const CustomProfile(

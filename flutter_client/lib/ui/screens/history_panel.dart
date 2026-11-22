@@ -6,6 +6,7 @@ import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/formatters/clock_time.dart';
 import 'package:flutter_client/logic/models/history_entry.dart';
 import 'package:flutter_client/services/utility/clipboard_service.dart';
+import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/ui/shared/widgets/caption_cue.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/app_panel.dart';
@@ -27,8 +28,20 @@ class _HistoryPanelState extends State<HistoryPanel> {
   /// decrypted history is never held by the long-lived controller.
   final Expando<String> _plaintext = Expando('historyPlaintext');
 
-  String _textOf(RecordingController controller, HistoryEntry entry) =>
-      _plaintext[entry] ??= controller.getDecryptedText(entry);
+  /// Empty when the entry cannot be decrypted (a reset vault key, a damaged
+  /// row): cached too, so a bad entry is tried once, not on every rebuild.
+  String _textOf(RecordingController controller, HistoryEntry entry) {
+    final cached = _plaintext[entry];
+    if (cached != null) return cached;
+    var text = '';
+    try {
+      text = controller.getDecryptedText(entry);
+    } catch (e) {
+      LoggingService().warning('History entry could not be decrypted: $e');
+    }
+
+    return _plaintext[entry] = text;
+  }
 
   Future<void> _copy(String text) async {
     final copied = await ClipboardService.copyToClipboard(text);
@@ -40,9 +53,12 @@ class _HistoryPanelState extends State<HistoryPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<RecordingController>();
+    // history is a fresh list on every read, so select its revision instead.
+    final (_, incognito) = context.select(
+      (RecordingController c) => (c.historyRevision, c.incognitoMode),
+    );
+    final controller = context.read<RecordingController>();
     final history = controller.history;
-    final incognito = controller.incognitoMode;
     final now = DateTime.now();
 
     return AppPanel(
@@ -79,17 +95,21 @@ class _HistoryPanelState extends State<HistoryPanel> {
                               ),
                             ),
                           ),
-                          IconButton(
-                            tooltip: 'Copy',
-                            onPressed: () => unawaited(_copy(text)),
-                            icon: const Icon(
-                              AppIcons.copy,
-                              size: AppSizes.smallIconSize,
+                          if (text.isNotEmpty)
+                            IconButton(
+                              tooltip: 'Copy',
+                              onPressed: () => unawaited(_copy(text)),
+                              icon: const Icon(
+                                AppIcons.copy,
+                                size: AppSizes.smallIconSize,
+                              ),
                             ),
-                          ),
                         ],
                       ),
-                      CrispText(text, style: AppType.body),
+                      if (text.isEmpty)
+                        const CaptionCue("can't read this entry")
+                      else
+                        CrispText(text, style: AppType.body),
                     ],
                   ),
                 );

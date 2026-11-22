@@ -123,12 +123,12 @@ class TransportSecurityService {
         return SecurityStatus.localDev;
       }
 
-      // 4. Resolve hostname to IP if needed
-      final resolvedIp = _isValidIPAddress(host)
-          ? host
-          : await _resolveHostname(host);
+      // 4. Resolve hostname to IP(s) if needed
+      final resolvedIps = _isValidIPAddress(host)
+          ? [host]
+          : await _resolveHostAddresses(host);
 
-      if (resolvedIp == null) {
+      if (resolvedIps.isEmpty) {
         _logger.warning(
           'Transport security: Failed to resolve hostname (blocked)',
         );
@@ -136,10 +136,10 @@ class TransportSecurityService {
         return SecurityStatus.blocked;
       }
 
-      // 5. Check if IP is private (RFC 1918)
-      if (isPrivateIP(resolvedIp)) {
+      // 5. Require every resolved IP to be private (RFC 1918 / loopback)
+      if (resolvedIps.every(isPrivateIP)) {
         _logger.info(
-          'Transport security: WS on private IP $resolvedIp (localDev)',
+          'Transport security: WS on private IP ${resolvedIps.first} (localDev)',
         );
 
         return SecurityStatus.localDev;
@@ -147,7 +147,7 @@ class TransportSecurityService {
 
       // 6. Public IP with WS is blocked
       _logger.error(
-        'Transport security: WS connection to public IP $resolvedIp (BLOCKED)',
+        'Transport security: WS connection to public IP ${resolvedIps.first} (BLOCKED)',
       );
 
       return SecurityStatus.blocked;
@@ -158,23 +158,27 @@ class TransportSecurityService {
     }
   }
 
-  /// Check if an IP address is in RFC 1918 private range
-  bool isPrivateIP(String ipString) {
+  /// Returns true when [host] is allowed to use cleartext `ws://` without
+  /// DNS lookup: loopback (`localhost`, `127.0.0.0/8`, `::1`), mDNS (`*.local`),
+  /// or an RFC 1918 private IP literal.
+  static bool isLocalOrPrivateHost(String host) =>
+      _isWhitelistedLocalHost(host) || _isPrivateIpLiteral(host);
+
+  /// Check if an IP address is in RFC 1918 private range or loopback
+  bool isPrivateIP(String ipString) => _isPrivateIpLiteral(ipString);
+
+  static bool _isPrivateIpLiteral(String ipString) {
     if (ipString.isEmpty) return false;
 
     // tryParse is robust: returns null if not a valid IP (avoids noisy exceptions for hostnames)
     final ip = InternetAddress.tryParse(ipString);
     if (ip == null) return false;
 
-    // Handle IPv6 loopback
-    if (ip.type == InternetAddressType.IPv6 &&
-        (ipString == '::1' || ipString == '0:0:0:0:0:0:0:1')) {
-      return true;
-    }
+    if (ip.isLoopback) return true;
 
     // Only check IPv4 private ranges
     if (ip.type == InternetAddressType.IPv4) {
-      final ipNum = _ipToInt(ipString);
+      final ipNum = _ipToIntStatic(ipString);
       for (final range in _privateRanges) {
         if (ipNum >= range.start && ipNum <= range.end) {
           return true;
@@ -187,7 +191,9 @@ class TransportSecurityService {
 
   // --- Private Helper Methods ---
 
-  bool _isWhitelistedLocal(String host) {
+  bool _isWhitelistedLocal(String host) => _isWhitelistedLocalHost(host);
+
+  static bool _isWhitelistedLocalHost(String host) {
     final hostLower = host.toLowerCase();
 
     // Exact matches
@@ -195,13 +201,8 @@ class TransportSecurityService {
       return true;
     }
 
-    // Pattern: *.local
+    // Pattern: *.local (mDNS)
     if (hostLower.endsWith('.local')) {
-      return true;
-    }
-
-    // Pattern: 127.*
-    if (hostLower.startsWith('127.')) {
       return true;
     }
 
@@ -212,26 +213,26 @@ class TransportSecurityService {
     return InternetAddress.tryParse(host) != null;
   }
 
-  Future<String?> _resolveHostname(String hostname) async {
+  Future<List<String>> _resolveHostAddresses(String hostname) async {
     try {
       _logger.info('Resolving hostname: $hostname');
       final addresses = await InternetAddress.lookup(hostname);
       if (addresses.isNotEmpty) {
-        final ip = addresses.first.address;
-        _logger.info('Resolved $hostname to $ip');
+        final ips = addresses.map((a) => a.address).toList(growable: false);
+        _logger.info('Resolved $hostname to ${ips.first}');
 
-        return ip;
+        return ips;
       }
 
-      return null;
+      return const [];
     } catch (e) {
       _logger.warning('DNS resolution failed for $hostname');
 
-      return null;
+      return const [];
     }
   }
 
-  int _ipToInt(String ip) {
+  static int _ipToIntStatic(String ip) {
     final parts = ip.split('.');
 
     return (int.parse(parts.first) << _shift24) |

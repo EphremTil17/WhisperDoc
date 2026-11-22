@@ -8,6 +8,8 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// Service to capture raw audio chunks.
 /// Configured for 16kHz, Mono, 16-bit PCM.
 class AudioService extends ChangeNotifier {
+  final LoggingService _logger = LoggingService();
+
   static const int _sampleRate = 16000;
   static const int _channelCount = 1;
   static const int _bytesPerSample = 2;
@@ -43,7 +45,7 @@ class AudioService extends ChangeNotifier {
     try {
       final devices = await _audioRecorder.listInputDevices();
       final status = _classify(devices, targetDeviceId);
-      LoggingService().debug(
+      _logger.debug(
         'Input check: ${status.name} (${devices.length} device(s), '
         'enumerated in ${clock.elapsedMilliseconds} ms)',
       );
@@ -55,7 +57,7 @@ class AudioService extends ChangeNotifier {
       // virtual driver or a reconnecting headset) is mid-transition. Report
       // "unknown" so recording can still be attempted; a real failure will
       // surface from startRecording, and the next device event re-checks.
-      LoggingService().warning(
+      _logger.warning(
         'Input enumeration failed; availability unknown: $e',
       );
 
@@ -88,7 +90,7 @@ class AudioService extends ChangeNotifier {
     if (_isRecording) return;
 
     if (!await _audioRecorder.hasPermission()) {
-      LoggingService().error('Microphone permission denied');
+      _logger.error('Microphone permission denied');
       _isRecording = false;
       _setStatus(AudioInputStatus.permissionDenied);
       throw Exception('Microphone permission denied');
@@ -113,11 +115,11 @@ class AudioService extends ChangeNotifier {
       _setStatus(AudioInputStatus.available);
       notifyListeners();
 
-      LoggingService().info('Audio recording started: 16kHz PCM 16-bit Mono');
+      _logger.info('Audio recording started: 16kHz PCM 16-bit Mono');
       if (deviceLabel != null) {
-        LoggingService().info('Device: $deviceLabel');
+        _logger.info('Device: $deviceLabel');
       } else {
-        LoggingService().info('Device: Default');
+        _logger.info('Device: Default');
       }
 
       _recordSubscription = stream.listen(
@@ -126,7 +128,7 @@ class AudioService extends ChangeNotifier {
           _calculateAmplitude(data);
         },
         onError: (e) {
-          LoggingService().error('Audio recording error', error: e);
+          _logger.error('Audio recording error', error: e);
           // ignore: discarded_futures - stopRecording is intentionally fire-and-forget here.
           stopRecording();
         },

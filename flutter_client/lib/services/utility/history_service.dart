@@ -116,6 +116,14 @@ class HistoryService {
     final transcriptionEntries = db.transcriptionEntries;
     await db.delete(transcriptionEntries).go();
     _logger.warning('Transcription history cleared');
+    // Reclaim freed pages so deleted rows/timestamps do not linger in the
+    // file. Best effort: the rows are already gone, and a failure here (disk
+    // full, file locked) must not fail the incognito switch that called it.
+    try {
+      await db.customStatement('VACUUM');
+    } catch (e) {
+      _logger.warning('History VACUUM failed; freed pages remain: $e');
+    }
   }
 
   Future<void> dispose() async {

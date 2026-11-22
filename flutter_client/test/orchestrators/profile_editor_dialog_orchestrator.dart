@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/home/dialogs/profile_editor_dialog.dart';
+import 'package:flutter_client/ui/shared/widgets/confirm_dialog.dart';
 
 /// Test orchestrator encapsulating dialog presentation, input typing,
 /// and action invocations for [ProfileEditorDialog].
@@ -59,6 +60,17 @@ class ProfileEditorDialogOrchestrator {
   /// Taps the Delete button and settles.
   Future<void> tapDelete() async {
     await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+  }
+
+  /// Confirms the delete prompt that [tapDelete] opens, and settles.
+  Future<void> confirmDelete() async {
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ConfirmDialog),
+        matching: find.widgetWithText(AppButton, 'Delete'),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 

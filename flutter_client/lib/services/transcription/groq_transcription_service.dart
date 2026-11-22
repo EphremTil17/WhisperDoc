@@ -1,3 +1,6 @@
+// Each notifyListeners() announces a different state change and returns
+// nothing, so the repeats have no value to share.
+// ignore_for_file: prefer-moving-to-variable
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/logic/processors/text_sanitizer.dart';
@@ -85,6 +88,7 @@ class GroqTranscriptionService extends ChangeNotifier {
     }
 
     if (!_rateLimiter.canRequest()) {
+      _dropAudio();
       throw GroqError(
         type: GroqErrorType.rateLimited,
         message: 'Local rate limit reached',
@@ -144,6 +148,7 @@ class GroqTranscriptionService extends ChangeNotifier {
       // text reaches clipboard/paste automation.
       return TextSanitizer.sanitize(result.text);
     } on GroqError catch (e) {
+      _dropAudio();
       _status = GroqTranscriptionStatus.error;
       notifyListeners();
       // Feed retry-after from 429 responses into the local limiter so the
@@ -156,6 +161,7 @@ class GroqTranscriptionService extends ChangeNotifier {
       }
       rethrow;
     } catch (e, st) {
+      _dropAudio();
       _status = GroqTranscriptionStatus.error;
       notifyListeners();
       Error.throwWithStackTrace(
@@ -167,10 +173,16 @@ class GroqTranscriptionService extends ChangeNotifier {
 
   /// Discards buffered audio without transcribing.
   void clearBuffer() {
-    _chunks.clear();
-    _totalBytes = 0;
+    _dropAudio();
     _status = GroqTranscriptionStatus.idle;
     notifyListeners();
+  }
+
+  /// Nothing retries a failed clip, so its audio (up to the 24 MB cap) is
+  /// not kept in memory after a failure either.
+  void _dropAudio() {
+    _chunks.clear();
+    _totalBytes = 0;
   }
 
   @override

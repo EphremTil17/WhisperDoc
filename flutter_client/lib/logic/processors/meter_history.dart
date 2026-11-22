@@ -41,8 +41,17 @@ class MeterHistory {
   double _peak = 0;
   double _fraction = 0;
 
-  /// Latest normalised level (0–1); the next column records it.
-  set level(double value) => _target = value;
+  /// Takes the latest normalised level (0–1) heard at [at].
+  ///
+  /// Columns due before [at] settle first, with the level that was current
+  /// while they elapsed. Frames can stop (the meter is covered by a panel
+  /// and its ticker muted) while audio keeps arriving; settling here keeps
+  /// the history true, rather than painting the whole gap with whatever
+  /// level happens to be current when frames resume.
+  void record(double value, Duration at) {
+    _settle(at);
+    _target = value;
+  }
 
   /// Eased level of the newest, still-growing column.
   double get live => _live;
@@ -73,16 +82,15 @@ class MeterHistory {
   /// Advances to [now]: settles any due columns and updates the live level,
   /// peak and scroll fraction.
   void advance(Duration now) {
-    final frame = now - _lastFrameAt;
-    _lastFrameAt = now;
+    final rawFrame = now - _lastFrameAt;
+    final frame = rawFrame.isNegative ? Duration.zero : rawFrame;
+    if (!rawFrame.isNegative) _lastFrameAt = now;
 
-    final step = columnInterval.inMicroseconds;
-    while ((now - _lastColumnAt).inMicroseconds >= step) {
-      _lastColumnAt += columnInterval;
-      _head = (_head + 1) % capacity;
-      _levels[_head] = _target;
-    }
-    _fraction = (now - _lastColumnAt).inMicroseconds / step;
+    _settle(now);
+    final sinceColumn = now - _lastColumnAt;
+    _fraction = sinceColumn.isNegative
+        ? 0
+        : sinceColumn.inMicroseconds / columnInterval.inMicroseconds;
 
     final ease = 1 - math.exp(-frame.inMicroseconds / liveEase.inMicroseconds);
     _live += (_target - _live) * ease;
@@ -95,5 +103,18 @@ class MeterHistory {
       final fall = peakFallPerSecond * frame.inMicroseconds / _microsPerSecond;
       _peak = math.max(shown, _peak - fall);
     }
+  }
+
+  /// Records every column due by [now] at the current level. A gap longer
+  /// than the ring writes only the columns that can still be seen.
+  void _settle(Duration now) {
+    final due =
+        (now - _lastColumnAt).inMicroseconds ~/ columnInterval.inMicroseconds;
+    if (due <= 0) return;
+    for (var i = math.min(due, capacity); i > 0; i--) {
+      _head = (_head + 1) % capacity;
+      _levels[_head] = _target;
+    }
+    _lastColumnAt += columnInterval * due;
   }
 }

@@ -48,7 +48,7 @@ class ChoicePanel<T> extends StatelessWidget {
       title: title,
       actions: actions,
       children: [
-        for (final (value, label) in options)
+        for (final (index, (value, label)) in options.indexed)
           Semantics(
             selected: value == selected,
             inMutuallyExclusiveGroup: true,
@@ -62,6 +62,7 @@ class ChoicePanel<T> extends StatelessWidget {
                     )
                   : null,
               chevron: false,
+              rule: index < options.length - 1,
               onTap: () => _pick(context, value),
             ),
           ),

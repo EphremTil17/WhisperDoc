@@ -29,19 +29,38 @@ class _LastTranscriptState extends State<LastTranscript> {
   static const Duration _ageRefresh = Duration(seconds: 30);
   static const double _checkSize = 14;
 
-  /// Clock the age is measured against; ticks every [_ageRefresh].
-  DateTime _now = DateTime.now();
+  /// Cached relative age label; only triggers a rebuild when the label changes.
+  String _age = '';
   bool _justCopied = false;
   Timer? _ageTimer;
   Timer? _confirmTimer;
 
+  String _ageFor(DateTime now) {
+    // A transcript newer than the clock reads as "just now".
+    final clamped = now.isBefore(widget.arrivedAt) ? widget.arrivedAt : now;
+
+    return ClockTime.ago(clamped.difference(widget.arrivedAt));
+  }
+
   @override
   void initState() {
     super.initState();
-    _ageTimer = Timer.periodic(
-      _ageRefresh,
-      (_) => setState(() => _now = DateTime.now()),
-    );
+    _age = _ageFor(DateTime.now());
+    _ageTimer = Timer.periodic(_ageRefresh, _onAgeTick);
+  }
+
+  @override
+  void didUpdateWidget(LastTranscript old) {
+    super.didUpdateWidget(old);
+    if (old.arrivedAt != widget.arrivedAt) {
+      _age = _ageFor(DateTime.now());
+    }
+  }
+
+  void _onAgeTick(Timer _) {
+    final next = _ageFor(DateTime.now());
+    if (next == _age) return;
+    setState(() => _age = next);
   }
 
   Future<void> _copy() async {
@@ -49,9 +68,11 @@ class _LastTranscriptState extends State<LastTranscript> {
     if (!ok || !mounted) return;
     setState(() => _justCopied = true);
     _confirmTimer?.cancel();
-    _confirmTimer = Timer(_confirmFor, () {
-      if (mounted) setState(() => _justCopied = false);
-    });
+    _confirmTimer = Timer(_confirmFor, _endConfirm);
+  }
+
+  void _endConfirm() {
+    if (mounted) setState(() => _justCopied = false);
   }
 
   @override
@@ -64,9 +85,6 @@ class _LastTranscriptState extends State<LastTranscript> {
   @override
   Widget build(BuildContext context) {
     final autoCopy = context.select((SettingsService s) => s.autoCopy);
-    // A transcript newer than the last clock tick reads as "just now".
-    final now = _now.isBefore(widget.arrivedAt) ? widget.arrivedAt : _now;
-    final age = ClockTime.ago(now.difference(widget.arrivedAt));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -84,7 +102,7 @@ class _LastTranscriptState extends State<LastTranscript> {
                 color: AppColors.textMuted,
               ),
             CrispText(
-              _justCopied ? 'Copied' : age,
+              _justCopied ? 'Copied' : _age,
               style: AppType.caption.copyWith(color: AppColors.textMuted),
             ),
             IconButton(

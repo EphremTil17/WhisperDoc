@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+import 'package:flutter_client/services/transport/transport_security_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/app_panel.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/choice_panel.dart';
@@ -128,13 +129,21 @@ abstract final class AccountFields {
     );
   }
 
+  /// Checks the address the connection will actually use: https:// becomes
+  /// wss:// (the default server is stored as https://), http:// becomes
+  /// ws://, and a bare host gets a scheme. ws:// stays local-only.
   static String? _webSocketProblem(String value) {
-    final uri = Uri.tryParse(value);
+    final uri = Uri.tryParse(TransportSecurityService().normalizeUri(value));
     final isWebSocket =
         uri != null &&
         (uri.scheme == 'ws' || uri.scheme == 'wss') &&
         uri.host.isNotEmpty;
+    if (!isWebSocket) return 'Use a wss:// or https:// address';
+    if (uri.scheme == 'ws' &&
+        !TransportSecurityService.isLocalOrPrivateHost(uri.host)) {
+      return 'Use wss:// for remote servers (ws:// is local only)';
+    }
 
-    return isWebSocket ? null : 'Use a ws:// or wss:// address';
+    return null;
   }
 }

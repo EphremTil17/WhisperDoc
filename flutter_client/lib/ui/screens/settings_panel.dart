@@ -12,8 +12,9 @@ import 'package:flutter_client/ui/shared/widgets/panel/panel_toggle_row.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
-/// How the app behaves: what it listens with, the shortcut, and what
-/// happens to the text when you stop. Every change applies at once.
+/// How the app behaves: what it listens with, the shortcut, what happens to
+/// the text when you stop, and whether the background moves. Every change
+/// applies at once.
 class SettingsPanel extends StatelessWidget {
   const SettingsPanel({super.key});
 
@@ -66,6 +67,19 @@ class SettingsPanel extends StatelessWidget {
               value: settings.autoCopy && settings.autoPaste,
               enabled: settings.autoCopy,
               onChanged: (on) => unawaited(settings.setAutoPaste(on)),
+            ),
+          ],
+        ),
+        PanelSection(
+          label: 'Appearance',
+          children: [
+            PanelToggleRow(
+              icon: AppIcons.mountain,
+              label: 'Moving background',
+              subtitle: 'Off keeps a still map, for slower computers',
+              value: settings.animateBackground,
+              rule: false,
+              onChanged: (on) => unawaited(settings.setAnimateBackground(on)),
             ),
           ],
         ),

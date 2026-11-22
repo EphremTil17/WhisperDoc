@@ -69,9 +69,13 @@ class LogEntry {
   /// Width the level is padded to so columns line up (longest is "ERROR").
   static const int levelColumnWidth = 5;
 
-  String get time => ClockTime.hms(timestamp);
+  /// Local wall-clock time for the Logs panel (entries are stored in UTC).
+  String get time => ClockTime.hms(timestamp.toLocal());
   String get paddedLevel => level.padRight(levelColumnWidth);
-  String get formatted => '$time | $paddedLevel | $message';
+
+  /// One exported line, to the millisecond so steps can be timed.
+  String get formatted =>
+      '${ClockTime.hmsMillis(timestamp.toLocal())} | $paddedLevel | $message';
 
   LogEntry({
     required this.timestamp,

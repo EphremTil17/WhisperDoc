@@ -1,4 +1,6 @@
-// ignore_for_file: prefer-match-file-name - one file holds the token groups.
+// Every design token class lives here together, so no class matches the
+// file name by design.
+// ignore_for_file: prefer-match-file-name
 import 'package:material_ui/material_ui.dart';
 
 /// Design tokens for the Captions world (see the home surface brief).
@@ -144,8 +146,9 @@ abstract final class AppSpace {
 }
 
 abstract final class AppRadius {
-  /// Controls: buttons, keycaps, bands. Squared, not pill-shaped.
-  static const Radius control = Radius.circular(2);
+  /// Controls: buttons, keycaps, bands, dialogs, menus, inputs. Square, like
+  /// the window itself; circles are kept for status marks only.
+  static const Radius control = Radius.zero;
   static const BorderRadius controlAll = BorderRadius.all(control);
 }
 
@@ -158,6 +161,9 @@ abstract final class AppSizes {
 
   /// One row in a panel list.
   static const double row = 48;
+
+  /// How far a pressed control drops, in whole pixels.
+  static const int pressDepth = 2;
   static const double iconButton = 40;
   static const double controlHeight = 40;
   static const double iconSize = 18;
@@ -168,4 +174,7 @@ abstract final class AppMotion {
   /// State swaps (hover, focus, panel open). Short and decisive.
   static const Duration quick = Duration(milliseconds: 120);
   static const Curve ease = Curves.easeOutCubic;
+
+  /// A released control climbs back one pixel per step: stepped, not eased.
+  static const Duration pressStep = Duration(milliseconds: 50);
 }

@@ -4,6 +4,7 @@ import 'package:flutter_client/infrastructure/di/service_locator.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/ui/screens/boot_screen.dart';
 import 'package:flutter_client/ui/screens/home_screen.dart';
+import 'package:flutter_client/ui/shared/widgets/topography_background.dart';
 
 /// Root widget: renders the [BootScreen] immediately, then swaps in the full
 /// app once [ServiceLocator.setup] completes.
@@ -20,6 +21,12 @@ class WhisperDocApp extends StatefulWidget {
 
 class _WhisperDocAppState extends State<WhisperDocApp> {
   final Future<void> _services = ServiceLocator.setup();
+
+  @override
+  void initState() {
+    super.initState();
+    TopographyBackground.preload();
+  }
 
   @override
   Widget build(BuildContext context) {

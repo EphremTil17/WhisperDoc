@@ -47,12 +47,24 @@ class _PixelMeterState extends State<PixelMeter>
     unawaited(ticker.start());
   }
 
-  void _onLevel(double raw) {
-    _history.level = widget.normalizer.normalize(raw, _clock.elapsed);
+  @override
+  void didUpdateWidget(PixelMeter old) {
+    super.didUpdateWidget(old);
+    if (old.levels != widget.levels) {
+      unawaited(_subscription?.cancel());
+      _subscription = widget.levels.listen(_onLevel);
+    }
   }
 
-  void _onTick(Duration elapsed) {
-    _history.advance(elapsed);
+  /// Levels keep arriving while a panel covers the meter and mutes the
+  /// ticker, so the history is recorded here, on one clock with the frames.
+  void _onLevel(double raw) {
+    final now = _clock.elapsed;
+    _history.record(widget.normalizer.normalize(raw, now), now);
+  }
+
+  void _onTick(Duration _) {
+    _history.advance(_clock.elapsed);
     _frame.tick();
   }
 

@@ -10,6 +10,10 @@ namespace {
 // Must match AudioDeviceMonitor.channelName on the Dart side.
 constexpr char kAudioDevicesChannel[] = "whisperdoc/audio_devices";
 constexpr char kAudioDevicesChangedMethod[] = "audioDevicesChanged";
+
+// Must match HotkeyService lifecycle channel on the Dart side.
+constexpr char kHotkeyLifecycleChannel[] = "whisperdoc/hotkey_lifecycle";
+constexpr char kSetHotkeyThreadIdMethod[] = "setHotkeyThreadId";
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -42,6 +46,29 @@ bool FlutterWindow::OnCreate() {
   // Best effort: without Core Audio the app still re-checks on focus/record.
   audio_device_watcher_ = AudioDeviceWatcher::Create(GetHandle());
 
+  hotkey_lifecycle_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kHotkeyLifecycleChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  hotkey_lifecycle_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == kSetHotkeyThreadIdMethod) {
+          if (const auto* id32 = std::get_if<int32_t>(call.arguments())) {
+            hotkey_thread_id_ = *id32 > 0 ? static_cast<DWORD>(*id32) : 0;
+          } else if (const auto* id64 =
+                         std::get_if<int64_t>(call.arguments())) {
+            hotkey_thread_id_ = *id64 > 0 ? static_cast<DWORD>(*id64) : 0;
+          } else {
+            hotkey_thread_id_ = 0;
+          }
+          result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -61,6 +88,15 @@ void FlutterWindow::OnDestroy() {
     audio_device_watcher_ = nullptr;
   }
   audio_devices_channel_ = nullptr;
+  hotkey_lifecycle_channel_ = nullptr;
+
+  // Wake the hotkey isolate's blocking GetMessageW loop before destroying the
+  // Flutter engine; otherwise WM_CLOSE (Alt+F4, taskbar close) hangs waiting
+  // for that isolate to exit.
+  if (hotkey_thread_id_ != 0) {
+    ::PostThreadMessage(hotkey_thread_id_, WM_QUIT, 0, 0);
+    hotkey_thread_id_ = 0;
+  }
 
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

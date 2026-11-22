@@ -413,7 +413,7 @@ void main() {
   // in _handleRawMessage, gated on !_pendingConfigChange.
 
   group('WebSocketService mid-handshake config-change ordering', () {
-    test('buffered audio is cleared and new audio stays off the stale channel when config changed mid-handshake', () async {
+    test('buffered audio is cleared and new audio stays off the stale channel when config changed mid-handshake', () {
       final svc = _ServiceFactory.make(apiKey: 'test-key');
       final channel = _FakeWebSocketChannel();
       svc.channelForTesting = channel;
@@ -465,7 +465,7 @@ void main() {
       svc.dispose();
     });
 
-    test('buffered audio is flushed normally when no config change is pending', () async {
+    test('buffered audio is flushed normally when no config change is pending', () {
       final svc = _ServiceFactory.make(apiKey: 'test-key');
       final channel = _FakeWebSocketChannel();
       svc.channelForTesting = channel;

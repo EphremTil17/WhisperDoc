@@ -17,6 +17,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   HANDLE hMutex = CreateMutex(NULL, TRUE, L"WhisperDocSingleInstanceMutex");
   if (hMutex == NULL || GetLastError() == ERROR_ALREADY_EXISTS) {
     // Another instance is running or failed to acquire mutex, exit silently
+    if (hMutex != NULL) {
+      ::CloseHandle(hMutex);
+    }
     return EXIT_SUCCESS;
   }
 
@@ -33,8 +36,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
+  // The client area, in logical pixels (AppConstants.windowWidth/Height). The
+  // window is created captionless at exactly this size and centred on the
+  // monitor nearest |origin|, so Dart never has to resize it.
+  Win32Window::Size size(420, 600);
   if (!window.Create(L"WhisperDoc", origin, size)) {
+    ::CoUninitialize();
+    ::CloseHandle(hMutex);
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
@@ -45,6 +53,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::DispatchMessage(&msg);
   }
 
+  // The title-bar close quits the loop while the window still exists. Tear it
+  // down here, while FlutterWindow is whole: left to ~Win32Window, OnDestroy
+  // dispatches to the base no-op, so the hotkey thread is never woken and the
+  // engine outlives COM and the instance mutex. Harmless after Alt+F4, where
+  // the window is already gone.
+  window.Destroy();
+
   ::CoUninitialize();
+  ::CloseHandle(hMutex);
   return EXIT_SUCCESS;
 }

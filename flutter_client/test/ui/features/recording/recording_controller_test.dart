@@ -1,4 +1,4 @@
-// ignore_for_file: prefer-match-file-name, avoid-late-keyword, no-empty-block, prefer-moving-to-variable
+// ignore_for_file: prefer-match-file-name, avoid-late-keyword, prefer-moving-to-variable
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -90,18 +90,19 @@ void main() {
     when(() => mockWsService.onMessage)
         .thenAnswer((_) => mockWsMessageController.stream);
     when(() => mockAutomationService.runAutomation(any()))
-        .thenAnswer((_) async {});
+        .thenAnswer((_) => Future.value());
     when(
       () => mockHistoryService.saveTranscription(
         text: any(named: 'text'),
         timestamp: any(named: 'timestamp'),
       ),
-    ).thenAnswer((_) async {});
+    ).thenAnswer((_) => Future.value());
     when(() => mockHistoryService.getHistory()).thenAnswer((_) async => []);
-    when(() => mockHistoryService.clearAll()).thenAnswer((_) async {});
+    when(() => mockHistoryService.clearAll())
+        .thenAnswer((_) => Future.value());
     when(() => mockSettingsService.incognitoMode).thenReturn(false);
     when(() => mockSettingsService.setIncognitoMode(any()))
-        .thenAnswer((_) async {});
+        .thenAnswer((_) => Future.value());
     when(() => mockSettingsService.addListener(any())).thenReturn(null);
     when(() => mockSettingsService.removeListener(any())).thenReturn(null);
     when(() => mockAudioCueService.playStartCue()).thenReturn(null);
@@ -181,7 +182,7 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
 
@@ -210,7 +211,7 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
 
@@ -229,7 +230,7 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
       when(() => mockAudioCueService.playStartCue()).thenReturn(null);
@@ -254,11 +255,12 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
       when(() => mockAudioCueService.playStartCue()).thenReturn(null);
-      when(() => mockAudioService.stopRecording()).thenAnswer((_) async {});
+      when(() => mockAudioService.stopRecording())
+          .thenAnswer((_) => Future.value());
 
       await controller.startRecording();
       await Future.delayed(Duration.zero);
@@ -295,6 +297,51 @@ void main() {
       expect(stops.callCount, equals(1));
       final endSignals = verify(() => mockWsService.sendEndSignal());
       expect(endSignals.callCount, equals(1));
+    });
+
+    test('a second press while starting stops once the start lands', () async {
+      // "Start, never mind": the second press must not be dropped.
+      final captureStarted = Completer<void>();
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) => captureStarted.future);
+      when(() => mockAudioService.audioStream)
+          .thenAnswer((_) => const Stream.empty());
+      when(() => mockAudioService.stopRecording()).thenAnswer((_) {
+        when(() => mockAudioService.isRecording).thenReturn(false);
+
+        return Future.value();
+      });
+      when(() => mockWsService.sendEndSignal()).thenReturn(null);
+
+      final start = controller.toggleRecording();
+      final secondPress = controller.toggleRecording();
+      when(() => mockAudioService.isRecording).thenReturn(true);
+      captureStarted.complete();
+      await Future.wait([start, secondPress]);
+
+      verify(() => mockAudioService.stopRecording()).called(1);
+      verify(() => mockWsService.sendEndSignal()).called(1);
+    });
+
+    test('a recorder that stops by itself still finishes the capture', () async {
+      // A device error stops the recorder without stopRecording(): what was
+      // captured must still be sent, and the stream dropped.
+      when(() => mockWsService.sendEndSignal()).thenReturn(null);
+      when(() => mockAudioService.isRecording).thenReturn(true);
+      audioStateListener();
+      expect(controller.isRecording, isTrue);
+
+      when(() => mockAudioService.isRecording).thenReturn(false);
+      audioStateListener();
+      await pumpEventQueue();
+
+      expect(controller.isRecording, isFalse);
+      verify(() => mockAudioCueService.playStopCue()).called(1);
+      verify(() => mockWsService.sendEndSignal()).called(1);
     });
 
     test('overlapping start requests open one capture stream', () async {
@@ -335,7 +382,7 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
 
@@ -394,7 +441,7 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
 
@@ -419,7 +466,7 @@ void main() {
           deviceId: any(named: 'deviceId'),
           deviceLabel: any(named: 'deviceLabel'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => mockAudioService.audioStream)
           .thenAnswer((_) => const Stream.empty());
 
@@ -675,6 +722,9 @@ void main() {
     );
 
     test('isSessionActive reflects recording state transition', () {
+      // A recorder that stops on its own hands its capture to Groq.
+      when(() => mockGroqService.finalizeAndTranscribe())
+          .thenAnswer((_) => Future.value(''));
       expect(controller.isSessionActive, isFalse);
 
       // Start recording via audio state notification

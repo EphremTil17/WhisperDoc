@@ -29,6 +29,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _briefNotice = Duration(seconds: 1);
   static const _notice = Duration(seconds: 2);
 
+  /// Errors can run to a sentence or two; give them time to be read.
+  static const _errorNotice = Duration(seconds: 4);
+
   StreamSubscription? _hotkeySubscription;
   AppLifecycleListener? _lifecycle;
   StreamSubscription? _errorSubscription;
@@ -96,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       } else {
         // 4. Default: Ephemeral Notification
-        _notify(error, _briefNotice);
+        _notify(error, _errorNotice);
       }
     });
 

@@ -127,7 +127,7 @@ void main() {
       },
     );
 
-    test('throws invalidApiKey on 401', () async {
+    test('throws invalidApiKey on 401', () {
       final mockClient = MockClient((_) async {
         return http.Response(
           '{"error": {"message": "Invalid API Key"}}',
@@ -181,7 +181,7 @@ void main() {
       }
     });
 
-    test('throws serverError on 500', () async {
+    test('throws serverError on 500', () {
       final mockClient = MockClient((_) async {
         return http.Response('Internal Server Error', statusServerError);
       });
@@ -206,10 +206,10 @@ void main() {
       );
     });
 
-    test('maps SocketException to networkError', () async {
-      final mockClient = MockClient((_) async {
-        throw const SocketException('Connection refused');
-      });
+    test('maps SocketException to networkError', () {
+      final mockClient = MockClient(
+        (_) => Future.error(const SocketException('Connection refused')),
+      );
 
       final client = GroqChatClient(client: mockClient);
 
@@ -231,7 +231,7 @@ void main() {
       );
     });
 
-    test('maps TimeoutException to networkError', () async {
+    test('maps TimeoutException to networkError', () {
       final mockClient = MockClient((_) async {
         await Future<void>.delayed(const Duration(milliseconds: 100));
 

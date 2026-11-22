@@ -57,7 +57,7 @@ typography:
     fontWeight: 400
     lineHeight: "17px"
 rounded:
-  control: "2px"
+  control: "0px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -180,7 +180,7 @@ components:
 
 The window is a dark screen whose one job is to show what was said, the way broadcast closed captions do. Text sits on solid caption bands over a near-black ground; status speaks as a bracketed sound description (`[ ready ]`, `[ listening · 0:07 ]`, `[ can't connect ]`); everything else stays out of the way. The window is fixed at 420×600 and is mostly glanced at, so each state is one cue, one line and at most one fix.
 
-The material is flat and pixel-exact. Fills are solid, dividers are 1px, corners are 2px, and every text baseline lands on a whole device pixel, because Flutter on Windows draws text with greyscale antialiasing and no hinting. Colour is held back: white on near-black does the work, crimson appears only when recording or when the app needs the user, and amber only when an update is waiting. The one live, moving element is the recording meter, a scrolling grid of crimson pixel blocks; everything else changes by swapping whole states.
+The material is flat and pixel-exact. Fills are solid, dividers are 1px, every corner is square (the window included), and every text baseline lands on a whole device pixel, because Flutter on Windows draws text with greyscale antialiasing and no hinting. Colour is held back: white on near-black does the work, crimson appears only when recording or when the app needs the user, and amber only when an update is waiting. The one live, moving element is the recording meter, a scrolling grid of crimson pixel blocks; everything else changes by swapping whole states.
 
 The system rejects the category default it was built against: a glowing round mic button over a rounded transcript card with an icon toolbar. No gradients, glows, glass or soft shadows.
 
@@ -250,7 +250,7 @@ The baseline arithmetic is Lexend's; mono shares the 12/17 metric and is drawn t
 
 A fixed 420×600 frameless window, not responsive. A 40px title bar (wordmark left; account indicator, minimize, close right), a centred stage, and a 64px bottom bar separated by a 1px rule (Record and the output-style trigger left; History, Incognito, Settings icon buttons right). Status lives in the stage's upper third as a centred stack: cue, then a 20/29 line, then at most one fix button. The last transcript sits as caption bands near the bottom of the stage, with a tick, age and copy action beneath.
 
-Every destination opened from home is a full-window panel that replaces the stage and bottom bar under the same title bar: Account (from the account indicator), Settings and History (from the bottom bar), and Logs (from Account). Each one-value edit or pick inside them is a panel too (API key, Model, Language, Words to expect, Server, Developer key, Microphone). A panel is a 48px header (back chevron, the title in title at 600, optional icon actions at the end), a scrolling list on an 8px inset, and an optional footer above a 1px rule (16px sides, 8px vertical). Lists group under section labels with a 24px gap above; each row is at least 48px with a 1px rule beneath, icon column first (16px icon, 24px to the label), value or control last. Every panel fits 420×600 without crowding, which is why Account folds version, update and logs into one App section.
+Every destination opened from home is a full-window panel that replaces the stage and bottom bar under the same title bar: Account (from the account indicator), Settings and History (from the bottom bar), and Logs (from Account). Each one-value edit or pick inside them is a panel too (API key, Model, Language, Words to expect, Server, Developer key, Microphone). A panel is a 48px header (back chevron, the title in title at 600, optional icon actions at the end), a scrolling list on an 8px inset, and an optional footer above a 1px rule (16px sides, 8px vertical). Lists group under section labels with a 24px gap above; each row is at least 48px with a 1px rule beneath (the rule spans the row's full width, like its hover band; a panel's last row has none, since nothing follows it), icon column first (16px icon, 24px to the label), value or control last. Every panel fits 420×600 without crowding, which is why Account folds version, update and logs into one App section.
 
 Spacing is a 4px grid (xs 4, sm 8, md 12, lg 16, xl 24, xxl 32). Window and dialog insets are 16px; controls are 40px tall and icon targets 40px square; icons are 18px (16px small, as in panel rows and menus; 14px in window buttons and cues). Recording uses the same layout: the pixel meter takes the stage, Stop replaces Record, and the other bottom-bar controls collapse behind a lock icon; panel rows that cannot change mid-recording disable and say `Stop recording to change`.
 
@@ -262,11 +262,11 @@ Spacing is a 4px grid (xs 4, sm 8, md 12, lg 16, xl 24, xxl 32). Window and dial
 Flat. No shadows are drawn anywhere; where Material components take elevation it is zeroed or invisible, and surface tint is transparent. Depth is two tonal steps plus a hairline: ground (base), surface (anything floating) with a 1px rule border, band (caption, hover, pressed, selected). Full-window panels do not float: they sit on ground, edge to edge, and separate their parts with rules only.
 
 ### Named Rules
-**The No-Glow Rule.** No gradients, glows, glass, blur or soft shadows. A floating thing is a surface fill with a 1px rule, nothing more.
+**The No-Glow Rule.** No gradients, glows, glass, blur or soft shadows. A floating thing is a surface fill with a 1px rule, nothing more. (The contour ground's lines fade toward the stage edges; that is line opacity, not a gradient fill.)
 
 ## Shapes
 
-Squared. One radius, 2px, on buttons, icon-button hover fills, dialogs, menus, menu rows, inputs, tooltips and snackbars; caption bands and keycaps are square-cornered rectangles. A signed-in person's avatar is a 40px square at 2px radius (their picture, else their initial on band), never a circle. Circles exist only as status marks: the live record dot, the 8px account badge (with a 2px ground ring), and the switch. A disabled Record button keeps its mark as a crimson ring instead of a white dot. Unavailable controls get a 1px dashed outline (3px dash, 3px gap, outline colour) instead of a solid border; dashes land on whole pixels.
+Square. No radius anywhere: buttons (Record included), icon-button hover fills, dialogs, menus, menu rows, inputs, tooltips, snackbars, caption bands and keycaps are all square-cornered rectangles, and so is the window itself. It is created natively as a borderless popup (no caption, frame, border or drop shadow, and Windows 11's corner rounding off), so the app meets the desktop edge to edge. A signed-in person's avatar is a 40px square (their picture, else their initial on band), never a circle. Circles exist only as status marks: the live record dot, the 8px account badge (with a 2px ground ring), and the switch. A disabled Record button keeps its mark as a crimson ring instead of a white dot. Unavailable controls get a 1px dashed outline (3px dash, 3px gap, outline colour) instead of a solid border; dashes land on whole pixels.
 
 ## Components
 
@@ -293,7 +293,7 @@ A shortcut set on a band rectangle with 8px side padding, label at weight 500, a
 The full-window page every destination uses. Open one with `AppPanel.push` (a 120ms ease-out fade in and out).
 - **`AppPanel`:** the title bar, then a 48px header: a back icon button with a white chevron, the title in title at 600 marked as a semantic header, and optional icon actions (Logs' copy all, Microphone's refresh). Content is a list on an 8px inset, or a custom body; an optional footer sits above a 1px rule. It takes focus on open so Esc pops it.
 - **`PanelSection`:** a label-style heading with 24px above and 4px below, then its rows.
-- **`PanelRow`:** at least 48px, 8px inner padding, a 1px rule beneath. A 16px muted icon (alert or amber when the row carries that meaning), 24px gap, the label in body with an optional caption subtitle beneath, then the current value in muted caption (capped at 168px, ellipsised), any trailing control (keycap, button), and a 16px faint chevron when it opens something. Hover, press and focus fill band at 2px radius, no splash. Disabled mutes the label and turns the icon faint but keeps the value readable; the subtitle says why.
+- **`PanelRow`:** at least 48px, 8px inner padding, a 1px rule beneath. A 16px muted icon (alert or amber when the row carries that meaning), 24px gap, the label in body with an optional caption subtitle beneath, then the current value in muted caption (capped at 168px, ellipsised), any trailing control (keycap, button), and a 16px faint chevron when it opens something. Hover, press and focus fill band edge to edge, no splash. Disabled mutes the label and turns the icon faint but keeps the value readable; the subtitle says why.
 - **`PanelToggleRow`:** a row whose trailing control is a switch drawn at 40×24 so the row stays 48px. The whole row flips it and takes focus, and label and state announce as one.
 - **`ChoicePanel`:** pick one. The selected row carries a white 16px check and selected semantics; there are no chevrons; picking applies and goes back. An optional bracketed cue (`[ looking for microphones ]`, `[ no microphones found ]`) and a muted caption note sit under the list.
 - **`FieldPanel`:** edit one value: a label, a 40px field, a muted caption note, and a Cancel (outline) / Save (primary) footer. Save stays unavailable until the value is valid, and an error shows only once there is text. Secret fields mask with a show/hide eye button; rows show them back masked (`gsk_…3f2a`, or `••••` when short).
@@ -305,13 +305,13 @@ The first block in Account. A service shows its bare 16px glyph in the rows' ico
 A quiet text action that sits beside content rather than ending a flow: caption at 500, underlined, a 40px target with 8px side padding, band on hover, no splash. White by default, alert for destructive actions, muted when unavailable.
 
 ### Dialogs (`AppDialog`, `ConfirmDialog`)
-The one dialog shell: surface fill, 1px rule border, 2px radius, 16px inset from the window. 48px header with the title in body at 600 and a close icon button, a 1px rule under it, a body, and an optional footer above a 1px rule with 16px padding. `ConfirmDialog.ask` is the shrink-wrapped confirmation (at most 360px wide): one muted body sentence, then Cancel (outline) and the confirm label (primary); it resolves true only when confirmed.
+The one dialog shell: surface fill, 1px rule border, square corners, 16px inset from the window. 48px header with the title in body at 600 and a close icon button, a 1px rule under it, a body, and an optional footer above a 1px rule with 16px padding. `ConfirmDialog.ask` is the shrink-wrapped confirmation (at most 360px wide): one muted body sentence, then Cancel (outline) and the confirm label (primary); it resolves true only when confirmed.
 
 ### Inputs (theme)
-Inputs are ground-filled with a 1px rule border and 2px radius, 40px tall (a 24px line with 8px above and below, 12px sides); focus shifts the border to text-muted; hints are muted body text. An error turns the border alert and sets the message beneath in alert caption.
+Inputs are ground-filled with a 1px rule border and square corners, 40px tall (a 24px line with 8px above and below, 12px sides); focus shifts the border to text-muted; hints are muted body text. An error turns the border alert and sets the message beneath in alert caption.
 
 ### Style Menu
-The output-style trigger in the bottom bar is transparent and 40px tall, band when hovered or open: a muted type glyph, the style name in caption at 500, and a chevron. Its menu is a surface panel with a rule border and 4px padding; rows are 2px-radius, band-filled when hovered or selected, with a white check on the selected style and a pencil on each custom style, which is where custom styles are edited.
+The output-style trigger in the bottom bar is transparent and 40px tall, band when hovered or open: a muted type glyph, the style name in caption at 500, and a chevron. Its menu is a surface panel with a rule border and 4px padding; rows are square, band-filled when hovered or selected, with a white check on the selected style and a pencil on each custom style, which is where custom styles are edited.
 
 ### Switches
 Per the White Switch Rule; in panels, always inside a `PanelToggleRow`.
@@ -328,8 +328,11 @@ One 1.5-stroke line family: the bundled Lucide font, each glyph named in `AppIco
 ### Pixel Meter (`PixelMeter`)
 The recording meter: 6px square blocks on an 8px pitch, mirrored about a centre row, scrolling continuously at display refresh on its own repaint layer (a vsync ticker, no widget rebuilds). Column bodies are coloured by age in flat tiers (bright under 10 columns old, mid under 26, then dim); sounding columns in the bright zone are capped with a light tip cell, silence never reads brighter, and a single white peak cell rides the newest column. One draw call per tier. Runs only while recording.
 
+### Contour Ground (`TopographyBackground`)
+The idle home stage stands on a topographic map: contour lines over a slowly drifting noise relief, drawn by a fragment shader (`shaders/topography.frag`). Lines are textMuted at 20% alpha and about 0.8px wide; every fifth is an index contour at 45% and 1.5px. They fade out within 56px of every edge of the stage, so the map sinks into the title and bottom bars; the ground itself stays one flat colour (lines fade, nothing is filled). A peak rises under the cursor on a spring and follows it; a click sends a wave out across the lines. When a recording starts the relief flattens in 0.25s and gives the stage to the meter; afterwards it rises again from flat ground over 1.8s. While anything besides the drift moves (the peak, a wave, the rise), frames follow the display at its native rate; the slow drift alone is paced by a timer at 60 frames a second, since every frame redraws the whole window. None run while flat, while the window is unfocused or while a panel covers it. Settings, Appearance, "Moving background" off (or reduced motion) draws a still map once, for slower computers.
+
 ### Motion
-State swaps (hover, focus, panel open and close) take 120ms with ease-out cubic; panels fade, never slide. Nothing pulses or animates decoratively; apart from the meter, states change whole.
+State swaps (hover, focus, panel open and close) take 120ms with ease-out cubic; panels fade, never slide. Presses are stepped, not eased: every button, icon button and panel row drops its content 2 whole pixels the instant the pointer goes down and climbs back one pixel per 50ms on release, like a key (`PressNudge`, applied to buttons through the theme). Whole pixels keep text crisp; nothing scales. Nothing pulses; apart from the meter and the contour ground on the idle home stage, states change whole.
 
 ## Do's and Don'ts
 

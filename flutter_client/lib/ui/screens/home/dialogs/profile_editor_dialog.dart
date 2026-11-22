@@ -8,6 +8,7 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_client/ui/shared/widgets/app_dialog.dart';
 import 'package:flutter_client/ui/shared/widgets/app_link.dart';
+import 'package:flutter_client/ui/shared/widgets/confirm_dialog.dart';
 import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -75,7 +76,15 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
   }
 
   Future<void> _delete() async {
-    await context.read<SettingsService>().deleteCustomProfile(widget.slotKey);
+    final settings = context.read<SettingsService>();
+    final confirmed = await ConfirmDialog.ask(
+      context,
+      title: 'Delete this style?',
+      message: 'Its name and instructions are removed for good.',
+      confirmLabel: 'Delete',
+    );
+    if (!confirmed) return;
+    await settings.deleteCustomProfile(widget.slotKey);
     if (mounted) Navigator.of(context).pop();
   }
 

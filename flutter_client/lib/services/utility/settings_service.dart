@@ -26,6 +26,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyAutoCopy = 'auto_copy';
   static const String _keyAutoPaste = 'auto_paste';
   static const String _keyShowVisualizer = 'show_visualizer';
+  static const String _keyAnimateBackground = 'animate_background';
   static const String _keyIncognitoMode = 'incognito_mode';
   static const String _keyTranscriptionMode = 'transcription_mode';
   static const String _keyGroqLanguage = 'groq_language';
@@ -43,6 +44,7 @@ class SettingsService extends ChangeNotifier {
   static const bool _defaultAutoCopy = true;
   static const bool _defaultAutoPaste = true;
   static const bool _defaultShowVisualizer = true;
+  static const bool _defaultAnimateBackground = true;
   static const bool _defaultIncognitoMode = false;
   /// Transcription modes: the user's own WhisperDoc server, or Groq Cloud.
   static const String backendMode = 'backend';
@@ -69,6 +71,7 @@ class SettingsService extends ChangeNotifier {
   bool _autoCopy = _defaultAutoCopy;
   bool _autoPaste = _defaultAutoPaste;
   bool _showVisualizer = _defaultShowVisualizer;
+  bool _animateBackground = _defaultAnimateBackground;
   bool _incognitoMode = _defaultIncognitoMode;
   String? _apiKey;
   String _transcriptionMode = _defaultTranscriptionMode;
@@ -91,6 +94,10 @@ class SettingsService extends ChangeNotifier {
   bool get autoCopy => _autoCopy;
   bool get autoPaste => _autoPaste;
   bool get showVisualizer => _showVisualizer;
+
+  /// Whether the home screen's contour background moves; off, it is a still
+  /// map that costs nothing after it is drawn.
+  bool get animateBackground => _animateBackground;
   bool get incognitoMode => _incognitoMode;
   String? get cachedApiKey => _apiKey;
   SecureVaultService get vault => _requireVault();
@@ -136,6 +143,8 @@ class SettingsService extends ChangeNotifier {
       _autoPaste = prefs.getBool(_keyAutoPaste) ?? _defaultAutoPaste;
       _showVisualizer =
           prefs.getBool(_keyShowVisualizer) ?? _defaultShowVisualizer;
+      _animateBackground =
+          prefs.getBool(_keyAnimateBackground) ?? _defaultAnimateBackground;
       _incognitoMode =
           prefs.getBool(_keyIncognitoMode) ?? _defaultIncognitoMode;
 
@@ -244,6 +253,16 @@ class SettingsService extends ChangeNotifier {
     await prefs.setBool(_keyShowVisualizer, value);
     notifyListeners();
     LoggingService().info('Visualizer updated to: $value');
+  }
+
+  Future<void> setAnimateBackground(bool value) async {
+    final prefs = _requirePrefs();
+    if (_animateBackground == value) return;
+
+    _animateBackground = value;
+    await prefs.setBool(_keyAnimateBackground, value);
+    notifyListeners();
+    LoggingService().info('Animated background updated to: $value');
   }
 
   Future<void> setServerUri(String uri) async {

@@ -5,7 +5,7 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 /// Service responsible for handling automated actions after a transcription completes,
 /// such as copying to clipboard or simulating paste.
 class AutomationService {
-  static const int _logPreviewLength = 20;
+  final LoggingService _logger = LoggingService();
 
   final SettingsService _settingsService;
 
@@ -15,13 +15,12 @@ class AutomationService {
   Future<void> runAutomation(String text) async {
     if (text.trim().isEmpty) return;
 
-    // Redact transcript content from local logs during incognito to prevent
-    // local trace leakage through the in-app log buffer.
-    final preview = String.fromCharCodes(text.runes.take(_logPreviewLength));
-    final logPreview = _settingsService.incognitoMode
+    // Never log transcript plaintext into the in-app log buffer (which is
+    // user-visible and copyable via LogsPanel).
+    final summary = _settingsService.incognitoMode
         ? '[REDACTED]'
-        : '"$preview..."';
-    LoggingService().info('AutomationService: Processing text $logPreview');
+        : '(${text.length} chars)';
+    _logger.info('AutomationService: Processing transcript $summary');
 
     try {
       if (_settingsService.autoCopy) {
@@ -34,7 +33,7 @@ class AutomationService {
         }
       }
     } catch (e) {
-      LoggingService().error('Automation failed: $e');
+      _logger.error('Automation failed: $e');
     }
   }
 }

@@ -3,11 +3,17 @@ import 'dart:ffi';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart';
 import 'package:win32/win32.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 class HotkeyService {
+  static final LoggingService _logger = LoggingService();
+
   static final HotkeyService _instance = HotkeyService._internal();
+  static const MethodChannel _lifecycleChannel = MethodChannel(
+    'whisperdoc/hotkey_lifecycle',
+  );
 
   /// GetMessageW with its raw return. package:win32 maps the BOOL to `bool`,
   /// which folds the -1 error return into `true`; the message loop must stop
@@ -50,7 +56,7 @@ class HotkeyService {
     }
     _binding = (id: id, modifiers: modifiers, vKey: vKey);
 
-    LoggingService().info('Starting HotkeyService (Native Blocking Loop)...');
+    _logger.info('Starting HotkeyService (Native Blocking Loop)...');
 
     // Create fresh state for this session
     final receivePort = ReceivePort();
@@ -62,19 +68,26 @@ class HotkeyService {
     // Set up listener BEFORE spawning isolate
     _portSubscription = receivePort.listen((message) {
       if (message is int) {
-        // This is the Thread ID sent during initialization
+        // This is the Thread ID sent during initialization. Hand it to the
+        // runner at once, not after start() resumes: a window close in
+        // between would otherwise find no thread to wake.
         _isolateThreadId = message;
+        unawaited(_reportNativeThreadId(message));
         if (!startCompleter.isCompleted) startCompleter.complete();
       } else if (message == 'HOTKEY') {
         // Hotkey pressed!
         _hotkeyStreamController.add(1);
       } else if (message == 'EXIT') {
-        // Isolate exited - signal the exitCompleter
+        // Isolate exited - signal the exitCompleter. Its thread is gone (and
+        // its id may be reused by any process), so withdraw it from the
+        // runner's close-time WM_QUIT.
+        _isolateThreadId = null;
+        unawaited(_reportNativeThreadId(0));
         if (!exitCompleter.isCompleted) {
           exitCompleter.complete();
         }
       } else if (message is String && message.startsWith('ERROR:')) {
-        LoggingService().error('Hotkey Isolate: $message');
+        _logger.error('Hotkey Isolate: $message');
       }
     });
 
@@ -92,12 +105,12 @@ class HotkeyService {
     await startCompleter.future.timeout(
       const Duration(seconds: 2),
       onTimeout: () {
-        LoggingService().error('HotkeyService start timed out');
+        _logger.error('HotkeyService start timed out');
       },
     );
 
     if (_isolateThreadId != null) {
-      LoggingService().info('HotkeyService started successfully.');
+      _logger.info('HotkeyService started successfully.');
     }
   }
 
@@ -156,8 +169,22 @@ class HotkeyService {
     _isolate = null;
     _isolateThreadId = null;
     _exitCompleter = null;
+    unawaited(_reportNativeThreadId(0));
 
-    LoggingService().info('HotkeyService stopped.');
+    _logger.info('HotkeyService stopped.');
+  }
+
+  static Future<void> _reportNativeThreadId(int threadId) async {
+    try {
+      await _lifecycleChannel.invokeMethod<void>(
+        'setHotkeyThreadId',
+        threadId,
+      );
+    } on MissingPluginException {
+      // Headless tests have no native Windows runner.
+    } catch (_) {
+      // Best-effort native shutdown guard; Dart exit handler still calls stop().
+    }
   }
 
   // --- Static Isolate Entry Point ---

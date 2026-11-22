@@ -63,7 +63,7 @@ class LevelNormalizer {
   /// A raw value of exactly zero is the recorder's reset signal, not a
   /// measurement, so it returns zero without disturbing the learned range.
   double normalize(double raw, Duration at) {
-    if (raw <= 0) return 0;
+    if (!raw.isFinite || raw <= 0) return 0;
 
     final db = math.max(
       _silenceDb,

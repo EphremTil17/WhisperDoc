@@ -11,6 +11,7 @@ class PanelToggleRow extends StatelessWidget {
     required this.onChanged,
     this.subtitle,
     this.enabled = true,
+    this.rule = true,
   });
 
   /// The switch drawn at 40×24 so toggle rows keep the 48px row height.
@@ -25,6 +26,9 @@ class PanelToggleRow extends StatelessWidget {
   final String? subtitle;
   final bool enabled;
 
+  /// Draws the rule beneath; off for a panel's last row.
+  final bool rule;
+
   @override
   Widget build(BuildContext context) {
     // One announcement: the label with its on/off state.
@@ -34,6 +38,7 @@ class PanelToggleRow extends StatelessWidget {
         label: label,
         subtitle: subtitle,
         enabled: enabled,
+        rule: rule,
         onTap: () => onChanged(!value),
         trailing: ExcludeFocus(
           // The row takes focus and taps; the switch only shows the state.

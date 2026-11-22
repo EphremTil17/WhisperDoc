@@ -22,24 +22,31 @@ class ShortcutRow extends StatelessWidget {
     final hotkeys = context.read<HotkeyService>();
     final settings = context.read<SettingsService>();
     await hotkeys.stop();
-    if (!context.mounted) return hotkeys.resume();
+    // Every way out that does not rebind (closed, unchanged, an error)
+    // must bring the old shortcut back.
+    var rebound = false;
+    try {
+      if (!context.mounted) return;
+      final picked = await showDialog<HotkeyBinding>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const HotkeyRecorderDialog(),
+      );
+      final changed =
+          picked != null &&
+          (picked.modifiers != settings.hotkeyModifiers ||
+              picked.vKey != settings.hotkeyVKey);
+      if (!changed) return;
 
-    final picked = await showDialog<HotkeyBinding>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const HotkeyRecorderDialog(),
-    );
-    final changed =
-        picked != null &&
-        (picked.modifiers != settings.hotkeyModifiers ||
-            picked.vKey != settings.hotkeyVKey);
-    if (!changed) return hotkeys.resume();
-
-    await settings.setHotkey(
-      display: picked.display,
-      modifiers: picked.modifiers,
-      vKey: picked.vKey,
-    );
+      await settings.setHotkey(
+        display: picked.display,
+        modifiers: picked.modifiers,
+        vKey: picked.vKey,
+      );
+      rebound = true;
+    } finally {
+      if (!rebound) await hotkeys.resume();
+    }
   }
 
   @override

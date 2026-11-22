@@ -142,7 +142,8 @@ void main() {
   testWidgets(
     '+ Custom tile renders when free slot exists and is hidden when all slots are full',
     (tester) async {
-      when(() => mockSettings.nextFreeCustomSlot()).thenReturn('custom1');
+      String? freeSlot = 'custom1';
+      when(() => mockSettings.nextFreeCustomSlot()).thenAnswer((_) => freeSlot);
 
       final orchestrator = createOrchestrator(tester);
       await orchestrator.openMenu();
@@ -151,7 +152,7 @@ void main() {
       expect(customProfileTile, findsOneWidget);
 
       // Simulate 3 full slots
-      when(() => mockSettings.nextFreeCustomSlot()).thenReturn(null);
+      freeSlot = null;
       mockSettings.notifyListeners();
       await tester.pumpAndSettle();
 

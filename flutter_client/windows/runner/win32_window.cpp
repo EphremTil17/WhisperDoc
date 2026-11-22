@@ -37,6 +37,58 @@ int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
 }
 
+// Windows 11 frame attributes (dwmapi.h, SDK 10.0.22000+), by value so older
+// SDKs build too; Windows 10 ignores them. The app is square edge to edge:
+// no rounded corners, no 1px border.
+constexpr DWORD kDwmwaWindowCornerPreference = 33;
+constexpr DWORD kDwmwaBorderColor = 34;
+constexpr DWORD kDwmwcpDoNotRound = 1;
+constexpr COLORREF kDwmwaColorNone = 0xFFFFFFFE;
+
+void SquareTheFrame(HWND window) {
+  const DWORD corners = kDwmwcpDoNotRound;
+  DwmSetWindowAttribute(window, kDwmwaWindowCornerPreference, &corners,
+                        sizeof(corners));
+  const COLORREF border = kDwmwaColorNone;
+  DwmSetWindowAttribute(window, kDwmwaBorderColor, &border, sizeof(border));
+}
+
+// A borderless, fixed-size popup: no caption, frame or resize border, so the
+// compositor draws no drop shadow (it banded on dark desktops) and the
+// window is exactly its client area. The system menu and minimize box keep
+// Alt+Space, taskbar click-to-minimize and Win+M working.
+constexpr DWORD kWindowStyle = WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX;
+
+// Sizes |window| so its client area is |size| logical pixels at
+// |scale_factor|, measuring the frame it actually has, and optionally centres
+// it on its monitor's work area. Done natively, before the Flutter view
+// exists: resizing from Dart blocks startup on the engine's resize sync.
+void FitClientArea(HWND window,
+                   const Win32Window::Size& size,
+                   double scale_factor,
+                   bool center) {
+  RECT frame;
+  RECT client;
+  GetWindowRect(window, &frame);
+  GetClientRect(window, &client);
+  const int width = Scale(size.width, scale_factor) +
+                    (frame.right - frame.left) - client.right;
+  const int height = Scale(size.height, scale_factor) +
+                     (frame.bottom - frame.top) - client.bottom;
+  int x = frame.left;
+  int y = frame.top;
+  if (center) {
+    MONITORINFO monitor = {sizeof(monitor)};
+    GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST),
+                   &monitor);
+    const RECT& work = monitor.rcWork;
+    x = work.left + ((work.right - work.left) - width) / 2;
+    y = work.top + ((work.bottom - work.top) - height) / 2;
+  }
+  SetWindowPos(window, nullptr, x, y, width, height,
+               SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
 // This API is only needed for PerMonitor V1 awareness mode.
 void EnableFullDpiSupportIfAvailable(HWND hwnd) {
@@ -135,7 +187,7 @@ bool Win32Window::Create(const std::wstring& title,
   double scale_factor = dpi / 96.0;
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+      window_class, title.c_str(), kWindowStyle,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -145,6 +197,9 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  SquareTheFrame(window);
+  client_size_ = size;
+  FitClientArea(window, size, scale_factor, true);
 
   return OnCreate();
 }
@@ -194,9 +249,12 @@ Win32Window::MessageHandler(HWND hwnd,
 
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+      // Keep the client area exactly |client_size_| at the new DPI.
+      FitClientArea(hwnd, client_size_, HIWORD(wparam) / 96.0, false);
 
       return 0;
     }
+
     case WM_SIZE: {
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {

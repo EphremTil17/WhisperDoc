@@ -29,7 +29,6 @@ void main() {
       mockChatClient = _MockGroqChatClient();
 
       when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
-      when(() => mockSettings.cachedGroqApiKey).thenReturn('test-groq-key');
 
       service = GroqTransformService(mockSettings, chatClient: mockChatClient);
     });
@@ -58,7 +57,7 @@ void main() {
     test('throws invalidApiKey if API key is missing or empty', () async {
       when(() => mockSettings.cachedGroqApiKey).thenReturn(null);
 
-      expect(
+      await expectLater(
         () => service.transform(
           'Sample sentence for testing polish.',
           DictationProfile.clean,
@@ -204,7 +203,7 @@ void main() {
       },
     );
 
-    test('guard rejection surfaces as typed GroqError', () async {
+    test('guard rejection surfaces as typed GroqError', () {
       when(
         () => mockChatClient.complete(
           apiKey: any(named: 'apiKey'),
@@ -280,7 +279,7 @@ void main() {
       when(() => mockProfile.requiresLlm).thenReturn(true);
       when(() => mockProfile.systemPrompt).thenReturn('   \n  ');
 
-      expect(
+      await expectLater(
         () => service.transform('Input text', mockProfile),
         throwsA(
           isA<GroqError>()
@@ -304,7 +303,7 @@ void main() {
       );
     });
 
-    test('rejects truncated output when finish_reason is length', () async {
+    test('rejects truncated output when finish_reason is length', () {
       when(
         () => mockChatClient.complete(
           apiKey: any(named: 'apiKey'),

@@ -1,11 +1,35 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
+import 'package:flutter_client/ui/shared/widgets/press_nudge.dart';
 
 /// The app's single theme, built from the tokens in app_tokens.dart. Material
 /// components that are not hand-built (inputs, switches, icon
 /// buttons, tooltips, snackbars) take the Captions look from here.
 class AppTheme {
   static const double _selectionAlpha = 0.45;
+
+  static const BorderSide _rule = BorderSide(color: AppColors.rule);
+
+  /// Input outlines: rule at rest, alert when the field has an error.
+  static const OutlineInputBorder _inputRule = OutlineInputBorder(
+    borderRadius: AppRadius.controlAll,
+    borderSide: _rule,
+  );
+  static const OutlineInputBorder _inputAlert = OutlineInputBorder(
+    borderRadius: AppRadius.controlAll,
+    borderSide: BorderSide(color: AppColors.alert),
+  );
+
+  /// Wraps a button's whole padded content, so a press anywhere on it drops
+  /// the label or icon.
+  static Widget _pressNudge(
+    BuildContext context,
+    Set<WidgetState> states,
+    Widget? child,
+  ) => PressNudge(
+    enabled: !states.contains(WidgetState.disabled),
+    child: child ?? const SizedBox.shrink(),
+  );
 
   static ThemeData get darkTheme {
     final base = ThemeData.dark().textTheme;
@@ -28,7 +52,12 @@ class AppTheme {
         selectionColor: AppColors.record.withValues(alpha: _selectionAlpha),
         selectionHandleColor: AppColors.record,
       ),
-      // Every IconButton: 40px square target, flat hover, no ink splash.
+      // Every text button (AppButton, AppLink) presses like a key.
+      textButtonTheme: const TextButtonThemeData(
+        style: ButtonStyle(backgroundBuilder: _pressNudge),
+      ),
+      // Every IconButton: 40px square target, flat hover, no ink splash,
+      // and the same key press.
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           fixedSize: const Size.square(AppSizes.iconButton),
@@ -38,11 +67,12 @@ class AppTheme {
           disabledForegroundColor: AppColors.iconFaint,
           hoverColor: AppColors.band,
           highlightColor: AppColors.band,
+          focusColor: AppColors.band,
           shape: const RoundedRectangleBorder(
             borderRadius: AppRadius.controlAll,
           ),
           splashFactory: NoSplash.splashFactory,
-        ),
+        ).copyWith(backgroundBuilder: _pressNudge),
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -51,7 +81,7 @@ class AppTheme {
         insetPadding: EdgeInsets.all(AppSpace.lg),
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.controlAll,
-          side: BorderSide(color: AppColors.rule),
+          side: _rule,
         ),
       ),
       tooltipTheme: const TooltipThemeData(
@@ -80,22 +110,10 @@ class AppTheme {
         // Placeholders must not read as values.
         hintStyle: AppType.body.copyWith(color: AppColors.textMuted),
         errorStyle: AppType.caption.copyWith(color: AppColors.alert),
-        errorBorder: const OutlineInputBorder(
-          borderRadius: AppRadius.controlAll,
-          borderSide: BorderSide(color: AppColors.alert),
-        ),
-        focusedErrorBorder: const OutlineInputBorder(
-          borderRadius: AppRadius.controlAll,
-          borderSide: BorderSide(color: AppColors.alert),
-        ),
-        border: const OutlineInputBorder(
-          borderRadius: AppRadius.controlAll,
-          borderSide: BorderSide(color: AppColors.rule),
-        ),
-        enabledBorder: const OutlineInputBorder(
-          borderRadius: AppRadius.controlAll,
-          borderSide: BorderSide(color: AppColors.rule),
-        ),
+        errorBorder: _inputAlert,
+        focusedErrorBorder: _inputAlert,
+        border: _inputRule,
+        enabledBorder: _inputRule,
         focusedBorder: const OutlineInputBorder(
           borderRadius: AppRadius.controlAll,
           borderSide: BorderSide(color: AppColors.textMuted),

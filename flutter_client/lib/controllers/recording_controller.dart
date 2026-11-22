@@ -1,3 +1,6 @@
+// Each notifyListeners() announces a different state change and returns
+// nothing, so the repeats have no value to share.
+// ignore_for_file: prefer-moving-to-variable
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -21,6 +24,8 @@ import 'package:flutter_client/logic/processors/audio_signal_processor.dart';
 ///
 /// Orchestrates audio capture, WebSocket communication, and post-processing.
 class RecordingController extends ChangeNotifier {
+  final LoggingService _logger = LoggingService();
+
   final AudioService _audioService;
   final WebSocketService _wsService;
   final GroqTranscriptionService _groqService;
@@ -37,6 +42,10 @@ class RecordingController extends ChangeNotifier {
 
   // Buffer of transcription segments (limited to prevent memory issues)
   final List<HistoryEntry> _history = [];
+  int _historyRevision = 0;
+
+  /// Runs from the stop until the paste, for the timing log line.
+  final Stopwatch _sinceStop = Stopwatch();
 
   // Current active transcription buffer (accumulating text)
   String _currentBuffer = '';
@@ -53,6 +62,7 @@ class RecordingController extends ChangeNotifier {
 
   // Re-entry guards for overlapping start/stop requests (rapid hotkey presses).
   bool _isStarting = false;
+  bool _stopRequested = false;
   bool _isStopping = false;
   final StreamController<String> _errorController =
       StreamController<String>.broadcast();
@@ -71,6 +81,10 @@ class RecordingController extends ChangeNotifier {
   bool get isSessionActive => _isRecording || _isTranscribing;
   AudioInputStatus get inputStatus => _audioService.inputStatus;
   List<HistoryEntry> get history => List.unmodifiable(_history);
+
+  /// Bumped whenever [history] changes. [history] returns a fresh list on
+  /// every read, so widgets select this to rebuild only when it moved.
+  int get historyRevision => _historyRevision;
   Stream<String> get onError => _errorController.stream;
 
   RecordingController({
@@ -107,7 +121,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> enableIncognitoMode() async {
     await _settingsService.setIncognitoMode(true);
     await _clearSensitiveData();
-    LoggingService().info(
+    _logger.info(
       'Incognito mode enabled - history and buffers cleared',
     );
   }
@@ -116,7 +130,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> disableIncognitoMode() async {
     await _settingsService.setIncognitoMode(false);
     unawaited(_loadHistory());
-    LoggingService().info('Incognito mode disabled - history restored');
+    _logger.info('Incognito mode disabled - history restored');
   }
 
   /// Clears all transcription history
@@ -128,6 +142,10 @@ class RecordingController extends ChangeNotifier {
   Future<void> toggleRecording() async {
     if (_isRecording) {
       await stopRecording();
+    } else if (_isStarting) {
+      // A second press while the microphone is still opening means
+      // "never mind": honour it once the start has finished.
+      _stopRequested = true;
     } else {
       await startRecording();
     }
@@ -138,10 +156,15 @@ class RecordingController extends ChangeNotifier {
     // A start already in flight must not open a second capture stream.
     if (_isTranscribing || _isStarting) return;
     _isStarting = true;
+    _stopRequested = false;
     try {
       await _beginRecording();
     } finally {
       _isStarting = false;
+    }
+    if (_stopRequested) {
+      _stopRequested = false;
+      await stopRecording();
     }
   }
 
@@ -204,7 +227,9 @@ class RecordingController extends ChangeNotifier {
 
       notifyListeners();
 
-      // 3. Mode-aware audio piping.
+      // 3. Mode-aware audio piping, on a fresh subscription: a stale one
+      // would deliver every chunk twice.
+      await _audioSubscription?.cancel();
       if (isGroqMode) {
         _groqService.clearBuffer();
         _audioSubscription = _audioService.audioStream.listen((data) {
@@ -242,13 +267,13 @@ class RecordingController extends ChangeNotifier {
         if (isSilent && _isRecording) {
           _showSilenceWarning = true;
           notifyListeners();
-          LoggingService().warning(
+          _logger.warning(
             'No audio detected after 3 seconds. Virtual driver conflict suspected.',
           );
         }
       }());
     } catch (e, st) {
-      LoggingService().error(
+      _logger.error(
         'Failed to start recording',
         error: e,
         stackTrace: st,
@@ -271,25 +296,38 @@ class RecordingController extends ChangeNotifier {
     // down, and each extra pass would upload and paste the clip again.
     if (_isStopping || !_audioService.isRecording) return;
     _isStopping = true;
+    _sinceStop
+      ..reset()
+      ..start();
     try {
       await _audioService.stopRecording();
-      _audioCueService.playStopCue();
-      await _audioSubscription?.cancel();
-      _audioSubscription = null;
-
-      if (_settingsService.isGroqMode) {
-        unawaited(_transcribeWithGroq());
-      } else {
-        _wsService.sendEndSignal();
-      }
+      await _finishCapture();
     } finally {
       _isStopping = false;
     }
   }
 
+  /// Ends a capture the same way whoever stopped it: the user, or the
+  /// recorder itself (a device error): cue, drop the stream, and transcribe
+  /// what was recorded.
+  Future<void> _finishCapture() async {
+    _audioCueService.playStopCue();
+    await _audioSubscription?.cancel();
+    _audioSubscription = null;
+
+    if (_settingsService.isGroqMode) {
+      unawaited(_transcribeWithGroq());
+    } else {
+      _wsService.sendEndSignal();
+    }
+  }
+
   @override
   void dispose() {
-    unawaited(_clearSensitiveData());
+    // Memory only: disposing the controller must never delete the history
+    // on disk (that is what incognito asks for, not shutdown).
+    _setTranscript('');
+    _history.clear();
     _audioService.removeListener(_onAudioStateChanged);
     _settingsService.removeListener(_onSettingsChanged);
     unawaited(_audioSubscription?.cancel());
@@ -313,8 +351,14 @@ class RecordingController extends ChangeNotifier {
       .evaluateInputStatus(targetDeviceId: _settingsService.microphoneId);
 
   void _onAudioStateChanged() {
-    if (_isRecording != _audioService.isRecording) {
-      _isRecording = _audioService.isRecording;
+    final wasRecording = _isRecording;
+    _isRecording = _audioService.isRecording;
+    if (wasRecording && !_isRecording && !_isStopping) {
+      // The recorder stopped on its own: keep what it captured.
+      _sinceStop
+        ..reset()
+        ..start();
+      unawaited(_finishCapture());
     }
     notifyListeners();
   }
@@ -322,11 +366,13 @@ class RecordingController extends ChangeNotifier {
   Future<void> _loadHistory() async {
     try {
       final entries = await _historyService.getHistory();
-      _history.clear();
-      _history.addAll(entries);
+      _history
+        ..clear()
+        ..addAll(entries);
+      _historyRevision++;
       notifyListeners();
     } catch (e) {
-      LoggingService().error('Failed to load transaction history', error: e);
+      _logger.error('Failed to load transaction history', error: e);
     }
   }
 
@@ -346,7 +392,7 @@ class RecordingController extends ChangeNotifier {
       } else {
         _errorController.add('Server error: $errorMsg');
       }
-      LoggingService().error('Server error: $errorMsg');
+      _logger.error('Server error: $errorMsg');
     }
   }
 
@@ -360,7 +406,7 @@ class RecordingController extends ChangeNotifier {
       await _finishRecordingSession();
     } on GroqError catch (e) {
       _errorController.add(e.userMessage);
-      LoggingService().error('Groq transcription failed: ${e.message}');
+      _logger.error('Groq transcription failed: ${e.message}');
     } finally {
       _isTranscribing = false;
       notifyListeners();
@@ -370,6 +416,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> _finishRecordingSession() async {
     var text = _currentBuffer.trim();
     if (text.isEmpty) return;
+    final transcribedAt = _sinceStop.elapsedMilliseconds;
 
     final profile = _settingsService.dictationProfile;
     if (profile.requiresLlm) {
@@ -384,7 +431,7 @@ class RecordingController extends ChangeNotifier {
         _errorController.add(
           '${profile.label} polish unavailable, pasted raw text. ${e.userMessage}',
         );
-        LoggingService().warning(
+        _logger.warning(
           'Transform fallback (${profile.storageKey}): ${e.message}',
         );
       } finally {
@@ -397,14 +444,30 @@ class RecordingController extends ChangeNotifier {
 
     final timestamp = DateTime.now();
 
-    // Only add to history if not in incognito mode
-    if (!incognitoMode) {
-      await _historyService.saveTranscription(text: text, timestamp: timestamp);
-      // Refresh local history view
-      unawaited(_loadHistory());
-    }
-
+    // Paste first: the user is waiting on it, and a history failure must
+    // never cost them the text.
     await _automationService.runAutomation(text);
+    _logTiming(transcribedAt);
+
+    if (incognitoMode) return;
+    try {
+      await _historyService.saveTranscription(text: text, timestamp: timestamp);
+      unawaited(_loadHistory());
+    } catch (e) {
+      _logger.error('Could not save transcript to history', error: e);
+    }
+  }
+
+  /// One line per dictation: how long after the user stopped the text was
+  /// ready and pasted, so a slow one can be told apart (network or polish).
+  void _logTiming(int transcribedAt) {
+    if (!_sinceStop.isRunning) return;
+    _sinceStop.stop();
+    final mode = _settingsService.isGroqMode ? 'Groq' : 'server';
+    _logger.info(
+      'Timing ($mode): transcript ${transcribedAt}ms after stop, '
+      'pasted at ${_sinceStop.elapsedMilliseconds}ms',
+    );
   }
 
   /// The single place the transcript changes, so its timestamp cannot drift.
@@ -417,9 +480,11 @@ class RecordingController extends ChangeNotifier {
   Future<void> _clearSensitiveData() async {
     _setTranscript('');
     _history.clear();
+    _historyRevision++;
+    _groqService.clearBuffer();
     _showSilenceWarning = false;
     await _historyService.clearAll();
-    LoggingService().info('Sensitive data purged from memory and disk');
+    _logger.info('Sensitive data purged from memory and disk');
     notifyListeners();
   }
 }

@@ -14,7 +14,7 @@ void main() {
       expect(find.text('System default'), findsOneWidget);
       expect(find.text('Ctrl Q'), findsOneWidget);
       expect(find.text('Show level meter'), findsOneWidget);
-      const toggles = 3; // meter, copy, paste
+      const toggles = 4; // meter, copy, paste, moving background
       expect(find.byType(Switch), findsNWidgets(toggles));
     });
 
@@ -28,6 +28,22 @@ void main() {
       await tester.tap(find.text('Copy to clipboard'));
 
       verify(() => settings.settings.setAutoCopy(false)).called(1);
+    });
+
+    testWidgets('the background can be held still', (tester) async {
+      final settings = HomeOrchestrator(tester);
+      when(
+        () => settings.settings.setAnimateBackground(any()),
+      ).thenAnswer((_) => Future.value());
+      await settings.pumpPanel(const SettingsPanel());
+
+      expect(
+        find.text('Off keeps a still map, for slower computers'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Moving background'));
+
+      verify(() => settings.settings.setAnimateBackground(false)).called(1);
     });
 
     testWidgets('paste is unavailable until copy is on', (tester) async {

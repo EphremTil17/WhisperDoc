@@ -50,7 +50,9 @@ class AccountIndicator extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: dot,
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.ground, width: _dotRing),
+                  border: const Border.fromBorderSide(
+                    BorderSide(color: AppColors.ground, width: _dotRing),
+                  ),
                 ),
                 child: const SizedBox.square(
                   dimension: _dotOuter,

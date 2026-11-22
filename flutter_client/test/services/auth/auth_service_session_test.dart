@@ -1,4 +1,4 @@
-// ignore_for_file: avoid-late-keyword, prefer-match-file-name, no-magic-number, no-empty-block
+// ignore_for_file: avoid-late-keyword, prefer-match-file-name, no-magic-number
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +6,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/auth/oidc_manager.dart';
 import 'package:flutter_client/services/auth/session_manager.dart';
+import 'package:flutter_client/services/utility/logging_service.dart';
 
 class _MockOidcManager extends Mock implements OidcManager {}
 
@@ -20,12 +21,12 @@ void main() {
   setUp(() {
     oidc = _MockOidcManager();
     session = _MockSessionManager();
-    when(() => session.initialize()).thenAnswer((_) async {});
+    when(() => session.initialize()).thenAnswer((_) => Future.value());
     when(() => session.loadIdToken()).thenAnswer((_) async => storedToken);
     when(() => session.loadRefreshToken()).thenAnswer((_) async => 'refresh');
     when(() => session.extractUser(any()))
         .thenReturn({'id': 'user-1', 'email': 'user@example.com'});
-    when(() => session.clearSession()).thenAnswer((_) async {});
+    when(() => session.clearSession()).thenAnswer((_) => Future.value());
     when(() => oidc.discover())
         .thenAnswer((_) async => {'token_endpoint': 'https://idp/token'});
     auth = AuthService(oidc: oidc, session: session);
@@ -51,6 +52,20 @@ void main() {
         expect(auth.currentUser?['id'], equals('user-1'));
       },
     );
+
+    test('does not log user email into the in-app log buffer', () async {
+      when(() => session.isExpired(storedToken)).thenReturn(false);
+      final logger = LoggingService();
+      final before = logger.logs.length;
+
+      await auth.initialize();
+
+      final added = logger.logs.skip(before).toList();
+      expect(added, isNotEmpty);
+      for (final entry in added) {
+        expect(entry.message.contains('user@example.com'), isFalse);
+      }
+    });
   });
 
   group('AuthService silent refresh policy', () {
@@ -102,7 +117,7 @@ void main() {
           idToken: any(named: 'idToken'),
           refreshToken: any(named: 'refreshToken'),
         ),
-      ).thenAnswer((_) async {});
+      ).thenAnswer((_) => Future.value());
       when(() => session.isExpired(storedToken)).thenReturn(false);
       await auth.initialize();
 

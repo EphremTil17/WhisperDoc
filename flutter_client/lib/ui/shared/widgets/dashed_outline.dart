@@ -33,10 +33,14 @@ class _DashedRectPainter extends CustomPainter {
     final top = _inset;
     final right = size.width.floorToDouble() - _inset;
     final bottom = size.height.floorToDouble() - _inset;
-    _line(canvas, Offset(left, top), Offset(right, top));
-    _line(canvas, Offset(right, top), Offset(right, bottom));
-    _line(canvas, Offset(right, bottom), Offset(left, bottom));
-    _line(canvas, Offset(left, bottom), Offset(left, top));
+    final topLeft = Offset(left, top);
+    final topRight = Offset(right, top);
+    final bottomRight = Offset(right, bottom);
+    final bottomLeft = Offset(left, bottom);
+    _line(canvas, topLeft, topRight);
+    _line(canvas, topRight, bottomRight);
+    _line(canvas, bottomRight, bottomLeft);
+    _line(canvas, bottomLeft, topLeft);
   }
 
   void _line(Canvas canvas, Offset from, Offset to) {

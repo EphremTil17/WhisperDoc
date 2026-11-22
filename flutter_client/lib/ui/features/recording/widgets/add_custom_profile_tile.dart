@@ -41,7 +41,7 @@ class _AddCustomProfileTileState extends State<AddCustomProfileTile> {
             border: const Border(top: BorderSide(color: AppColors.rule)),
           ),
           child: Row(
-            spacing: 10,
+            spacing: AppSpace.md,
             children: [
               Icon(AppIcons.plus, size: AppSizes.smallIconSize, color: ink),
               Flexible(

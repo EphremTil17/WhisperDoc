@@ -71,7 +71,7 @@ void main() {
       expect(result.text, 'accurate result');
     });
 
-    test('throws invalidApiKey on 401', () async {
+    test('throws invalidApiKey on 401', () {
       final mockClient = MockClient((_) async {
         return http.Response(
           '{"error": {"message": "Invalid API Key"}}',
@@ -113,7 +113,7 @@ void main() {
       }
     });
 
-    test('throws fileTooLarge on 413', () async {
+    test('throws fileTooLarge on 413', () {
       final mockClient = MockClient((_) async {
         return http.Response(
           '{"error": {"message": "Request too large"}}',
@@ -135,7 +135,7 @@ void main() {
       );
     });
 
-    test('throws serverError on 500', () async {
+    test('throws serverError on 500', () {
       final mockClient = MockClient((_) async {
         return http.Response('Internal Server Error', statusServerError);
       });

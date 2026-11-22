@@ -48,6 +48,23 @@ void main() {
       expect(find.text('Sign out'), findsNothing);
     });
 
+    testWidgets('a failed sign-in says so instead of doing nothing', (
+      tester,
+    ) async {
+      final account = HomeOrchestrator(tester);
+      when(() => account.settings.isGroqMode).thenReturn(false);
+      when(() => account.profile.signIn()).thenThrow(StateError('no issuer'));
+      await account.pumpPanel(const AccountPanel());
+
+      await tester.tap(find.text('Sign in'));
+      await tester.pump();
+
+      expect(
+        find.text("Couldn't sign in. Details are in Logs."),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('an available update names the version and offers Update', (
       tester,
     ) async {
@@ -60,16 +77,17 @@ void main() {
     });
 
     testWidgets('language is picked by name', (tester) async {
+      const scrollStep = 200.0;
       final account = HomeOrchestrator(tester);
-      when(
-        () => account.settings.setGroqLanguage(any()),
-      ).thenAnswer((_) => Future.value());
+      when(() => account.settings.setGroqLanguage(any()))
+          .thenAnswer((_) => Future.value());
       await account.pumpPanel(const AccountPanel());
 
+      final french = find.text('French');
       await tester.tap(find.text('Language'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('French'), 200);
-      await tester.tap(find.text('French'));
+      await tester.scrollUntilVisible(french, scrollStep);
+      await tester.tap(french);
       await tester.pumpAndSettle();
 
       verify(() => account.settings.setGroqLanguage('fr')).called(1);
@@ -84,14 +102,115 @@ void main() {
 
       await tester.tap(find.text('Server'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'http://example.com');
+      await tester.enterText(find.byType(TextField), 'ftp://example.com');
       await tester.pump();
 
-      expect(find.text('Use a ws:// or wss:// address'), findsOneWidget);
+      expect(find.text('Use a wss:// or https:// address'), findsOneWidget);
       final save = tester.widget<AppButton>(
         find.widgetWithText(AppButton, 'Save'),
       );
       expect(save.onPressed, isNull);
+    });
+
+    testWidgets('the default https:// address is accepted as wss://', (
+      tester,
+    ) async {
+      final account = HomeOrchestrator(tester);
+      when(() => account.settings.isGroqMode).thenReturn(false);
+      await account.pumpPanel(const AccountPanel());
+
+      await tester.tap(find.text('Server'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'https://example.com');
+      await tester.pump();
+
+      expect(find.textContaining('Use '), findsNothing);
+      final save = tester.widget<AppButton>(
+        find.widgetWithText(AppButton, 'Save'),
+      );
+      expect(save.onPressed, isNotNull);
+    });
+
+    testWidgets('public ws:// is blocked inline while wss:// and local ws:// save', (
+      tester,
+    ) async {
+      final account = HomeOrchestrator(tester);
+      when(() => account.settings.isGroqMode).thenReturn(false);
+      await account.pumpPanel(const AccountPanel());
+
+      final field = find.byType(TextField);
+      final saveButton = find.widgetWithText(AppButton, 'Save');
+      Future<bool> canSave(String address) async {
+        await tester.enterText(field, address);
+        await tester.pump();
+
+        return tester.widget<AppButton>(saveButton).onPressed != null;
+      }
+
+      await tester.tap(find.text('Server'));
+      await tester.pumpAndSettle();
+
+      expect(await canSave('ws://example.com/ws'), isFalse);
+      expect(
+        find.text('Use wss:// for remote servers (ws:// is local only)'),
+        findsOneWidget,
+      );
+      expect(await canSave('ws://127.evil.example/ws'), isFalse);
+      expect(await canSave('ws://localhost:9989/ws'), isTrue);
+      expect(await canSave('wss://whisper.example.com/ws'), isTrue);
+    });
+
+    testWidgets('rejects non-HTTPS avatar URLs and falls back to initial', (
+      tester,
+    ) async {
+      final account = HomeOrchestrator(tester);
+      when(() => account.settings.isGroqMode).thenReturn(false);
+      when(() => account.profile.isAuthenticated).thenReturn(true);
+      when(() => account.profile.currentUser).thenReturn({
+        'id': 'sub-1',
+        'name': 'Ada Lovelace',
+        'email': 'ada@example.com',
+        'picture': 'http://insecure.example/avatar.png',
+      });
+      await account.pumpPanel(const AccountPanel());
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('A'), findsOneWidget);
+    });
+
+    testWidgets('secret field starts masked, toggles visibility, and trims on save', (
+      tester,
+    ) async {
+      final account = HomeOrchestrator(tester)..removeGroqKey();
+      when(
+        () => account.settings.setGroqApiKey(any()),
+      ).thenAnswer((_) => Future.value());
+      await account.pumpPanel(const AccountPanel());
+
+      final textFieldFinder = find.byType(TextField);
+      bool isObscured() => tester.widget<TextField>(textFieldFinder).obscureText;
+      Future<bool> isObscuredAfterTapping(String tooltip) async {
+        await tester.tap(find.byTooltip(tooltip));
+        await tester.pump();
+
+        return isObscured();
+      }
+
+      await tester.tap(find.text('API key'));
+      await tester.pumpAndSettle();
+      expect(isObscured(), isTrue);
+      expect(await isObscuredAfterTapping('Show'), isFalse);
+      expect(await isObscuredAfterTapping('Hide'), isTrue);
+
+      await tester.enterText(textFieldFinder, '  gsk_test_trimmed_key  ');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(AppButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final saved = verify(
+        () => account.settings.setGroqApiKey('gsk_test_trimmed_key'),
+      );
+      expect(saved.callCount, 1);
     });
   });
 }

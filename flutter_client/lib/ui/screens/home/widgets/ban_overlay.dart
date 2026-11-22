@@ -19,7 +19,10 @@ class BanOverlay extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
+        // Below the title bar, so the window can still be moved, minimized
+        // and closed during a cooldown.
         return Positioned.fill(
+          top: AppSizes.titleBar,
           child: Container(
             color: AppColors.ground.withValues(alpha: _scrimAlpha),
             alignment: Alignment.center,

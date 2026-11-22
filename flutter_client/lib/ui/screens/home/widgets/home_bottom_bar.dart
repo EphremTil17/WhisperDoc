@@ -10,8 +10,8 @@ import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/features/recording/widgets/profile_action_button.dart';
 import 'package:flutter_client/ui/screens/home/home_navigation.dart';
 import 'package:flutter_client/ui/screens/home/home_status_reader.dart';
+import 'package:flutter_client/ui/screens/home/widgets/locked_style.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
-import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 
 /// Record/Stop and the output style on the left; History, Incognito and
 /// Settings on the right. While a session runs, everything but Stop locks
@@ -77,7 +77,7 @@ class HomeBottomBar extends StatelessWidget {
                   child: switch ((isGroqMode, locked)) {
                     (true, false) => const ProfileActionButton(),
                     // While locked the active style stays visible, read-only.
-                    (true, true) => const _LockedStyle(),
+                    (true, true) => const LockedStyle(),
                     (false, _) => const SizedBox.shrink(),
                   },
                 ),
@@ -116,42 +116,6 @@ class HomeBottomBar extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// The active output style shown read-only while a session runs.
-class _LockedStyle extends StatelessWidget {
-  const _LockedStyle();
-
-  static const double _padX = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = context.select((SettingsService s) => s.dictationProfile.label);
-    final muted = AppType.caption.copyWith(color: AppColors.textMuted);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: _padX),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        spacing: AppSpace.sm,
-        children: [
-          const Icon(
-            AppIcons.type,
-            size: AppSizes.smallIconSize,
-            color: AppColors.textMuted,
-          ),
-          Flexible(
-            child: CrispText(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: muted,
-            ),
-          ),
-        ],
       ),
     );
   }

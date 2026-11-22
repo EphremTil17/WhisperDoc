@@ -5,6 +5,8 @@ import 'package:win32/win32.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
 class ClipboardService {
+  static final LoggingService _logger = LoggingService();
+
   // UTF-16 encodes each code unit as 2 bytes; +1 for the null terminator.
   static const _utf16BytesPerUnit = 2;
   static const _clipboardRetryCount = 5;
@@ -60,10 +62,10 @@ class ClipboardService {
     }
 
     if (success) {
-      LoggingService().info('Text copied to clipboard (Win32)');
+      _logger.info('Text copied to clipboard (Win32)');
     } else {
       GlobalFree(hMem);
-      LoggingService().error('Failed to set clipboard');
+      _logger.error('Failed to set clipboard');
     }
 
     return success;
@@ -79,14 +81,14 @@ class ClipboardService {
     final foregroundWindow = GetForegroundWindow();
 
     if (ourWindow == foregroundWindow) {
-      LoggingService().info(
+      _logger.info(
         'Skipping paste simulation (WhisperDoc is focused)',
       );
 
       return;
     }
 
-    LoggingService().info('Simulating Ctrl+V via SendInput (scan codes)...');
+    _logger.info('Simulating Ctrl+V via SendInput (scan codes)...');
 
     final inputs = calloc<INPUT>(_inputEventCount);
     try {
@@ -128,9 +130,9 @@ class ClipboardService {
       // Send all inputs at once for atomicity
       SendInput(_inputEventCount, inputs, sizeOf<INPUT>());
 
-      LoggingService().info('Paste simulation complete');
+      _logger.info('Paste simulation complete');
     } catch (e) {
-      LoggingService().error('Paste simulation failed: $e');
+      _logger.error('Paste simulation failed: $e');
     } finally {
       free(inputs);
     }

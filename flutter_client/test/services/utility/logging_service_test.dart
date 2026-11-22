@@ -3,14 +3,25 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 
 void main() {
   group('LogEntry', () {
-    test('formatted returns correct format', () {
+    test('formatted is local time to the millisecond', () {
       final entry = LogEntry(
-        timestamp: DateTime(2026, 1, 10, 14, 30, 45),
+        timestamp: DateTime(2026, 1, 10, 14, 30, 45, 7),
         level: 'INFO',
         message: 'Test message',
       );
 
-      expect(entry.formatted, equals('14:30:45 | INFO  | Test message'));
+      expect(entry.formatted, equals('14:30:45.007 | INFO  | Test message'));
+    });
+
+    test('a UTC timestamp is shown in local time', () {
+      final local = DateTime(2026, 1, 10, 14, 30, 45);
+      final entry = LogEntry(
+        timestamp: local.toUtc(),
+        level: 'INFO',
+        message: 'm',
+      );
+
+      expect(entry.time, '14:30:45');
     });
 
     test('level is padded correctly', () {

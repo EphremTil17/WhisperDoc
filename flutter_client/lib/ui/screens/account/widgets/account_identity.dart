@@ -21,6 +21,13 @@ class AccountIdentity extends StatelessWidget {
   /// Matches the icon-to-label gap in panel rows.
   static const double _glyphGap = 24;
 
+  static bool _isTrustedAvatarUrl(Object? value) {
+    if (value is! String || value.isEmpty) return false;
+    final uri = Uri.tryParse(value);
+
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+  }
+
   /// Switching to Groq without a key goes straight to adding one.
   static Future<void> _switchService(BuildContext context) async {
     final settings = context.read<SettingsService>();
@@ -32,6 +39,19 @@ class AccountIdentity extends StatelessWidget {
     if (toGroq && needsKey && context.mounted) {
       await AccountFields.groqKey(context);
     }
+  }
+
+  /// A display claim from the ID token, or [fallback] when it is missing,
+  /// blank or not text (the initial avatar needs at least one character).
+  static String _claim(
+    Map<String, dynamic> claims,
+    String key,
+    String fallback,
+  ) {
+    final value = claims[key];
+    final text = value is String ? value.trim() : '';
+
+    return text.isEmpty ? fallback : text;
   }
 
   @override
@@ -56,8 +76,8 @@ class AccountIdentity extends StatelessWidget {
       ),
       (true, _) => ('Groq Cloud', 'Add your API key to start', true),
       (false, final Map<String, dynamic> signedIn) => (
-        signedIn['name'] as String? ?? 'Signed in',
-        signedIn['email'] as String? ?? 'WhisperDoc server',
+        _claim(signedIn, 'name', 'Signed in'),
+        _claim(signedIn, 'email', 'WhisperDoc server'),
         false,
       ),
       (false, null) when hasDeveloperKey => (
@@ -72,6 +92,7 @@ class AccountIdentity extends StatelessWidget {
       (false, true) => 'Use your WhisperDoc server',
       (false, false) => 'Use Groq Cloud',
     };
+    final nameStyle = AppType.body.copyWith(fontWeight: FontWeight.w600);
     // A signed-in person gets an avatar (picture, else their initial on a
     // band square); a service gets its bare glyph in the rows' icon column,
     // so the name lines up with the row labels below.
@@ -80,10 +101,12 @@ class AccountIdentity extends StatelessWidget {
       child: Center(
         child: CrispText(
           name.characters.first.toUpperCase(),
-          style: AppType.body.copyWith(fontWeight: FontWeight.w600),
+          style: nameStyle,
         ),
       ),
     );
+    final avatarPx = (_avatar * MediaQuery.devicePixelRatioOf(context)).round();
+    final avatarUrl = _isTrustedAvatarUrl(picture) ? picture as String : null;
     final Widget leading = user == null
         ? Icon(
             settings.isGroqMode ? AppIcons.cloud : AppIcons.server,
@@ -94,10 +117,12 @@ class AccountIdentity extends StatelessWidget {
             borderRadius: AppRadius.controlAll,
             child: SizedBox.square(
               dimension: _avatar,
-              child: picture is String
+              child: avatarUrl != null
                   ? Image.network(
-                      picture,
+                      avatarUrl,
                       fit: BoxFit.cover,
+                      cacheWidth: avatarPx,
+                      cacheHeight: avatarPx,
                       semanticLabel: 'Profile picture',
                       loadingBuilder: (_, image, progress) =>
                           progress == null ? image : initial,
@@ -121,7 +146,7 @@ class AccountIdentity extends StatelessWidget {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppType.body.copyWith(fontWeight: FontWeight.w600),
+                  style: nameStyle,
                 ),
                 CrispText(
                   status,
