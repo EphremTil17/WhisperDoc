@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from whisper_shell.logic.handshake import HandshakeState
+from whisper_shell.logic.messages import ServerMessage
 from whisper_shell.services.transport_service import (
     MAX_RECONNECT_ATTEMPTS,
     TransportService,
@@ -71,7 +72,7 @@ class TestErrorRouting:
         return svc
 
     @staticmethod
-    def _error(error_code: str, message: str = "msg") -> dict:
+    def _error(error_code: str, message: str = "msg") -> ServerMessage:
         return {"event": "error", "error_code": error_code, "message": message}
 
     @pytest.mark.asyncio

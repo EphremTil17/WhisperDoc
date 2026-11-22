@@ -12,7 +12,8 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 import requests
 
 # Ensure UTF-8 output on Windows console
@@ -78,7 +79,7 @@ def run_streaming_benchmark(
     system_prompt: str,
     user_input: str,
     timeout_seconds: float = 5.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Execute a single streaming request measuring TTFT, TPS, and Total Wall-Clock."""
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -96,7 +97,7 @@ def run_streaming_benchmark(
     }
 
     t_start = time.perf_counter()
-    ttft: Optional[float] = None
+    ttft: float | None = None
     accumulated_text = []
     token_count = 0
 
@@ -116,8 +117,11 @@ def run_streaming_benchmark(
                 "error": response.text[:200],
             }
 
-        for chunk in response.iter_lines(decode_unicode=True):
-            if not chunk or not chunk.startswith("data: "):
+        # SSE is UTF-8; decode_unicode would guess ISO-8859-1 for a
+        # text/event-stream without a charset, or hand back bytes.
+        for raw in response.iter_lines():
+            chunk = raw.decode("utf-8", errors="replace")
+            if not chunk.startswith("data: "):
                 continue
             data_str = chunk[6:].strip()
             if data_str == "[DONE]":
@@ -163,13 +167,13 @@ def benchmark_provider(
     provider_name: str,
     endpoint: str,
     api_key: str,
-    models: List[str],
-) -> List[Dict[str, Any]]:
+    models: list[str],
+) -> list[dict[str, Any]]:
     results = []
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"Benchmarking Provider: {provider_name.upper()}")
     print(f"Endpoint: {endpoint}")
-    print(f"=======================================================")
+    print("=======================================================")
 
     for model in models:
         print(f"\n[Model: {model}]")
@@ -190,22 +194,26 @@ def benchmark_provider(
                     f"OK | Total: {res['total_ms']}ms | TTFT: {res['ttft_ms']}ms | "
                     f"TPS: {res['tps']} ({res['token_count']} tokens)"
                 )
-                print(f"    Output: \"{res['output_text'][:90]}...\"")
+                print(f'    Output: "{res["output_text"][:90]}..."')
             else:
                 print(f"FAILED (Status {res.get('status_code')}): {res.get('error')}")
 
-            results.append({
-                "provider": provider_name,
-                "model": model,
-                "profile": profile_id,
-                **res,
-            })
+            results.append(
+                {
+                    "provider": provider_name,
+                    "model": model,
+                    "profile": profile_id,
+                    **res,
+                }
+            )
     return results
 
 
-def print_summary_table(results: List[Dict[str, Any]]) -> None:
+def print_summary_table(results: list[dict[str, Any]]) -> None:
     print("\n\n" + "=" * 88)
-    print(f"{'Provider':<10} | {'Model':<25} | {'Profile':<12} | {'TTFT(ms)':<8} | {'Total(ms)':<9} | {'TPS':<7} | {'Status'}")
+    print(
+        f"{'Provider':<10} | {'Model':<25} | {'Profile':<12} | {'TTFT(ms)':<8} | {'Total(ms)':<9} | {'TPS':<7} | {'Status'}"
+    )
     print("-" * 88)
 
     for r in results:
@@ -224,13 +232,23 @@ def print_summary_table(results: List[Dict[str, Any]]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="WhisperDoc LLM Post-Processing Benchmark")
-    parser.add_argument("--groq-key", default=os.environ.get("GROQ_API_KEY"), help="Groq API Key")
-    parser.add_argument("--cerebras-key", default=os.environ.get("CEREBRAS_API_KEY"), help="Cerebras API Key")
+    parser = argparse.ArgumentParser(
+        description="WhisperDoc LLM Post-Processing Benchmark"
+    )
+    parser.add_argument(
+        "--groq-key", default=os.environ.get("GROQ_API_KEY"), help="Groq API Key"
+    )
+    parser.add_argument(
+        "--cerebras-key",
+        default=os.environ.get("CEREBRAS_API_KEY"),
+        help="Cerebras API Key",
+    )
     args = parser.parse_args()
 
     if not args.groq_key and not args.cerebras_key:
-        print("Error: Please provide at least one API key via --groq-key, --cerebras-key,")
+        print(
+            "Error: Please provide at least one API key via --groq-key, --cerebras-key,"
+        )
         print("or via environment variables GROQ_API_KEY / CEREBRAS_API_KEY.")
         sys.exit(1)
 

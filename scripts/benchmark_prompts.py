@@ -14,7 +14,8 @@ import os
 import re
 import sys
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
+
 import requests
 
 # Ensure UTF-8 output on Windows console
@@ -197,7 +198,7 @@ PROMPT_DRAFTS = {
 }
 
 
-def extract_keywords(text: str) -> Set[str]:
+def extract_keywords(text: str) -> set[str]:
     """Extract key technical terms, identifiers, and numbers for retention testing."""
     # Find words with underscore, camelCase, digits, uppercase acronyms, or numbers
     tokens = re.findall(r"\b[A-Za-z0-9_/-]+\b", text)
@@ -207,11 +208,25 @@ def extract_keywords(text: str) -> Set[str]:
         if (
             "_" in token
             or any(c.isdigit() for c in token)
-            or token.isupper() and len(token) > 1
-            or lower in {
-                "postgres", "listen", "notify", "econnreset", "backoff",
-                "jitter", "sentry", "latency", "concurrency", "rds",
-                "finance", "procurement", "budget", "redis", "hotfix",
+            or token.isupper()
+            and len(token) > 1
+            or lower
+            in {
+                "postgres",
+                "listen",
+                "notify",
+                "econnreset",
+                "backoff",
+                "jitter",
+                "sentry",
+                "latency",
+                "concurrency",
+                "rds",
+                "finance",
+                "procurement",
+                "budget",
+                "redis",
+                "hotfix",
             }
         ):
             keywords.add(lower)
@@ -224,7 +239,7 @@ def run_prompt_completion(
     user_transcript: str,
     model: str = DEFAULT_MODEL,
     timeout: float = 10.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Call Groq chat completion measuring latency and streaming TTFT."""
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -264,7 +279,11 @@ def run_prompt_completion(
             if res.status_code == 429:
                 # Extract retry-after or wait 15 seconds to replenish OTPM
                 retry_header = res.headers.get("retry-after")
-                wait_time = float(retry_header) if retry_header and retry_header.isdigit() else 15.0
+                wait_time = (
+                    float(retry_header)
+                    if retry_header and retry_header.isdigit()
+                    else 15.0
+                )
                 if attempt < max_retries:
                     sys.stdout.write(f"(rate limited, waiting {wait_time:.1f}s)... ")
                     sys.stdout.flush()
@@ -283,8 +302,11 @@ def run_prompt_completion(
                     "error": res.text[:200],
                 }
 
-            for line in res.iter_lines(decode_unicode=True):
-                if not line or not line.startswith("data: "):
+            # SSE is UTF-8; decode_unicode would guess ISO-8859-1 for a
+            # text/event-stream without a charset, or hand back bytes.
+            for raw in res.iter_lines():
+                line = raw.decode("utf-8", errors="replace")
+                if not line.startswith("data: "):
                     continue
                 payload_str = line[6:].strip()
                 if payload_str == "[DONE]":
@@ -313,7 +335,7 @@ def run_prompt_completion(
                 "token_count": token_count,
                 "output_text": output_text,
             }
-        except Exception as e:
+        except requests.RequestException as e:
             if attempt < max_retries:
                 time.sleep(3.0)
                 continue
@@ -326,16 +348,24 @@ def evaluate_profile_drafts(
     api_key: str,
     model: str,
     transcript: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     drafts = PROMPT_DRAFTS.get(profile_name, [])
     source_keywords = extract_keywords(transcript)
     results = []
 
-    print(f"\n================================================================================")
-    print(f"BENCHMARKING PROFILE: {profile_name.upper()} ({len(drafts)} Draft Variations)")
-    print(f"Model: {model} | Input: \"{transcript[:75]}...\" ({len(transcript)} chars)")
-    print(f"Tracked Key Entities ({len(source_keywords)}): {', '.join(sorted(source_keywords))}")
-    print(f"================================================================================")
+    print(
+        "\n================================================================================"
+    )
+    print(
+        f"BENCHMARKING PROFILE: {profile_name.upper()} ({len(drafts)} Draft Variations)"
+    )
+    print(f'Model: {model} | Input: "{transcript[:75]}..." ({len(transcript)} chars)')
+    print(
+        f"Tracked Key Entities ({len(source_keywords)}): {', '.join(sorted(source_keywords))}"
+    )
+    print(
+        "================================================================================"
+    )
 
     for i, draft in enumerate(drafts, 1):
         sys.stdout.write(f"[{i}/{len(drafts)}] Evaluating {draft['name']}... ")
@@ -359,7 +389,9 @@ def evaluate_profile_drafts(
         # Keyword & Entity Retention Calculation
         retained = [k for k in source_keywords if k in output_lower]
         missing = [k for k in source_keywords if k not in output_lower]
-        retention_pct = (len(retained) / len(source_keywords) * 100.0) if source_keywords else 100.0
+        retention_pct = (
+            (len(retained) / len(source_keywords) * 100.0) if source_keywords else 100.0
+        )
         ratio = round(len(output) / len(transcript), 2)
 
         print(
@@ -369,24 +401,28 @@ def evaluate_profile_drafts(
         if missing:
             print(f"    Missing Entities: {', '.join(missing)}")
 
-        results.append({
-            "draft": draft,
-            "result": res,
-            "retention_pct": retention_pct,
-            "retained": retained,
-            "missing": missing,
-            "ratio": ratio,
-        })
+        results.append(
+            {
+                "draft": draft,
+                "result": res,
+                "retention_pct": retention_pct,
+                "retained": retained,
+                "missing": missing,
+                "ratio": ratio,
+            }
+        )
 
     return results
 
 
-def print_comparison_report(profile_name: str, results: List[Dict[str, Any]]) -> str:
+def print_comparison_report(profile_name: str, results: list[dict[str, Any]]) -> str:
     lines = []
     lines.append(f"\n# Profile Benchmark Comparison: {profile_name.capitalize()}")
     lines.append("")
-    lines.append(f"| Draft Name | TTFT (ms) | Total (ms) | Tokens | Retention % | Expansion Ratio | Status |")
-    lines.append(f"| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
+    lines.append(
+        "| Draft Name | TTFT (ms) | Total (ms) | Tokens | Retention % | Expansion Ratio | Status |"
+    )
+    lines.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
 
     for r in results:
         d = r["draft"]
@@ -411,9 +447,13 @@ def print_comparison_report(profile_name: str, results: List[Dict[str, Any]]) ->
             lines.append(res["output_text"])
             lines.append("```")
             if r.get("missing"):
-                lines.append(f"> [!WARNING]\n> **Omitted Details**: {', '.join(r['missing'])}")
+                lines.append(
+                    f"> [!WARNING]\n> **Omitted Details**: {', '.join(r['missing'])}"
+                )
             else:
-                lines.append(f"> [!NOTE]\n> **Zero Omission**: 100% of user technical details preserved.")
+                lines.append(
+                    "> [!NOTE]\n> **Zero Omission**: 100% of user technical details preserved."
+                )
         else:
             lines.append(f"Error: {res.get('error')}")
         lines.append("\n---\n")
@@ -424,30 +464,46 @@ def print_comparison_report(profile_name: str, results: List[Dict[str, Any]]) ->
 
 
 def main():
-    parser = argparse.ArgumentParser(description="WhisperDoc Prompt & Profile Benchmark Harness")
+    parser = argparse.ArgumentParser(
+        description="WhisperDoc Prompt & Profile Benchmark Harness"
+    )
     parser.add_argument(
         "--profile",
         choices=["technical", "professional", "casual", "all"],
         default="technical",
         help="Profile to benchmark (default: technical)",
     )
-    parser.add_argument("--groq-key", default=os.environ.get("GROQ_API_KEY"), help="Groq API Key")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Groq Model (default: {DEFAULT_MODEL})")
-    parser.add_argument("--input", help="Custom transcription thought process string to benchmark")
-    parser.add_argument("--export-markdown", help="File path to save the markdown evaluation report")
+    parser.add_argument(
+        "--groq-key", default=os.environ.get("GROQ_API_KEY"), help="Groq API Key"
+    )
+    parser.add_argument(
+        "--model", default=DEFAULT_MODEL, help=f"Groq Model (default: {DEFAULT_MODEL})"
+    )
+    parser.add_argument(
+        "--input", help="Custom transcription thought process string to benchmark"
+    )
+    parser.add_argument(
+        "--export-markdown", help="File path to save the markdown evaluation report"
+    )
     args = parser.parse_args()
 
     # Fallback to key in env or prompt
     key = args.groq_key or os.environ.get("GROQ_API_KEY")
     if not key:
-        print("Error: Groq API key must be provided via --groq-key or GROQ_API_KEY environment variable.")
+        print(
+            "Error: Groq API key must be provided via --groq-key or GROQ_API_KEY environment variable."
+        )
         sys.exit(1)
 
-    profiles = ["technical", "professional"] if args.profile == "all" else [args.profile]
+    profiles = (
+        ["technical", "professional"] if args.profile == "all" else [args.profile]
+    )
     all_reports = []
 
     for prof in profiles:
-        transcript = args.input or NOMINAL_TRANSCRIPTS.get(prof, NOMINAL_TRANSCRIPTS["technical"])
+        transcript = args.input or NOMINAL_TRANSCRIPTS.get(
+            prof, NOMINAL_TRANSCRIPTS["technical"]
+        )
         results = evaluate_profile_drafts(
             profile_name=prof,
             api_key=key,
