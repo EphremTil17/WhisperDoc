@@ -212,3 +212,43 @@ This document serves as the project's living ledger of architectural corrections
 - **The Mistake / Issue**: Removing explicit `GoogleFonts.lexend()` calls on the assumption that `ThemeData.fontFamily` reaches every widget.
 - **The Root Cause**: `Text` and `TextField` merge with the theme's text styles, but Material's `DropdownButton` installs its `style` as a replacement `DefaultTextStyle`. A raw `TextStyle` without a font family dropped the menu to the platform font.
 - **The Core Corrective Rule**: Derive component styles from `Theme.of(context).textTheme` rather than raw `TextStyle`s. Before deleting a "redundant" font override, confirm the widget merges with the inherited style, and cover the font in a widget test.
+
+---
+
+## 27. "Signed In" Read From the Connection
+
+- **The Mistake / Issue**: The home screen treated "has a live, accepted WebSocket session" as "signed in", so an offline server, a stopped container, or the normal five-minute idle close told a signed-in user to sign in.
+- **The Root Cause**: One flag stood for two facts with different lifetimes. Credentials last until sign-out; a connection opens on demand and closes when idle.
+- **The Core Corrective Rule**: Model credential state and reachability separately, and give each failure its own message and fix. A state the app enters by design (idle close) must never read as a fault.
+
+---
+
+## 28. A Bearer Token Follows a User-Editable Address
+
+- **The Mistake / Issue**: The client sent its OIDC access token to whatever server address was configured.
+- **The Root Cause**: The token's audience is the client, not a server, so any server that receives it can replay it against the real backend. A wrong, typo'd or hostile address was enough to leak the user's identity.
+- **The Core Corrective Rule**: Scope every credential to the parties allowed to receive it. Send identity tokens only to a known origin or one the user explicitly approved, decide trust and connect on the same normalized `scheme://host:port`, and revoke that trust when the account changes.
+
+---
+
+## 29. Push Messages That Drive Side Effects Need a Request
+
+- **The Mistake / Issue**: Every `transcription` frame triggered copy and a simulated Ctrl+V into the focused window, whether or not the user had dictated.
+- **The Root Cause**: The handler trusted the server to speak only when asked. Pasting is keystroke injection, so a hostile or wrong server could type into a console at any time, and a line break would submit the command.
+- **The Core Corrective Rule**: Accept a message that causes a side effect only while the app is waiting for it: open the window when the request is sent, close it on the first reply, a timeout or a disconnect. Type-check and sanitize the payload, and strip what can execute where it lands (control sequences, line breaks, bidi overrides).
+
+---
+
+## 30. Late Callbacks From a Replaced Resource
+
+- **The Mistake / Issue**: A connect attempt that failed after opening its socket left the socket open. When it closed later, its `onDone` ran the disconnect path against whichever connection was current and tore down a healthy session.
+- **The Root Cause**: Callbacks were bound to the service, not to the socket that raised them, and failed attempts never closed what they opened.
+- **The Core Corrective Rule**: Close every resource an attempt opens on every failure path. Bind each resource's callbacks to its own identity (ignore them unless it is still current), and give async attempts a generation number so one that has been superseded cannot touch shared state.
+
+---
+
+## 31. Tests That Leave Real Network Work Running
+
+- **The Mistake / Issue**: WebSocket tests constructed a service whose launch auto-connect dialled `ws://localhost` and then disposed it. The suite passed only because it finished before those connects failed.
+- **The Root Cause**: The real socket was opened inside the service with no seam, so tests could not avoid it. Adding a test that took two seconds let the stray connects fail mid-run and write to closed streams, failing unrelated tests.
+- **The Core Corrective Rule**: Inject the I/O boundary (here a `ChannelOpener`) so unit tests never touch the network, and make services ignore work that settles after `dispose()`. A test that fails only when the suite runs longer is a leak, not a flake.

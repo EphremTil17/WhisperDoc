@@ -1,4 +1,4 @@
-# WhisperDoc Flutter Client v3.1.0
+# WhisperDoc Flutter Client v3.2.0
 
 A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
 
@@ -6,7 +6,7 @@ A native Windows desktop application for real-time speech-to-text dictation powe
 
 WhisperDoc Client provides a lightweight, always-ready interface for voice dictation. It captures audio from your microphone, streams it to a local Whisper backend server, and receives transcriptions in real-time. The transcribed text can be automatically copied to your clipboard and pasted into any application.
 
-When the backend is unavailable, under maintenance, or by user preference, the client can transcribe directly via **Groq Cloud** using the same `whisper-large-v3-turbo` model — no backend required. Switch between modes with a single toggle in Settings.
+When the backend is unavailable, under maintenance, or by user preference, the client can transcribe directly via **Groq Cloud** using the same `whisper-large-v3-turbo` model — no backend required. Switch between modes with **Switch service** in Account.
 
 This client is designed for users who need fast, accurate dictation without leaving their current workflow. Press a global hotkey, speak, and your words appear wherever your cursor is.
 
@@ -20,6 +20,7 @@ The Flutter client has been hardened to match server-side security standards thr
 - **Hardened Handshake (Handshake Cage)**: Implements a strict state machine that buffers audio locally and only flushes to the socket _after_ the identity-verified handshake is acknowledged by the backend.
 - **Structured Error Awareness**: Routes every backend error by its structured `error_code` (never by message text), alongside numeric `1008` closures. The UI provides real-time "Ban Cooldown" countdowns, version mismatch warnings, and respects server-mandated wait periods.
 - **Data-at-Rest Encryption**: Transcription history is stored in a **Drift (SQLite) database with every entry AES-256-GCM encrypted**, pruned to the newest 100 entries. Encryption keys are derived uniquely per-installation using hardware-bound salts and PBKDF2.
+- **Sign-In Scope & Safe Paste (v3.2.0)**: The OIDC token is sent only to the built-in server or one the user approved with **Trust server**, and trust is forgotten on sign-out. A server transcript is accepted only after a dictation ends, sanitized, and pasted as plain text.
 - **Memory Hygiene**: Toggleable **Incognito Mode** ensures zero-persistence on the backend (Ghost Mode) and performs explicit RAM clearing of sensitive transcription buffers on the client.
 
 The client follows a **Smart Modular Architecture** designed for high scalability and zero-latency performance:
@@ -40,7 +41,7 @@ lib/
 ├── ui/               # Presentation layer
 │   ├── features/     # Feature modules (recording)
 │   ├── screens/      # Main screens & contextual dialogs (ProfileEditorDialog)
-│   └── shared/       # Global widgets & theme tokens (ActionBar, GlassDialog)
+│   └── shared/       # Global widgets (AppPanel, AppDialog, CrispText, PixelMeter)
 └── main.dart         # Clean entry point with service bootstrap
 ```
 
@@ -65,8 +66,8 @@ lib/
 | Native APIs      | Win32 via ffi/win32 packages     |
 | Encryption       | encrypt (AES-256-GCM)            |
 
-- **Client-Edge Dictation Profiles & Custom LLM Prompts**: Built-in factory standards (**Raw**, **Clean Polish**, **Professional**, **Casual**, **Technical**) and up to three user-authored **Custom Profiles** (`CustomProfile` implementing `DictationProfileSpec`). Features an in-menu modal editor (`ProfileEditorDialog` on `GlassDialog`) with sequential default naming (`Custom 1..3`), user renaming, a 2,000 character cap, automatic safety preamble prepending, and length-based truncation rejection. Secondary controls are uniformly locked during active recording.
-- **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API with local WAV encoding, client-side rate-limit tracking, language validation, and a conservative 24 MB (~12.5 min) buffer guard. Switch between WhisperDoc backend and Groq Cloud from the Connection toggle in Settings.
+- **Client-Edge Dictation Profiles & Custom LLM Prompts**: Built-in factory standards (**Raw**, **Clean Polish**, **Professional**, **Casual**, **Technical**) and up to three user-authored **Custom Profiles** (`CustomProfile` implementing `DictationProfileSpec`). Features an in-menu modal editor (`ProfileEditorDialog` on `AppDialog`) with sequential default naming (`Custom 1..3`), user renaming, a 2,000 character cap, automatic safety preamble prepending, and length-based truncation rejection. Secondary controls are uniformly locked during active recording.
+- **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API with local WAV encoding, client-side rate-limit tracking, language validation, and a conservative 24 MB (~12.5 min) buffer guard. Switch between WhisperDoc backend and Groq Cloud with **Switch service** in Account.
 - **Instantaneous Connection**: Implements a "Zero-Latency" recording flow. Audio capture and UI feedback initiate instantly while the WebSocket handshake completes in parallel.
 - **Background Auto-Wake**: The transport layer automatically resumes connectivity when a recording is initiated, removing the need for manual connection management.
 - **Advanced Security Indicators**: Visual feedback (Lock/Warning/Block) for connection security status.
@@ -74,11 +75,11 @@ lib/
 - **Deep Sleep Proof Hotkeys**: Native `GetMessage` blocking loop ensures hotkeys work after system sleep.
 - **Global Hotkey**: Trigger recording from any application (default: Ctrl+Alt+E).
 - **Auto Copy/Paste**: Automatically insert transcriptions at your cursor.
-- **WebSocket Resilience**: Exponential backoff reconnection with ban-awareness.
+- **WebSocket Resilience**: Retries back off from 2 s to once a minute and stop on sign-out, in Groq mode, or after a ban. An unreachable server shows `[ server offline ]` with **Try again**.
 - **Intelligent Idle Timeout**: Connection auto-closes after inactivity to save resources.
 - **Incognito Mode**: Protocol-level privacy flag with memory hygiene. In Groq mode, Incognito is Local Only — local history is disabled but audio is processed by Groq Cloud.
 - **Verification Suite**: Modular security tests (`auth_service_test.dart`) validating PKCE integrity and state-parameter protection.
-- **Glassmorphic UI**: Modern, translucent design with integrated OIDC identity hardening.
+- **Captions UI**: Crimson on near-black in a borderless 420×600 window: one status cue, a live pixel meter, the last transcript set as captions, and an optional moving contour map. Lexend type sits on whole pixels for crisp rendering.
 
 ## Prerequisites
 
@@ -104,8 +105,8 @@ lib/
    # Templatized production build command:
    flutter build windows --release --build-name=<version> --build-number=<build_number> --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
 
-   # Example for current v3.1.0 release:
-   flutter build windows --release --build-name=3.1.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
+   # Example for current v3.2.0 release:
+   flutter build windows --release --build-name=3.2.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
    ```
 
 5. **Package Windows Installer**
@@ -118,14 +119,21 @@ lib/
 
 ## Configuration
 
-Access settings via the gear icon or hamburger menu:
+Two full-window panels hold every setting. Each change saves on its own.
 
-- **Connection Mode**: Toggle between **WhisperDoc** (self-hosted backend) and **Groq Cloud** (direct API).
-  - _WhisperDoc_: Enter the WebSocket endpoint (e.g., `ws://localhost:9989/ws`).
-  - _Groq Cloud_: Enter your Groq API key (stored in Windows Credential Manager). Optionally set a language hint (ISO-639-1) and a prompt hint for domain-specific vocabulary.
-- **Secure Key** (WhisperDoc mode): Enter your backend API Key or JWT via Developer Settings.
-- **Global Hotkey**: Customize your trigger key combination.
-- **Auto Copy/Paste**: Control automation behavior.
+**Account** (the person icon, top right):
+
+- **Switch service**: Choose **WhisperDoc** (self-hosted backend) or **Groq Cloud** (direct API).
+  - _WhisperDoc_: **Server address** (e.g. `ws://localhost:9989/ws`; `http(s)://` and bare hosts are accepted), **Sign in**, and an optional **Developer key**. A custom server you sign in to asks once before your sign-in is sent to it.
+  - _Groq Cloud_: **Groq API key** (stored in Windows Credential Manager), **Model**, **Language** (picked by name), and **Words to expect** for names and domain terms.
+- **App**: Version, update when one is available, and **Logs**.
+
+**Settings** (the sliders icon, bottom right):
+
+- **Recording**: Microphone and the level meter.
+- **Shortcut**: The global hotkey (default Ctrl+Alt+E).
+- **When you stop**: Copy to clipboard, and paste where your cursor is.
+- **Appearance**: Moving background. Turn it off for a still map on slower computers.
 
 ## Known Limitations
 
@@ -141,7 +149,23 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v3.1.0)
+## Recent Improvements (v3.2.0)
+
+### Captions Interface
+
+- **One Cue, One Fix**: `HomeStatusMapper` turns service signals into a single status cue (`[ ready ]`, `[ listening ]`, `[ transcribing ]`, `[ server offline ]` …), the one action that unblocks it, and the account badge.
+- **Pixel Meter & Contour Map**: A retro meter at display refresh, normalized against each microphone's noise floor and peak, and a GPU-drawn topography that answers the cursor, flattens while you dictate, and can be switched off.
+- **Panels**: Account, Settings, History and Logs share one panel kit (`AppPanel`, `PanelRow`, `ChoicePanel`, `FieldPanel`). Dialogs remain only for confirmations, the shortcut recorder and the style editor.
+- **Native Window**: The runner creates a borderless, square window with a 420×600 client area before Flutter starts. Fonts and the Lucide icon font are bundled; nothing is downloaded at startup.
+
+### Security & Reliability
+
+- **Sign-In Scope**: The OIDC token goes only to the built-in server or one approved with **Trust server**. Trust is forgotten on sign-out or an account switch.
+- **Transcript Gate**: A server transcript is used only within two minutes of a dictation ending, sanitized, and pasted on one line. Raw, Clean and Casual polishes also paste on one line; Pro, Tech and custom styles keep paragraphs.
+- **Connection Lifecycle**: `connect()` resolves once the sign-in is accepted and is shared by concurrent callers. Failed and stale sockets are closed and ignored, and a dropped connection mid-dictation is reported instead of losing the text silently.
+- **Clean Exit**: Closing the window always wakes the hotkey thread, so the process ends instead of lingering without a window.
+
+## Older Improvements (v3.1.0)
 
 ### Startup, Devices & Session Reliability
 

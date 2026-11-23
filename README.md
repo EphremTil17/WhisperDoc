@@ -1,4 +1,4 @@
-# WhisperDoc - Speech-to-Text System v3.1.0
+# WhisperDoc - Speech-to-Text System v3.2.0
 
 A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
 
@@ -218,7 +218,7 @@ Review the draft on the Releases page, then publish it. Installed clients learn 
 
 ### 5. Privacy-First (Ghost Mode)
 
-- **Incognito State**: Protocol-level privacy flag that redacts server-side logs and enforces zero-disk persistence, ensuring that sensitive transcriptions leave no trace in backend telemetry.
+- **Incognito State**: Protocol-level privacy flag that enforces zero-disk persistence and turns off local history. Since v3.2.0 the server log never holds transcript text in either mode; it records only each transcript's length.
 
 ### 6. "Weight Shedding" & Performance (v2.14.0)
 
@@ -306,11 +306,13 @@ Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audi
 
 ## Clients
 
-### Flutter Client (Windows) v3.1.0
+### Flutter Client (Windows) v3.2.0
 
 A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
 
 - **Standalone Release Package**: Verified 64-bit production distribution installer packaged with Inno Setup by the Release workflow and published on [GitHub Releases](https://github.com/EphremTil17/WhisperDoc/releases/latest).
+- **Captions Interface (v3.2.0)**: A quiet crimson-on-black window with one status cue, one fix for anything blocking dictation, a live pixel meter, the last transcript set as captions, and an optional moving contour map. Account and Settings are full-window panels.
+- **Trusted Servers & Safe Paste (v3.2.0)**: Your sign-in goes only to the built-in server or one you trust. The client pastes only a transcript it asked for, as plain text, and tells you when a dictation is lost.
 - **Client-Edge Dictation Profiles & LLM Transformation**: Contextual post-processing rewrites (Raw, Clean Polish, Professional, Casual, Technical) powered by high-speed Groq `qwen/qwen3.8-27b` inference (~260ms latency, zero CoT tokens). Works across both WhisperDoc backend and Groq transcription modes with fail-open fallback, ASCII typographic normalization, input-scaled timeouts, and zero-stalling latency SLA.
 - **Groq Cloud Direct Transcription**: Backend-independent speech-to-text with runtime model selection between `whisper-large-v3-turbo` (lowest latency) and `whisper-large-v3` (maximum depth and verbatim accuracy). Works as a standalone fallback when the backend is down, under maintenance, or by user preference. Free-tier compliant with local rate-limit tracking and conservative buffer guards.
 - **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
@@ -321,9 +323,9 @@ A high-performance Windows desktop application built with a **Smart Modular Arch
 - **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction (Local Only in Groq mode).
 - **Verification Suite**: Bundled security tests validating PKCE cryptographic integrity and state-parameter protection.
 
-📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v3.1.0.md)**
+📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v3.2.0.md)**
 
-### Python Terminal Client v3.1.0
+### Python Terminal Client v3.2.0
 
 A secure, modular, and production-ready Windows terminal client for high-performance dictation.
 

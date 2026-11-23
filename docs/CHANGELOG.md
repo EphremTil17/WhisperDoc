@@ -1,5 +1,34 @@
 # WhisperDoc Technical Changelog
 
+## [3.2.0] - 2026-11-22
+### Security Hardening
+- **Sign-In Scope**: The OIDC token is sent only to the built-in server or one the user approved with **Trust server**, compared by normalized `scheme://host:port`. Trusted servers are forgotten on sign-out or an account switch. Developer keys are unaffected.
+- **Transcript Gate**: A `transcription` frame is accepted only after end-of-stream, once, within `serverTranscriptTimeout` (2 min), and only as a string. It is sanitized and pasted on one line, so a server cannot paste text unasked or inject line breaks.
+- **Line Breaks per Style**: Raw, Clean and Casual paste on one line; Pro, Tech and custom styles (`keepsLineBreaks`) keep paragraphs.
+- **Sanitizer Coverage**: `TextSanitizer` strips every CSI and OSC sequence (BEL or ST terminated) and bidi overrides and isolates, and keeps ZWJ/ZWNJ.
+- **Server Text Is Inert**: Server error messages are sanitized, one line, at most 160 code points. `AuthErrorDialog` and the home screen's error-text matching are removed.
+- **Backend Log Privacy**: `transcribe_and_send` logs the transcript's length, never its words, in either mode.
+- **Transport and Logs**: A `ws://` hostname must resolve only to private or loopback addresses. Update links are limited to this repo's HTTPS GitHub pages. Client logs drop transcript text, emails and raw provider bodies, and clearing history vacuums the database.
+
+### Reliability
+- **Connection State**: "Signed in" means holding credentials, and `ServerProblem` (unreachable, insecure, untrusted) drives `[ server offline ]`, `[ address not allowed ]` and `[ new server ]` with their fixes.
+- **WebSocket Lifecycle**: `connect()` resolves on `authenticated` and is single-flight. Dropped and superseded sockets are closed, callbacks are bound to their own socket, a handshake timeout disconnects, and a queued end-of-stream follows the buffered audio. `HandshakeStateMachine` allows `authenticating → locked`.
+- **Backoff**: `ReconnectionManager` retries at 2 s doubling to 60 s until a connection succeeds, and never after sign-out, in Groq mode, or after a ban.
+- **Configuration Snapshots**: `ConfigurationManager` records every setting on every change, Groq mode included, and the config-change reconnect is skipped in Groq mode or without credentials.
+- **Dictation Losses Reported**: A connection lost mid-dictation stops recording with a reason. A recorder that stops by itself still transcribes, a second press while starting stops once started, and paste runs before the history save.
+- **Clean Exit**: Closing the window wakes the hotkey thread (`WM_QUIT`) and the runner destroys the window after the message loop, so the process ends.
+
+### Captions Interface
+- **Home**: `HomeStatusMapper` turns service signals into one cue, one fix and an account badge. Includes the pixel meter (`MeterHistory`, `LevelNormalizer`), captions for the last transcript, and `CrispText`/`PixelSnap` whole-pixel text.
+- **Contour Background**: `topography.frag` with `TopographyMotion` (cursor peak, click wave, relief rise at any frame rate), flattened while listening and switchable off with **Moving background**.
+- **Panels**: `AppPanel`, `PanelRow`, `ChoicePanel` and `FieldPanel` rebuild Account, Settings, History and Logs. Each change saves on its own; `FieldPanel` saves once and reports failures.
+- **Native Window**: Borderless square popup without shadow, sized to a 420×600 client area by the runner before Flutter starts. Buttons press 2 px and climb back (`PressNudge`).
+- **Bundled Assets**: Lexend, JetBrains Mono and a subsetted Lucide font replace `google_fonts` and `lucide_icons_flutter`.
+
+### Tooling
+- **DCM Clean**: All DCM findings fixed or suppressed with a stated reason; Bloc-only rules dropped and Mocktail `verify` counted as an assertion.
+- **Tests**: 372 Flutter tests (from 239). The WebSocket suite injects a `ChannelOpener` and no longer opens real connections.
+
 ## [3.1.0] - 2026-11-19
 ### Security Hardening
 - **Dependabot Remediation**: Patched all 44 open advisories (39 backend, 5 terminal client), including 15 PyJWT advisories, with lock refreshes plus GHSA-annotated `constraint-dependencies` floors so a future re-resolve cannot regress. An OSV scan of `flutter_client/pubspec.lock` found nothing.
