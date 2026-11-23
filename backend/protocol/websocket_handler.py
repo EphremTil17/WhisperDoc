@@ -688,10 +688,12 @@ class ConnectionManager:
             safe_segments = sanitized_segments(result)
             full_text = " ".join(seg["text"] for seg in safe_segments)
 
-            if not is_incognito:
-                log.success(f"[{conn_id}] Transcription complete: {full_text[:50]}...")
-            else:
-                log.log("PRIVACY", f"[{conn_id}] Transcription complete [REDACTED]")
+            # Never the words themselves: whoever reads the server log would
+            # see the start of everything people dictate.
+            log.success(
+                f"[{conn_id}] Transcription complete "
+                f"({len(full_text)} chars{', incognito' if is_incognito else ''})"
+            )
 
             await websocket.send_json(
                 {
