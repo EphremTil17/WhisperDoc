@@ -8,6 +8,7 @@ The .env file is real, written to a temporary directory.
 
 import ctypes
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
 
 import keyring
@@ -285,7 +286,8 @@ class TestSaveSetupConfig:
             "LOG_LEVEL": "INFO",
             "IDLE_TIMEOUT": "300",
         }
-        cfg._load_env.assert_called_once()
+        # env_file replaced the reload with a mock.
+        cast(MagicMock, cfg._load_env).assert_called_once()
 
     def test_updates_existing_env_and_keeps_other_settings(self, env_file):
         env_file.write_text("CUSTOM_FLAG=on\nAUDIO_DEVICE_ID=9\n", encoding="utf-8")

@@ -92,7 +92,7 @@ class TestErrorRouting:
         self, error_code, expected
     ):
         svc = self._make_svc()
-        listener = AsyncMock()
+        listener = MagicMock()
         svc.add_message_listener(listener)
 
         await svc._handle_error_message(self._error(error_code, "why"))
@@ -100,7 +100,7 @@ class TestErrorRouting:
         assert svc.handshake.state == expected
         assert svc.handshake.last_error_code == error_code
         assert svc.handshake.last_message == "why"
-        listener.assert_not_awaited()  # reported once, via handshake state
+        listener.assert_not_called()  # reported once, via handshake state
 
     @pytest.mark.asyncio
     async def test_auth_failed_clears_key(self):
@@ -125,14 +125,14 @@ class TestErrorRouting:
     async def test_operational_errors_notify_and_keep_session(self, error_code):
         svc = self._make_svc()
         svc.handshake.transition_to(HandshakeState.AUTHENTICATED)
-        listener = AsyncMock()
+        listener = MagicMock()
         svc.add_message_listener(listener)
         msg = self._error(error_code)
 
         await svc._handle_error_message(msg)
 
         assert svc.handshake.state == HandshakeState.AUTHENTICATED
-        listener.assert_awaited_once_with(msg)
+        listener.assert_called_once_with(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ class TestHandleRawMessage:
         svc = TransportService()
         svc._ws = MagicMock()
         received = []
-        svc.add_message_listener(AsyncMock(side_effect=lambda m: received.append(m)))
+        svc.add_message_listener(received.append)
         await svc._handle_raw_message(
             json.dumps(
                 {

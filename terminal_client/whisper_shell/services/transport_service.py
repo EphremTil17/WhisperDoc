@@ -226,7 +226,7 @@ class TransportService:
         elif event == "error":
             await self._handle_error_message(msg)
         else:
-            await self._notify_listeners(msg)
+            self._notify_listeners(msg)
 
     async def _handle_error_message(self, msg: ServerMessage) -> None:
         """Session errors become handshake state; operational errors go to listeners.
@@ -238,7 +238,7 @@ class TransportService:
         session_state = _SESSION_ERRORS.get(error_code)
         if session_state is None:
             # NO_AUDIO, TRANSCRIPTION_FAILED, BUFFER_EXCEEDED, SERVER_ERROR, ...
-            await self._notify_listeners(msg)
+            self._notify_listeners(msg)
             return
 
         if error_code == "AUTH_FAILED":
@@ -248,9 +248,9 @@ class TransportService:
         )
         self.handshake.transition_to(session_state)
 
-    async def _notify_listeners(self, msg: ServerMessage) -> None:
+    def _notify_listeners(self, msg: ServerMessage) -> None:
         for cb in self._message_listeners:
-            await cb(msg)
+            cb(msg)
 
     # ------------------------------------------------------------------
     # Send methods

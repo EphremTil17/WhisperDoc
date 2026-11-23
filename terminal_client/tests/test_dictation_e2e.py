@@ -166,10 +166,7 @@ class TestHandshakeOverTheWire:
             svc = client_for(uri)
             seen: list[dict] = []
 
-            async def listener(msg):
-                seen.append(dict(msg))
-
-            svc.add_message_listener(listener)
+            svc.add_message_listener(lambda msg: seen.append(dict(msg)))
             await svc.connect()
             await eventually(lambda: len(seen) == 2)
             await svc.disconnect()

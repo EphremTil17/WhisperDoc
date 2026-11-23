@@ -11,6 +11,7 @@ import types
 from unittest.mock import MagicMock
 
 import pytest
+from loguru import logger
 
 # ---------------------------------------------------------------------------
 # Lightweight stub for ConfigService — replaces the real singleton so that
@@ -66,3 +67,14 @@ def stub_cfg():
 def stub_sec_cfg():
     """Returns a fresh stub sec_cfg for tests that need to mutate it."""
     return _build_stub_sec_cfg()
+
+
+@pytest.fixture
+def log_messages():
+    """Messages logged at INFO and above while the test runs."""
+    messages: list[str] = []
+    sink = logger.add(
+        lambda m: messages.append(m.record["message"]), level="INFO", format="{message}"
+    )
+    yield messages
+    logger.remove(sink)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Coroutine, TypedDict
+from typing import Callable, TypedDict
 
 type JSONScalar = str | int | float | bool | None
 type JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
@@ -15,4 +15,4 @@ class ServerMessage(TypedDict, total=False):
     text: str
 
 
-type MessageListener = Callable[[ServerMessage], Coroutine[Any, Any, None]]
+type MessageListener = Callable[[ServerMessage], None]

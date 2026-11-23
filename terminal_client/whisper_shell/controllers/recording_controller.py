@@ -164,11 +164,8 @@ class RecordingController:
                 f"Please update your client.{Style.RESET_ALL}"
             )
 
-    async def _handle_server_message(self, msg: ServerMessage) -> None:
-        """Processes transcription results and operational server errors.
-
-        Async because TransportService awaits every message listener.
-        """
+    def _handle_server_message(self, msg: ServerMessage) -> None:
+        """Processes transcription results and operational server errors."""
         event = msg.get("event")
 
         if "text" in msg:

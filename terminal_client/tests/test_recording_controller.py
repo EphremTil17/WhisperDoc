@@ -265,32 +265,36 @@ class TestHandshakeCallbacks:
 
 
 class TestServerMessageHandling:
-    @pytest.mark.asyncio
-    async def test_transcription_triggers_paste(self):
+    def test_transcription_triggers_paste(self):
         ctrl = _make_controller()
         with patch.object(ctrl, "_paste_text") as mock_paste:
-            await ctrl._handle_server_message(
+            ctrl._handle_server_message(
                 {"event": "transcription", "text": "hello world"}
             )
             mock_paste.assert_called_once_with("hello world")
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "error_code",
-        ["NO_AUDIO", "TRANSCRIPTION_FAILED", "BUFFER_EXCEEDED", "SERVER_ERROR", ""],
+        ("error_code", "line"),
+        [
+            ("NO_AUDIO", "No audio detected: why"),
+            ("TRANSCRIPTION_FAILED", "Transcription failed: why"),
+            ("BUFFER_EXCEEDED", "Audio buffer exceeded: why"),
+            ("SERVER_ERROR", "Server error: why"),
+            ("RATE_LIMITED", "Server error (RATE_LIMITED): why"),
+            ("", "Server error (unknown): why"),
+        ],
     )
-    async def test_operational_errors_are_reported(self, error_code):
+    def test_operational_errors_are_reported(self, log_messages, error_code, line):
         ctrl = _make_controller()
-        await ctrl._handle_server_message(
+        ctrl._handle_server_message(
             {"event": "error", "error_code": error_code, "message": "why"}
         )
+        assert log_messages == [line]
 
-    @pytest.mark.asyncio
-    async def test_status_event(self):
+    def test_status_event_is_logged(self, log_messages):
         ctrl = _make_controller()
-        await ctrl._handle_server_message(
-            {"event": "status", "message": "Model loaded"}
-        )
+        ctrl._handle_server_message({"event": "status", "message": "Model loaded"})
+        assert log_messages == ["Server Status: Model loaded"]
 
 
 # ---------------------------------------------------------------------------

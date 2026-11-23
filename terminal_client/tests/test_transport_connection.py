@@ -14,7 +14,6 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from loguru import logger
 
 from whisper_shell.logic.handshake import HandshakeState
 from whisper_shell.services import transport_service
@@ -23,17 +22,6 @@ from whisper_shell.services.transport_service import (
     MAX_RECONNECT_ATTEMPTS,
     TransportService,
 )
-
-
-@pytest.fixture
-def log_messages():
-    """Messages logged at INFO and above while the test runs."""
-    messages: list[str] = []
-    sink = logger.add(
-        lambda m: messages.append(m.record["message"]), level="INFO", format="{message}"
-    )
-    yield messages
-    logger.remove(sink)
 
 
 @pytest.fixture
@@ -293,7 +281,7 @@ class TestListenLoop:
     async def test_session_error_on_the_wire_reaches_handshake_state(self):
         svc = TransportService()
         svc.handshake.transition_to(HandshakeState.AUTHENTICATING)
-        listener = AsyncMock()
+        listener = MagicMock()
         svc.add_message_listener(listener)
 
         await svc._handle_raw_message(
@@ -303,4 +291,4 @@ class TestListenLoop:
         )
 
         assert svc.handshake.state == HandshakeState.BANNED
-        listener.assert_not_awaited()
+        listener.assert_not_called()
