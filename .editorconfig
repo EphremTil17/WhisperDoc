@@ -1,0 +1,9 @@
+# Editors write LF, matching .gitattributes (batch files keep CRLF there).
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+
+[*.{bat,cmd}]
+end_of_line = crlf

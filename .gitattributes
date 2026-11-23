@@ -1,0 +1,8 @@
+# LF everywhere. Code, tests and builds run on both Windows and WSL, and
+# wdsync copies the working tree between them as-is, so one line ending keeps
+# every checkout, diff and sync identical. Git detects binaries itself.
+* text=auto eol=lf
+
+# Windows batch files are the exception: cmd.exe needs CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
