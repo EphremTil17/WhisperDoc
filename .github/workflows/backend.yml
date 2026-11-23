@@ -7,6 +7,8 @@ on:
       - "backend/**"
       - "assets/**"
       - "scripts/bump_version.py" # covered by backend/tests/test_version_bumper.py
+      - "setup.sh"
+      - "docker-compose*.yml"
       - ".github/workflows/backend.yml"
   workflow_dispatch:
 
@@ -90,6 +92,33 @@ jobs:
         working-directory: backend
         run: docker build -f Dockerfile.parakeet --build-arg VERSION="$VERSION" -t whisperdoc-backend:ci-parakeet .
 
+      - name: Restore model cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: model-cache
+          key: whisper-model-tiny.en-v1
+
+      # The newcomer quick start, unattended on this GPU-less runner. It runs
+      # before the builder prune so its compose build reuses the layers above.
+      # The job's key is unset so setup.sh must generate one into .env.
+      - name: Quick-start script (setup.sh --cpu)
+        run: |
+          env -u WHISPER_DOC_API_KEY MODEL_NAME=tiny.en ./setup.sh --engine whisper --cpu --yes
+          if ! grep -Eq '^WHISPER_DOC_API_KEY=[0-9a-f]{64}$' .env; then
+            echo "::error::setup.sh did not generate an API key"
+            exit 1
+          fi
+          curl -fsS "$API/health"; echo
+
+      # Frees port 9989 for the container below. The tests read the root .env,
+      # so it goes too.
+      - name: Tear down the quick-start backend
+        run: |
+          image=$(docker compose config --images backend)
+          docker compose down
+          docker image rm "$image"
+          rm .env
+
       - name: Record image sizes
         run: |
           {
@@ -97,12 +126,6 @@ jobs:
             docker image ls whisperdoc-backend --format '| {{.Tag}} | {{.Size}} |'
           } >> "$GITHUB_STEP_SUMMARY"
           docker builder prune -af > /dev/null
-
-      - name: Restore model cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: model-cache
-          key: whisper-model-tiny.en-v1
 
       # Same isolation as docker-compose.yml: read-only root, tmpfs /tmp,
       # no-new-privileges, loopback-only port.

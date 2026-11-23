@@ -29,6 +29,12 @@ repos:
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-yaml
+        exclude: ^docker-compose\.cpu\.yml$
+      # Compose's `!reset` tag has no YAML constructor: check syntax only.
+      - id: check-yaml
+        name: check yaml (Compose override tags)
+        files: ^docker-compose\.cpu\.yml$
+        args: [--unsafe]
       - id: check-toml
       - id: check-json
       - id: detect-private-key

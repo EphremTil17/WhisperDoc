@@ -13,6 +13,8 @@ model-cache/
 *.pyo
 *.pyd
 .pytest_cache/
+# Left by a local `uv sync`; would bust the COPY layer cache
+*.egg-info/
 
 # Ignore IDE settings
 .vscode/

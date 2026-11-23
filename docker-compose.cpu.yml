@@ -1,0 +1,19 @@
+# CPU-only override for machines without an NVIDIA GPU or Container Toolkit.
+# It drops the GPU reservations that make `docker compose up` fail there.
+# `./setup.sh --cpu` selects it by writing this to .env, so plain
+# `docker compose ...` commands keep using it:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.cpu.yml
+# Parakeet stays CUDA-only; on the CPU, run ASR_ENGINE=whisper with
+# MODEL_DEVICE=cpu and MODEL_COMPUTE_TYPE=int8.
+services:
+  backend:
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []
+
+  whisper-test:
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []
