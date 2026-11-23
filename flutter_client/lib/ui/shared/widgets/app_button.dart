@@ -43,7 +43,9 @@ class AppButton extends StatelessWidget {
         padding: const WidgetStatePropertyAll(
           EdgeInsetsDirectional.only(start: _padStart, end: _padEnd),
         ),
-        backgroundColor: WidgetStatePropertyAll(enabled ? fill : Colors.transparent),
+        backgroundColor: WidgetStatePropertyAll(
+          enabled ? fill : Colors.transparent,
+        ),
         foregroundColor: WidgetStatePropertyAll(
           enabled ? ink : AppColors.textMuted,
         ),

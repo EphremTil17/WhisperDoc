@@ -99,10 +99,7 @@ class AccountIdentity extends StatelessWidget {
     final initial = ColoredBox(
       color: AppColors.band,
       child: Center(
-        child: CrispText(
-          name.characters.first.toUpperCase(),
-          style: nameStyle,
-        ),
+        child: CrispText(name.characters.first.toUpperCase(), style: nameStyle),
       ),
     );
     final avatarPx = (_avatar * MediaQuery.devicePixelRatioOf(context)).round();

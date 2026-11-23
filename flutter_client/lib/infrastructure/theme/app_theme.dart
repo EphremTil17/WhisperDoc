@@ -123,13 +123,15 @@ class AppTheme {
         // "On" is white, not crimson: crimson means recording or "needs you".
         // Disabled reads as off whatever the value, so it never shows white.
         thumbColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) &&
+          (s) =>
+              s.contains(WidgetState.selected) &&
                   !s.contains(WidgetState.disabled)
               ? AppColors.ground
               : AppColors.iconFaint,
         ),
         trackColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.selected) &&
+          (s) =>
+              s.contains(WidgetState.selected) &&
                   !s.contains(WidgetState.disabled)
               ? AppColors.text
               : Colors.transparent,

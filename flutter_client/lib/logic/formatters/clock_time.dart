@@ -3,8 +3,18 @@ abstract final class ClockTime {
   static const int _componentWidth = 2;
   static const int _millisWidth = 3;
   static const List<String> _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   /// `HH:mm:ss`, zero-padded, in the time zone of [time].
@@ -21,9 +31,11 @@ abstract final class ClockTime {
   static String stamp(DateTime time, DateTime now) {
     final clock = '${_pad(time.hour)}:${_pad(time.minute)}';
     // Calendar days, compared as UTC dates so a DST change cannot shorten one.
-    final days = DateTime.utc(now.year, now.month, now.day)
-        .difference(DateTime.utc(time.year, time.month, time.day))
-        .inDays;
+    final days = DateTime.utc(
+      now.year,
+      now.month,
+      now.day,
+    ).difference(DateTime.utc(time.year, time.month, time.day)).inDays;
 
     return switch (days) {
       0 => clock,

@@ -55,7 +55,9 @@ void main() {
       expect(find.text('5 min ago'), findsOneWidget);
     });
 
-    testWidgets('listening: Stop, the meter, and locked controls', (tester) async {
+    testWidgets('listening: Stop, the meter, and locked controls', (
+      tester,
+    ) async {
       final home = HomeOrchestrator(tester)..startRecording();
       await home.pump();
 
@@ -66,7 +68,9 @@ void main() {
       expect(find.byTooltip('History'), findsNothing);
     });
 
-    testWidgets('no Groq key: one fix, Record disabled, crimson badge', (tester) async {
+    testWidgets('no Groq key: one fix, Record disabled, crimson badge', (
+      tester,
+    ) async {
       final home = HomeOrchestrator(tester)..removeGroqKey();
       await home.pump();
 
@@ -94,21 +98,22 @@ void main() {
       expect(recordButton(tester).onPressed, isNotNull);
     });
 
-    testWidgets('signed in to an offline server: says so, Try again reconnects', (
-      tester,
-    ) async {
-      final home = HomeOrchestrator(tester)
-        ..signInToServer()
-        ..takeServerOffline();
-      await home.pump();
+    testWidgets(
+      'signed in to an offline server: says so, Try again reconnects',
+      (tester) async {
+        final home = HomeOrchestrator(tester)
+          ..signInToServer()
+          ..takeServerOffline();
+        await home.pump();
 
-      expect(find.text('[ server offline ]'), findsOneWidget);
-      expect(find.text('[ not signed in ]'), findsNothing);
-      expect(recordButton(tester).onPressed, isNull);
+        expect(find.text('[ server offline ]'), findsOneWidget);
+        expect(find.text('[ not signed in ]'), findsNothing);
+        expect(recordButton(tester).onPressed, isNull);
 
-      await tester.tap(find.text('Try again'));
-      verify(home.ws.connect).called(1);
-    });
+        await tester.tap(find.text('Try again'));
+        verify(home.ws.connect).called(1);
+      },
+    );
 
     testWidgets('an untrusted server asks first; Trust server connects', (
       tester,

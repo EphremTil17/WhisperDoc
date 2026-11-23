@@ -15,7 +15,10 @@ class Keycap extends StatelessWidget {
       decoration: const BoxDecoration(color: AppColors.band),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm),
-        child: CrispText(label, style: style.copyWith(fontWeight: FontWeight.w500)),
+        child: CrispText(
+          label,
+          style: style.copyWith(fontWeight: FontWeight.w500),
+        ),
       ),
     );
   }

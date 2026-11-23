@@ -105,8 +105,7 @@ void main() {
       ),
     ).thenAnswer((_) => Future.value());
     when(() => mockHistoryService.getHistory()).thenAnswer((_) async => []);
-    when(() => mockHistoryService.clearAll())
-        .thenAnswer((_) => Future.value());
+    when(() => mockHistoryService.clearAll()).thenAnswer((_) => Future.value());
     when(() => mockSettingsService.incognitoMode).thenReturn(false);
     when(() => mockSettingsService.setIncognitoMode(any()))
         .thenAnswer((_) => Future.value());
@@ -347,22 +346,25 @@ void main() {
       verify(() => mockWsService.sendEndSignal()).called(1);
     });
 
-    test('a recorder that stops by itself still finishes the capture', () async {
-      // A device error stops the recorder without stopRecording(): what was
-      // captured must still be sent, and the stream dropped.
-      when(() => mockWsService.sendEndSignal()).thenReturn(true);
-      when(() => mockAudioService.isRecording).thenReturn(true);
-      audioStateListener();
-      expect(controller.isRecording, isTrue);
+    test(
+      'a recorder that stops by itself still finishes the capture',
+      () async {
+        // A device error stops the recorder without stopRecording(): what was
+        // captured must still be sent, and the stream dropped.
+        when(() => mockWsService.sendEndSignal()).thenReturn(true);
+        when(() => mockAudioService.isRecording).thenReturn(true);
+        audioStateListener();
+        expect(controller.isRecording, isTrue);
 
-      when(() => mockAudioService.isRecording).thenReturn(false);
-      audioStateListener();
-      await pumpEventQueue();
+        when(() => mockAudioService.isRecording).thenReturn(false);
+        audioStateListener();
+        await pumpEventQueue();
 
-      expect(controller.isRecording, isFalse);
-      verify(() => mockAudioCueService.playStopCue()).called(1);
-      verify(() => mockWsService.sendEndSignal()).called(1);
-    });
+        expect(controller.isRecording, isFalse);
+        verify(() => mockAudioCueService.playStopCue()).called(1);
+        verify(() => mockWsService.sendEndSignal()).called(1);
+      },
+    );
 
     test('overlapping start requests open one capture stream', () async {
       final captureStarted = Completer<void>();
@@ -879,7 +881,8 @@ void main() {
       });
       await pumpEventQueue();
 
-      verify(() => mockAutomationService.runAutomation('Hello whoami')).called(1);
+      verify(() => mockAutomationService.runAutomation('Hello whoami'))
+          .called(1);
       expect(controller.isTranscribing, isFalse);
     });
 

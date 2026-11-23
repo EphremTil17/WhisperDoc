@@ -176,10 +176,7 @@ class HotkeyService {
 
   static Future<void> _reportNativeThreadId(int threadId) async {
     try {
-      await _lifecycleChannel.invokeMethod<void>(
-        'setHotkeyThreadId',
-        threadId,
-      );
+      await _lifecycleChannel.invokeMethod<void>('setHotkeyThreadId', threadId);
     } on MissingPluginException {
       // Headless tests have no native Windows runner.
     } catch (_) {

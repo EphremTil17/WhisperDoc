@@ -10,7 +10,9 @@ void main() {
   // Fonts ship with the app (no runtime download); register their licences.
   LicenseRegistry.addLicense(() async* {
     for (final (font, path) in AppConstants.bundledFontLicenses) {
-      yield LicenseEntryWithLineBreaks([font], await rootBundle.loadString(path));
+      yield LicenseEntryWithLineBreaks([
+        font,
+      ], await rootBundle.loadString(path));
     }
   });
 

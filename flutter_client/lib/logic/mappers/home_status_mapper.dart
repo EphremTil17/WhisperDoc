@@ -39,7 +39,9 @@ abstract final class HomeStatusMapper {
 
     return HomeStatus(
       phase: HomePhase.ready,
-      cue: s.inputStatus.usesDefaultDevice ? 'ready · default microphone' : 'ready',
+      cue: s.inputStatus.usesDefaultDevice
+          ? 'ready · default microphone'
+          : 'ready',
       tone: CueTone.muted,
       badge: badge,
     );

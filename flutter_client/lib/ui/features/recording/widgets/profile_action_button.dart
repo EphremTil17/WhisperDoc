@@ -193,7 +193,9 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
                       activeProfile.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppType.caption.copyWith(fontWeight: FontWeight.w500),
+                      style: AppType.caption.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                   Icon(

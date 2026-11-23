@@ -20,9 +20,8 @@ void main() {
 
     testWidgets('tapping a toggle row flips the setting', (tester) async {
       final settings = HomeOrchestrator(tester);
-      when(
-        () => settings.settings.setAutoCopy(any()),
-      ).thenAnswer((_) => Future.value());
+      when(() => settings.settings.setAutoCopy(any()))
+          .thenAnswer((_) => Future.value());
       await settings.pumpPanel(const SettingsPanel());
 
       await tester.tap(find.text('Copy to clipboard'));
@@ -33,9 +32,8 @@ void main() {
 
     testWidgets('the background can be held still', (tester) async {
       final settings = HomeOrchestrator(tester);
-      when(
-        () => settings.settings.setAnimateBackground(any()),
-      ).thenAnswer((_) => Future.value());
+      when(() => settings.settings.setAnimateBackground(any()))
+          .thenAnswer((_) => Future.value());
       await settings.pumpPanel(const SettingsPanel());
 
       expect(

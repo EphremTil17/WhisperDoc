@@ -409,21 +409,24 @@ void main() {
       svc.dispose();
     });
 
-    test('switching to Groq mid-connect does not reconnect to the backend', () async {
-      final settings = _StubSettingsService(apiKey: 'test-key');
-      final svc = _ServiceFactory.make(settings: settings);
-      await pumpEventQueue(); // the launch auto-connect is now in flight
-      final statuses = <ConnectionStatus>[];
-      svc.onStatusChanged.listen(statuses.add);
+    test(
+      'switching to Groq mid-connect does not reconnect to the backend',
+      () async {
+        final settings = _StubSettingsService(apiKey: 'test-key');
+        final svc = _ServiceFactory.make(settings: settings);
+        await pumpEventQueue(); // the launch auto-connect is now in flight
+        final statuses = <ConnectionStatus>[];
+        svc.onStatusChanged.listen(statuses.add);
 
-      settings.setGroqMode(true);
-      svc.processCloseForTesting(null, null); // the half-open attempt drops
-      await pumpEventQueue();
+        settings.setGroqMode(true);
+        svc.processCloseForTesting(null, null); // the half-open attempt drops
+        await pumpEventQueue();
 
-      expect(statuses, [ConnectionStatus.disconnected]);
-      expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
-      svc.dispose();
-    });
+        expect(statuses, [ConnectionStatus.disconnected]);
+        expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
+        svc.dispose();
+      },
+    );
   });
 
   // --- Regression: close code 4001 must not schedule reconnect -------------
@@ -694,37 +697,43 @@ void main() {
   });
 
   group('WebSocketService server problems', () {
-    test('nothing listening is unreachable, and retries are scheduled', () async {
-      final svc = _ServiceFactory.make(
-        apiKey: 'key',
-        openChannel: _ServiceFactory.refused,
-      );
-      await pumpEventQueue();
+    test(
+      'nothing listening is unreachable, and retries are scheduled',
+      () async {
+        final svc = _ServiceFactory.make(
+          apiKey: 'key',
+          openChannel: _ServiceFactory.refused,
+        );
+        await pumpEventQueue();
 
-      expect(svc.serverProblem, ServerProblem.unreachable);
-      expect(svc.handshakeState.state, isNot(HandshakeState.failed));
-      expect(svc.reconnectionManagerForTesting.isScheduled, isTrue);
-      svc.dispose();
-    });
+        expect(svc.serverProblem, ServerProblem.unreachable);
+        expect(svc.handshakeState.state, isNot(HandshakeState.failed));
+        expect(svc.reconnectionManagerForTesting.isScheduled, isTrue);
+        svc.dispose();
+      },
+    );
 
-    test('a refused address is insecure, never opened, never retried', () async {
-      var opened = 0;
-      final svc = _ServiceFactory.make(
-        apiKey: 'key',
-        serverUri: 'ftp://example.com',
-        openChannel: (uri) {
-          opened++;
+    test(
+      'a refused address is insecure, never opened, never retried',
+      () async {
+        var opened = 0;
+        final svc = _ServiceFactory.make(
+          apiKey: 'key',
+          serverUri: 'ftp://example.com',
+          openChannel: (uri) {
+            opened++;
 
-          return _ServiceFactory.refused(uri);
-        },
-      );
-      await pumpEventQueue();
+            return _ServiceFactory.refused(uri);
+          },
+        );
+        await pumpEventQueue();
 
-      expect(svc.serverProblem, ServerProblem.insecure);
-      expect(opened, 0);
-      expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
-      svc.dispose();
-    });
+        expect(svc.serverProblem, ServerProblem.insecure);
+        expect(opened, 0);
+        expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
+        svc.dispose();
+      },
+    );
 
     test('missing credentials fail the sign-in, not the server', () async {
       final svc = _ServiceFactory.make();
@@ -823,23 +832,26 @@ void main() {
       svc.dispose();
     });
 
-    test('an API key is used with a server not trusted with the sign-in', () async {
-      final channel = _FakeWebSocketChannel();
-      final svc = _ServiceFactory.make(
-        signedIn: true,
-        apiKey: 'server-key',
-        serverUri: customServer,
-        openChannel: (_) => Future.value(channel),
-      );
-      await pumpEventQueue();
-      channel.receive({'event': 'hello'});
-      await pumpEventQueue();
+    test(
+      'an API key is used with a server not trusted with the sign-in',
+      () async {
+        final channel = _FakeWebSocketChannel();
+        final svc = _ServiceFactory.make(
+          signedIn: true,
+          apiKey: 'server-key',
+          serverUri: customServer,
+          openChannel: (_) => Future.value(channel),
+        );
+        await pumpEventQueue();
+        channel.receive({'event': 'hello'});
+        await pumpEventQueue();
 
-      final hello = jsonDecode(channel.sent.single as String) as Map;
-      expect(hello['auth_type'], 'api_key');
-      expect(hello['token'], 'server-key');
-      svc.dispose();
-    });
+        final hello = jsonDecode(channel.sent.single as String) as Map;
+        expect(hello['auth_type'], 'api_key');
+        expect(hello['token'], 'server-key');
+        svc.dispose();
+      },
+    );
   });
 
   group('WebSocketService handshake', () {
@@ -953,20 +965,28 @@ void main() {
       svc.dispose();
     });
 
-    test('an end signal during the handshake follows the buffered audio', () async {
-      final (svc, channel, connected) = await helloSent();
-      final audio = Uint8List.fromList([1, 2, 3]);
+    test(
+      'an end signal during the handshake follows the buffered audio',
+      () async {
+        final (svc, channel, connected) = await helloSent();
+        final audio = Uint8List.fromList([1, 2, 3]);
 
-      svc.sendAudioChunk(audio);
-      expect(svc.sendEndSignal(), isTrue);
-      channel.receive({'event': 'authenticated'});
-      await connected;
+        svc.sendAudioChunk(audio);
+        expect(svc.sendEndSignal(), isTrue);
+        channel.receive({'event': 'authenticated'});
+        await connected;
 
-      expect(channel.sent, hasLength(_WebSocketServiceTest.framesAfterHandshake));
-      expect(channel.sent[1], audio);
-      expect(jsonDecode(channel.sent[2] as String), {'event': 'end-of-stream'});
-      svc.dispose();
-    });
+        expect(
+          channel.sent,
+          hasLength(_WebSocketServiceTest.framesAfterHandshake),
+        );
+        expect(channel.sent[1], audio);
+        expect(jsonDecode(channel.sent[2] as String), {
+          'event': 'end-of-stream',
+        });
+        svc.dispose();
+      },
+    );
 
     test('there is no end signal without a session', () {
       final svc = _ServiceFactory.make();

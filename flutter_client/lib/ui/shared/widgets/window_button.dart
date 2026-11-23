@@ -26,16 +26,17 @@ class WindowButton extends StatelessWidget {
       onPressed: onPressed,
       tooltip: tooltip,
       icon: Icon(icon, size: _iconSize),
-      style: IconButton.styleFrom(
-        fixedSize: _size,
-        hoverColor: isClose ? AppColors.record : AppColors.band,
-      ).copyWith(
-        foregroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.hovered)
-              ? AppColors.text
-              : AppColors.textMuted,
-        ),
-      ),
+      style:
+          IconButton.styleFrom(
+            fixedSize: _size,
+            hoverColor: isClose ? AppColors.record : AppColors.band,
+          ).copyWith(
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.hovered)
+                  ? AppColors.text
+                  : AppColors.textMuted,
+            ),
+          ),
     );
   }
 }

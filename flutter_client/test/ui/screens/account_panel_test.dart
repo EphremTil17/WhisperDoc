@@ -15,9 +15,8 @@ void main() {
       tester,
     ) async {
       final account = HomeOrchestrator(tester);
-      when(
-        () => account.settings.cachedGroqApiKey,
-      ).thenReturn('gsk_abcdefghijklmnop3f2a');
+      when(() => account.settings.cachedGroqApiKey)
+          .thenReturn('gsk_abcdefghijklmnop3f2a');
       await account.pumpPanel(const AccountPanel());
 
       expect(find.text('Groq Cloud'), findsOneWidget);
@@ -28,16 +27,17 @@ void main() {
       expect(find.text('Remove API key'), findsOneWidget);
     });
 
-    testWidgets('Groq without a key asks for one and offers nothing to remove', (
-      tester,
-    ) async {
-      final account = HomeOrchestrator(tester)..removeGroqKey();
-      await account.pumpPanel(const AccountPanel());
+    testWidgets(
+      'Groq without a key asks for one and offers nothing to remove',
+      (tester) async {
+        final account = HomeOrchestrator(tester)..removeGroqKey();
+        await account.pumpPanel(const AccountPanel());
 
-      expect(find.text('Add your API key to start'), findsOneWidget);
-      expect(find.text('Not set'), findsOneWidget);
-      expect(find.text('Remove API key'), findsNothing);
-    });
+        expect(find.text('Add your API key to start'), findsOneWidget);
+        expect(find.text('Not set'), findsOneWidget);
+        expect(find.text('Remove API key'), findsNothing);
+      },
+    );
 
     testWidgets('self-hosted and signed out offers sign-in', (tester) async {
       final account = HomeOrchestrator(tester);
@@ -135,34 +135,35 @@ void main() {
       expect(save.onPressed, isNotNull);
     });
 
-    testWidgets('public ws:// is blocked inline while wss:// and local ws:// save', (
-      tester,
-    ) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
-      await account.pumpPanel(const AccountPanel());
+    testWidgets(
+      'public ws:// is blocked inline while wss:// and local ws:// save',
+      (tester) async {
+        final account = HomeOrchestrator(tester);
+        when(() => account.settings.isGroqMode).thenReturn(false);
+        await account.pumpPanel(const AccountPanel());
 
-      final field = find.byType(TextField);
-      final saveButton = find.widgetWithText(AppButton, 'Save');
-      Future<bool> canSave(String address) async {
-        await tester.enterText(field, address);
-        await tester.pump();
+        final field = find.byType(TextField);
+        final saveButton = find.widgetWithText(AppButton, 'Save');
+        Future<bool> canSave(String address) async {
+          await tester.enterText(field, address);
+          await tester.pump();
 
-        return tester.widget<AppButton>(saveButton).onPressed != null;
-      }
+          return tester.widget<AppButton>(saveButton).onPressed != null;
+        }
 
-      await tester.tap(find.text('Server'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Server'));
+        await tester.pumpAndSettle();
 
-      expect(await canSave('ws://example.com/ws'), isFalse);
-      expect(
-        find.text('Use wss:// for remote servers (ws:// is local only)'),
-        findsOneWidget,
-      );
-      expect(await canSave('ws://127.evil.example/ws'), isFalse);
-      expect(await canSave('ws://localhost:9989/ws'), isTrue);
-      expect(await canSave('wss://whisper.example.com/ws'), isTrue);
-    });
+        expect(await canSave('ws://example.com/ws'), isFalse);
+        expect(
+          find.text('Use wss:// for remote servers (ws:// is local only)'),
+          findsOneWidget,
+        );
+        expect(await canSave('ws://127.evil.example/ws'), isFalse);
+        expect(await canSave('ws://localhost:9989/ws'), isTrue);
+        expect(await canSave('wss://whisper.example.com/ws'), isTrue);
+      },
+    );
 
     testWidgets('rejects non-HTTPS avatar URLs and falls back to initial', (
       tester,
@@ -182,39 +183,40 @@ void main() {
       expect(find.text('A'), findsOneWidget);
     });
 
-    testWidgets('secret field starts masked, toggles visibility, and trims on save', (
-      tester,
-    ) async {
-      final account = HomeOrchestrator(tester)..removeGroqKey();
-      when(
-        () => account.settings.setGroqApiKey(any()),
-      ).thenAnswer((_) => Future.value());
-      await account.pumpPanel(const AccountPanel());
+    testWidgets(
+      'secret field starts masked, toggles visibility, and trims on save',
+      (tester) async {
+        final account = HomeOrchestrator(tester)..removeGroqKey();
+        when(() => account.settings.setGroqApiKey(any()))
+            .thenAnswer((_) => Future.value());
+        await account.pumpPanel(const AccountPanel());
 
-      final textFieldFinder = find.byType(TextField);
-      bool isObscured() => tester.widget<TextField>(textFieldFinder).obscureText;
-      Future<bool> isObscuredAfterTapping(String tooltip) async {
-        await tester.tap(find.byTooltip(tooltip));
+        final textFieldFinder = find.byType(TextField);
+        bool isObscured() =>
+            tester.widget<TextField>(textFieldFinder).obscureText;
+        Future<bool> isObscuredAfterTapping(String tooltip) async {
+          await tester.tap(find.byTooltip(tooltip));
+          await tester.pump();
+
+          return isObscured();
+        }
+
+        await tester.tap(find.text('API key'));
+        await tester.pumpAndSettle();
+        expect(isObscured(), isTrue);
+        expect(await isObscuredAfterTapping('Show'), isFalse);
+        expect(await isObscuredAfterTapping('Hide'), isTrue);
+
+        await tester.enterText(textFieldFinder, '  gsk_test_trimmed_key  ');
         await tester.pump();
+        await tester.tap(find.widgetWithText(AppButton, 'Save'));
+        await tester.pumpAndSettle();
 
-        return isObscured();
-      }
-
-      await tester.tap(find.text('API key'));
-      await tester.pumpAndSettle();
-      expect(isObscured(), isTrue);
-      expect(await isObscuredAfterTapping('Show'), isFalse);
-      expect(await isObscuredAfterTapping('Hide'), isTrue);
-
-      await tester.enterText(textFieldFinder, '  gsk_test_trimmed_key  ');
-      await tester.pump();
-      await tester.tap(find.widgetWithText(AppButton, 'Save'));
-      await tester.pumpAndSettle();
-
-      final saved = verify(
-        () => account.settings.setGroqApiKey('gsk_test_trimmed_key'),
-      );
-      expect(saved.callCount, 1);
-    });
+        final saved = verify(
+          () => account.settings.setGroqApiKey('gsk_test_trimmed_key'),
+        );
+        expect(saved.callCount, 1);
+      },
+    );
   });
 }

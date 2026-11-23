@@ -34,12 +34,16 @@ class CustomTitleBar extends StatelessWidget {
                 child: ColoredBox(
                   color: Colors.transparent,
                   child: Padding(
-                    padding: const EdgeInsetsDirectional.only(start: AppSpace.lg),
+                    padding: const EdgeInsetsDirectional.only(
+                      start: AppSpace.lg,
+                    ),
                     child: Align(
                       alignment: AlignmentDirectional.centerStart,
                       child: CrispText(
                         'WhisperDoc',
-                        style: AppType.caption.copyWith(fontWeight: FontWeight.w600),
+                        style: AppType.caption.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),

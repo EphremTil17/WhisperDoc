@@ -132,9 +132,7 @@ class RecordingController extends ChangeNotifier {
   Future<void> enableIncognitoMode() async {
     await _settingsService.setIncognitoMode(true);
     await _clearSensitiveData();
-    _logger.info(
-      'Incognito mode enabled - history and buffers cleared',
-    );
+    _logger.info('Incognito mode enabled - history and buffers cleared');
   }
 
   /// Disables incognito mode (history recording resumes)
@@ -282,11 +280,7 @@ class RecordingController extends ChangeNotifier {
         }
       }());
     } catch (e, st) {
-      _logger.error(
-        'Failed to start recording',
-        error: e,
-        stackTrace: st,
-      );
+      _logger.error('Failed to start recording', error: e, stackTrace: st);
       // AudioService owns hardware truth: if the failure was hardware-related
       // it has already set a degraded status. Anything else stays a generic,
       // retryable error and must NOT disable the microphone.
@@ -394,8 +388,7 @@ class RecordingController extends ChangeNotifier {
         'This server address isn’t allowed, so nothing was transcribed.',
       ServerProblem.unreachable =>
         'Your server isn’t answering, so this dictation wasn’t transcribed.',
-      ServerProblem.none =>
-        'Lost the connection to your server, so this dictation wasn’t transcribed.',
+      ServerProblem.none => 'Lost the connection to your server, so this dictation wasn’t transcribed.',
     };
   }
 

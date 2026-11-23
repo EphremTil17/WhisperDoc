@@ -14,7 +14,9 @@ void main() {
 
     test('drops sub-second precision', () {
       expect(
-        ClockTime.minutesSeconds(const Duration(seconds: 59, milliseconds: 999)),
+        ClockTime.minutesSeconds(
+          const Duration(seconds: 59, milliseconds: 999),
+        ),
         '0:59',
       );
     });

@@ -108,7 +108,10 @@ class _HotkeyRecorderDialogState extends State<HotkeyRecorderDialog> {
               if (binding == null)
                 const CaptionCue('waiting for keys')
               else
-                Keycap(binding.display.replaceAll('+', ' '), style: AppType.title),
+                Keycap(
+                  binding.display.replaceAll('+', ' '),
+                  style: AppType.title,
+                ),
             ],
           ),
         ),

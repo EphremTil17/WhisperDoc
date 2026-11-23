@@ -45,7 +45,11 @@ class BlockedBody extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (headline != null)
-          CrispText(headline, style: AppType.title, textAlign: TextAlign.center),
+          CrispText(
+            headline,
+            style: AppType.title,
+            textAlign: TextAlign.center,
+          ),
         if (fixLabel != null) ...[
           const SizedBox(height: _fixGap),
           AppButton(

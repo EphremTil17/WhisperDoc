@@ -66,7 +66,9 @@ class _HistoryPanelState extends State<HistoryPanel> {
       body: history.isEmpty
           ? Center(
               child: CaptionCue(
-                incognito ? 'incognito · nothing is saved' : 'no transcripts yet',
+                incognito
+                    ? 'incognito · nothing is saved'
+                    : 'no transcripts yet',
               ),
             )
           : ListView.separated(

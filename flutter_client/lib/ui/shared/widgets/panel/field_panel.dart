@@ -148,7 +148,8 @@ class _FieldPanelState extends State<FieldPanel> {
                       suffixIcon: widget.secret
                           ? IconButton(
                               tooltip: _hidden ? 'Show' : 'Hide',
-                              onPressed: () => setState(() => _hidden = !_hidden),
+                              onPressed: () =>
+                                  setState(() => _hidden = !_hidden),
                               icon: Icon(
                                 _hidden ? AppIcons.eye : AppIcons.eyeOff,
                                 size: AppSizes.smallIconSize,
@@ -160,7 +161,9 @@ class _FieldPanelState extends State<FieldPanel> {
                   if (note != null)
                     CrispText(
                       note,
-                      style: AppType.caption.copyWith(color: AppColors.textMuted),
+                      style: AppType.caption.copyWith(
+                        color: AppColors.textMuted,
+                      ),
                     ),
                 ],
               ),

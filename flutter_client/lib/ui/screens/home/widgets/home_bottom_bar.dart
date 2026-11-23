@@ -27,7 +27,9 @@ class HomeBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = context.watchHomeStatus();
     final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
-    final incognito = context.select((RecordingController c) => c.incognitoMode);
+    final incognito = context.select(
+      (RecordingController c) => c.incognitoMode,
+    );
     final listening = status.phase == HomePhase.listening;
     final locked = listening || status.phase == HomePhase.working;
     final canToggle = status.canRecord || listening;
@@ -97,7 +99,8 @@ class HomeBottomBar extends StatelessWidget {
               else ...[
                 IconButton(
                   tooltip: 'History',
-                  onPressed: () => unawaited(HomeNavigation.openHistory(context)),
+                  onPressed: () =>
+                      unawaited(HomeNavigation.openHistory(context)),
                   icon: const Icon(AppIcons.history),
                 ),
                 IconButton(
@@ -109,7 +112,8 @@ class HomeBottomBar extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip: 'Settings',
-                  onPressed: () => unawaited(HomeNavigation.openSettings(context)),
+                  onPressed: () =>
+                      unawaited(HomeNavigation.openSettings(context)),
                   icon: const Icon(AppIcons.slidersHorizontal),
                 ),
               ],

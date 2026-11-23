@@ -10,7 +10,10 @@ class DashedOutline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(foregroundPainter: const _DashedRectPainter(), child: child);
+    return CustomPaint(
+      foregroundPainter: const _DashedRectPainter(),
+      child: child,
+    );
   }
 }
 

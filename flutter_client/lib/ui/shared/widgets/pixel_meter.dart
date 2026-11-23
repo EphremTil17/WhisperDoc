@@ -16,11 +16,7 @@ import 'package:flutter_client/logic/processors/meter_history.dart';
 /// microphone amplitude from [levels] is mapped through [normalizer], which
 /// the parent owns so the learned range survives between recordings.
 class PixelMeter extends StatefulWidget {
-  const PixelMeter({
-    super.key,
-    required this.levels,
-    required this.normalizer,
-  });
+  const PixelMeter({super.key, required this.levels, required this.normalizer});
 
   final Stream<double> levels;
   final LevelNormalizer normalizer;

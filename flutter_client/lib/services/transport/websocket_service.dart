@@ -94,9 +94,8 @@ class WebSocketService extends ChangeNotifier {
 
   /// The configured server's host, for asking whether to trust it.
   String get serverHost =>
-      Uri.tryParse(
-        _transportSecurity.normalizeUri(_settingsService.serverUri),
-      )?.host ??
+      Uri.tryParse(_transportSecurity.normalizeUri(_settingsService.serverUri))
+          ?.host ??
       _settingsService.serverUri;
   SecurityStatus get securityStatus => _securityStatus;
   BanStateService get banState => _banState;

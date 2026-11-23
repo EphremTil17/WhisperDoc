@@ -52,22 +52,19 @@ void main() {
         mockController: mockController,
       );
 
-  testWidgets(
-    'renders the picker glyph and the active style',
-    (tester) async {
-      when(() => mockSettings.dictationProfile)
-          .thenReturn(DictationProfile.clean);
+  testWidgets('renders the picker glyph and the active style', (tester) async {
+    when(() => mockSettings.dictationProfile)
+        .thenReturn(DictationProfile.clean);
 
-      final orchestrator = createOrchestrator(tester);
-      await orchestrator.pumpButton();
+    final orchestrator = createOrchestrator(tester);
+    await orchestrator.pumpButton();
 
-      expect(find.text('Clean'), findsOneWidget);
-      expect(find.byIcon(AppIcons.type), findsOneWidget);
+    expect(find.text('Clean'), findsOneWidget);
+    expect(find.byIcon(AppIcons.type), findsOneWidget);
 
-      // Profile menu overlay should not be visible yet
-      expect(find.text('Clean disfluencies'), findsNothing);
-    },
-  );
+    // Profile menu overlay should not be visible yet
+    expect(find.text('Clean disfluencies'), findsNothing);
+  });
 
   testWidgets(
     'tapping button opens vertical overlay menu with all 5 profiles',

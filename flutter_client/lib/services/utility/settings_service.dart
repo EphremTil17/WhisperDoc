@@ -47,6 +47,7 @@ class SettingsService extends ChangeNotifier {
   static const bool _defaultShowVisualizer = true;
   static const bool _defaultAnimateBackground = true;
   static const bool _defaultIncognitoMode = false;
+
   /// Transcription modes: the user's own WhisperDoc server, or Groq Cloud.
   static const String backendMode = 'backend';
   static const String groqMode = 'groq';

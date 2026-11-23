@@ -13,7 +13,9 @@ class LockedStyle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = context.select((SettingsService s) => s.dictationProfile.label);
+    final label = context.select(
+      (SettingsService s) => s.dictationProfile.label,
+    );
     final muted = AppType.caption.copyWith(color: AppColors.textMuted);
 
     return Padding(

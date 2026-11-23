@@ -30,7 +30,10 @@ class CaptionBand extends LeafRenderObjectWidget {
       );
 
   @override
-  void updateRenderObject(BuildContext context, RenderCaptionBand renderObject) {
+  void updateRenderObject(
+    BuildContext context,
+    RenderCaptionBand renderObject,
+  ) {
     renderObject
       ..text = text
       ..style = style
@@ -110,9 +113,7 @@ class RenderCaptionBand extends RenderBox {
   @override
   void performLayout() {
     _painter.layout(maxWidth: constraints.maxWidth - _padX * _half);
-    size = constraints.constrain(
-      Size(constraints.maxWidth, _painter.height),
-    );
+    size = constraints.constrain(Size(constraints.maxWidth, _painter.height));
   }
 
   @override

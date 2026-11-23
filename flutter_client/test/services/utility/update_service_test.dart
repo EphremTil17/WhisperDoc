@@ -19,10 +19,7 @@ void main() {
   );
   group('UpdateService.isTrustedReleaseUrl', () {
     test('accepts official GitHub release and asset HTTPS URLs', () {
-      expect(
-        UpdateService.isTrustedReleaseUrl(AppConstants.updateUrl),
-        isTrue,
-      );
+      expect(UpdateService.isTrustedReleaseUrl(AppConstants.updateUrl), isTrue);
       expect(
         UpdateService.isTrustedReleaseUrl(
           'https://github.com/EphremTil17/WhisperDoc/releases/download/v3.1.0/WhisperDoc_Setup.exe',

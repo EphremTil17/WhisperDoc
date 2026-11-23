@@ -13,7 +13,11 @@ import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 /// The most recent transcript set as captions, then `✓ 2 min ago` and a
 /// copy action. The tick means auto-copy already put it on the clipboard.
 class LastTranscript extends StatefulWidget {
-  const LastTranscript({super.key, required this.text, required this.arrivedAt});
+  const LastTranscript({
+    super.key,
+    required this.text,
+    required this.arrivedAt,
+  });
 
   final String text;
 

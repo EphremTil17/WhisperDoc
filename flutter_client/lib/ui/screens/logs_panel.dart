@@ -78,9 +78,7 @@ class _LogsPanelState extends State<LogsPanel> {
     final copied = await ClipboardService.copyToClipboard(text);
     if (!copied || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: CrispText('Logs copied', style: AppType.caption),
-      ),
+      const SnackBar(content: CrispText('Logs copied', style: AppType.caption)),
     );
   }
 

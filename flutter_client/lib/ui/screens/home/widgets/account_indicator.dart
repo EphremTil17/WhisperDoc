@@ -54,9 +54,7 @@ class AccountIndicator extends StatelessWidget {
                     BorderSide(color: AppColors.ground, width: _dotRing),
                   ),
                 ),
-                child: const SizedBox.square(
-                  dimension: _dotOuter,
-                ),
+                child: const SizedBox.square(dimension: _dotOuter),
               ),
             ),
         ],

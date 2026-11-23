@@ -107,7 +107,10 @@ class _BanCountdownOverlayState extends State<BanCountdownOverlay> {
             const SizedBox(height: AppSpace.xs),
             AppButton(
               label: isBanned ? 'Please wait' : 'Reconnect',
-              leading: const Icon(AppIcons.refreshCw, size: AppSizes.smallIconSize),
+              leading: const Icon(
+                AppIcons.refreshCw,
+                size: AppSizes.smallIconSize,
+              ),
               onPressed: isBanned ? null : widget.onReconnect,
             ),
           ],

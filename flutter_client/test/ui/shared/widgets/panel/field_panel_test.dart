@@ -18,9 +18,8 @@ void main() {
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () => unawaited(
-              Navigator.of(context).push<void>(
-                MaterialPageRoute(builder: (_) => panel),
-              ),
+              Navigator.of(context)
+                  .push<void>(MaterialPageRoute(builder: (_) => panel)),
             ),
             child: const Text('open'),
           ),

@@ -60,7 +60,10 @@ abstract final class AppIcons {
   static const IconData pencil = IconData(57849, fontFamily: _family);
 
   /// Settings; custom output style.
-  static const IconData slidersHorizontal = IconData(58010, fontFamily: _family);
+  static const IconData slidersHorizontal = IconData(
+    58010,
+    fontFamily: _family,
+  );
 
   /// Output style: Clean.
   static const IconData sparkles = IconData(58386, fontFamily: _family);

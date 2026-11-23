@@ -246,8 +246,7 @@ class AppConstants {
   /// Validates a language code against the Groq supported set.
   /// Empty string is valid (means auto-detect).
   static bool isValidGroqLanguage(String code) =>
-      code.isEmpty ||
-      groqLanguageNames.containsKey(code.trim().toLowerCase());
+      code.isEmpty || groqLanguageNames.containsKey(code.trim().toLowerCase());
 
   /// Checks whether [model] is a supported Groq ASR model.
   static bool isValidGroqModel(String model) =>

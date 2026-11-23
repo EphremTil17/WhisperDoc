@@ -81,9 +81,7 @@ class ClipboardService {
     final foregroundWindow = GetForegroundWindow();
 
     if (ourWindow == foregroundWindow) {
-      _logger.info(
-        'Skipping paste simulation (WhisperDoc is focused)',
-      );
+      _logger.info('Skipping paste simulation (WhisperDoc is focused)');
 
       return;
     }

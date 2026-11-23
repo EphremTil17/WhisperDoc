@@ -57,9 +57,7 @@ class AudioService extends ChangeNotifier {
       // virtual driver or a reconnecting headset) is mid-transition. Report
       // "unknown" so recording can still be attempted; a real failure will
       // surface from startRecording, and the next device event re-checks.
-      _logger.warning(
-        'Input enumeration failed; availability unknown: $e',
-      );
+      _logger.warning('Input enumeration failed; availability unknown: $e');
 
       return _setStatus(AudioInputStatus.unknown);
     }

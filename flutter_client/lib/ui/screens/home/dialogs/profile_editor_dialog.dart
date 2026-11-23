@@ -50,7 +50,8 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
   void initState() {
     super.initState();
     _nameController.text =
-        widget.existing?.name ?? CustomProfile.defaultNameForSlot(widget.slotKey);
+        widget.existing?.name ??
+        CustomProfile.defaultNameForSlot(widget.slotKey);
     _promptController.text = widget.existing?.userPrompt ?? '';
     _fields = Listenable.merge([_nameController, _promptController]);
   }
@@ -128,7 +129,8 @@ class _ProfileEditorDialogState extends State<ProfileEditorDialog> {
                   style: AppType.body,
                   decoration: const InputDecoration(
                     counterText: '',
-                    hintText: 'How to rewrite the transcript, '
+                    hintText:
+                        'How to rewrite the transcript, '
                         'e.g. clean bullet points, no filler.',
                   ),
                 ),
