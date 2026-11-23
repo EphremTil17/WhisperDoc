@@ -83,6 +83,32 @@ void main() {
       expect(find.text('Choose'), findsOneWidget);
     });
 
+    testWidgets('signed in to a server that closed while idle is ready', (
+      tester,
+    ) async {
+      final home = HomeOrchestrator(tester)..signInToServer();
+      await home.pump();
+
+      expect(find.text('[ ready ]'), findsOneWidget);
+      expect(recordButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('signed in to an offline server: says so, Try again reconnects', (
+      tester,
+    ) async {
+      final home = HomeOrchestrator(tester)
+        ..signInToServer()
+        ..takeServerOffline();
+      await home.pump();
+
+      expect(find.text('[ server offline ]'), findsOneWidget);
+      expect(find.text('[ not signed in ]'), findsNothing);
+      expect(recordButton(tester).onPressed, isNull);
+
+      await tester.tap(find.text('Try again'));
+      verify(home.ws.connect).called(1);
+    });
+
     testWidgets('an optional update only adds the amber badge', (tester) async {
       final home = HomeOrchestrator(tester)..offerUpdate();
       await home.pump();

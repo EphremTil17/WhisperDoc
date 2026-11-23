@@ -15,6 +15,7 @@ import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
@@ -98,7 +99,7 @@ class HomeOrchestrator {
     when(() => handshake.state).thenReturn(HandshakeState.locked);
     when(() => ws.handshakeState).thenReturn(handshake);
     when(() => ws.status).thenReturn(ConnectionStatus.disconnected);
-    when(() => ws.isAuthenticatedSession).thenReturn(true);
+    when(() => ws.serverProblem).thenReturn(ServerProblem.none);
     when(() => update.status).thenReturn(UpdateStatus.upToDate);
     when(() => groq.hasValidCredentials).thenReturn(true);
     when(() => audio.amplitudeStream).thenAnswer((_) => levels.stream);
@@ -131,6 +132,18 @@ class HomeOrchestrator {
   void removeGroqKey() {
     when(() => groq.hasValidCredentials).thenReturn(false);
     when(() => settings.cachedGroqApiKey).thenReturn(null);
+  }
+
+  /// Self-hosted mode, signed in, with the connection closed while idle.
+  void signInToServer() {
+    when(() => settings.isGroqMode).thenReturn(false);
+    when(() => profile.isAuthenticated).thenReturn(true);
+    when(ws.connect).thenAnswer((_) async => true);
+  }
+
+  /// The last attempt to reach the server got no answer.
+  void takeServerOffline() {
+    when(() => ws.serverProblem).thenReturn(ServerProblem.unreachable);
   }
 
   void unplugMicrophone() {

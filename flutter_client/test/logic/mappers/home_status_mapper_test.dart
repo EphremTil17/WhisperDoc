@@ -1,5 +1,6 @@
 import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +11,8 @@ void main() {
     bool isSignedIn = true,
     bool handshakeFailed = false,
     bool isBanned = false,
+    ServerProblem serverProblem = ServerProblem.none,
+    bool isConnecting = false,
     UpdateStatus updateStatus = UpdateStatus.upToDate,
     AudioInputStatus inputStatus = AudioInputStatus.available,
     bool isRecording = false,
@@ -22,6 +25,8 @@ void main() {
     isSignedIn: isSignedIn,
     handshakeFailed: handshakeFailed,
     isBanned: isBanned,
+    serverProblem: serverProblem,
+    isConnecting: isConnecting,
     updateStatus: updateStatus,
     inputStatus: inputStatus,
     isRecording: isRecording,
@@ -135,6 +140,61 @@ void main() {
         expect(status.fix, HomeFix.openAccount);
         expect(status.badge, AccountBadge.attention);
       }
+    });
+
+    test('signed in with the server offline says so and offers a retry', () {
+      final status = HomeStatusMapper.map(
+        signals(isGroqMode: false, serverProblem: ServerProblem.unreachable),
+      );
+
+      expect(status.phase, HomePhase.blocked);
+      expect(status.cue, 'server offline');
+      expect(status.fix, HomeFix.retryServer);
+      expect(status.fixLabel, 'Try again');
+      expect(status.badge, AccountBadge.none);
+    });
+
+    test('a retry under way shows connecting without a button', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          isGroqMode: false,
+          serverProblem: ServerProblem.unreachable,
+          isConnecting: true,
+        ),
+      );
+
+      expect(status.phase, HomePhase.blocked);
+      expect(status.cue, 'connecting');
+      expect(status.tone, CueTone.muted);
+      expect(status.fixLabel, isNull);
+    });
+
+    test('a refused address points at the account', () {
+      final status = HomeStatusMapper.map(
+        signals(isGroqMode: false, serverProblem: ServerProblem.insecure),
+      );
+
+      expect(status.cue, 'address not allowed');
+      expect(status.fix, HomeFix.openAccount);
+      expect(status.badge, AccountBadge.attention);
+    });
+
+    test('signing out wins over an offline server', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          isGroqMode: false,
+          isSignedIn: false,
+          serverProblem: ServerProblem.unreachable,
+        ),
+      );
+
+      expect(status.cue, 'not signed in');
+    });
+
+    test('signed in with an idle, closed connection is ready', () {
+      final status = HomeStatusMapper.map(signals(isGroqMode: false));
+
+      expect(status.phase, HomePhase.ready);
     });
 
     test('a banned connection is paused without a fix button', () {

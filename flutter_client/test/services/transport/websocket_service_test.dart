@@ -1,6 +1,7 @@
 // ignore_for_file: avoid-dynamic, no-empty-block
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/configuration_manager.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:stream_channel/stream_channel.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -578,6 +580,68 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(svc.status, ConnectionStatus.banned);
+      svc.dispose();
+    });
+  });
+
+  group('WebSocketService server problems', () {
+    // Something answers but refuses the upgrade, so connecting fails at
+    // once. A closed port takes seconds to refuse on Windows.
+    Future<String> notAServer() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      server.listen((request) {
+        request.response.statusCode = HttpStatus.notFound;
+        unawaited(request.response.close());
+      });
+
+      return 'ws://127.0.0.1:${server.port}';
+    }
+
+    test('a server that refuses the connection is unreachable', () async {
+      final svc = _ServiceFactory.make();
+
+      final connected = await svc.connect(
+        uriOverride: await notAServer(),
+        apiKeyOverride: 'key',
+      );
+
+      expect(connected, isFalse);
+      expect(svc.serverProblem, ServerProblem.unreachable);
+      expect(svc.handshakeState.state, isNot(HandshakeState.failed));
+      svc.dispose();
+    });
+
+    test('a refused address is insecure, not offline', () async {
+      final svc = _ServiceFactory.make();
+
+      await svc.connect(
+        uriOverride: 'ftp://example.com',
+        apiKeyOverride: 'key',
+      );
+
+      expect(svc.serverProblem, ServerProblem.insecure);
+      svc.dispose();
+    });
+
+    test('missing credentials fail the sign-in, not the server', () async {
+      final svc = _ServiceFactory.make();
+
+      await svc.connect();
+
+      expect(svc.serverProblem, ServerProblem.none);
+      expect(svc.handshakeState.state, HandshakeState.failed);
+      svc.dispose();
+    });
+
+    test('a server hello clears the problem', () async {
+      final svc = _ServiceFactory.make();
+      await svc.connect(uriOverride: await notAServer(), apiKeyOverride: 'key');
+      expect(svc.serverProblem, ServerProblem.unreachable);
+
+      await svc.receiveHelloForTesting();
+
+      expect(svc.serverProblem, ServerProblem.none);
       svc.dispose();
     });
   });

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
+import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/ui/screens/home/home_navigation.dart';
 import 'package:flutter_client/ui/screens/home/widgets/home_fix_icon.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
@@ -26,6 +27,8 @@ class BlockedBody extends StatelessWidget {
         unawaited(HomeNavigation.openSettings(context));
       case HomeFix.retryMicrophone:
         unawaited(context.read<RecordingController>().refreshHardwareStatus());
+      case HomeFix.retryServer:
+        unawaited(context.read<WebSocketService>().connect());
       case HomeFix.none:
         return;
     }

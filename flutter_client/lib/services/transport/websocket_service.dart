@@ -18,6 +18,7 @@ import 'handshake_payload_builder.dart';
 import 'audio_buffer_manager.dart';
 import 'heartbeat_manager.dart';
 import 'reconnection_manager.dart';
+import 'server_problem.dart';
 
 /// Lean orchestrator for WebSocket connectivity.
 /// Delegates specialized logic to sub-managers for buffering, reconnection, and heartbeats.
@@ -61,10 +62,10 @@ class WebSocketService extends ChangeNotifier {
 
   ConnectionStatus _status = ConnectionStatus.disconnected;
   bool _isConnecting = false;
-  bool _isAuthenticatedSession = false;
   bool _isIntentionalDisconnect = false;
   bool _pendingConfigChange = false;
   String? _lastHandshakeError;
+  ServerProblem _serverProblem = ServerProblem.none;
   String? _activeApiKey;
   SecurityStatus _securityStatus = SecurityStatus.secure; // Default to secure
   String? _backendMinVersion;
@@ -75,8 +76,11 @@ class WebSocketService extends ChangeNotifier {
   // State Getters
   ConnectionStatus get status => _status;
   bool get isConnecting => _isConnecting;
-  bool get isAuthenticatedSession => _isAuthenticatedSession;
   String? get lastHandshakeError => _lastHandshakeError;
+
+  /// Kept through later attempts, so a retry doesn't flash "ready" before it
+  /// fails again. Cleared once a server says hello.
+  ServerProblem get serverProblem => _serverProblem;
   SecurityStatus get securityStatus => _securityStatus;
   BanStateService get banState => _banState;
   HandshakeStateMachine get handshakeState => _handshake;
@@ -167,6 +171,7 @@ class WebSocketService extends ChangeNotifier {
     _updateStatus(ConnectionStatus.connecting);
     notifyListeners();
     _handshake.reset();
+    var problem = ServerProblem.unreachable;
 
     try {
       final uriString = uriOverride ?? _settingsService.serverUri;
@@ -184,6 +189,7 @@ class WebSocketService extends ChangeNotifier {
       final security = await _transportSecurity.validateServerUri(uriString);
       _securityStatus = security;
       if (security == SecurityStatus.blocked) {
+        problem = ServerProblem.insecure;
         throw Exception('Security violation');
       }
 
@@ -223,6 +229,10 @@ class WebSocketService extends ChangeNotifier {
       if (e is _MissingAuthTokenException) {
         _lastHandshakeError = 'Identity session expired or missing';
         _handshake.transitionTo(HandshakeState.failed);
+      }
+      // A failed handshake is a credential problem, not a missing server.
+      if (_handshake.state != HandshakeState.failed) {
+        _serverProblem = problem;
       }
       _isConnecting = false;
       _handleDisconnect(); // consumes _pendingConfigChange for the failure path
@@ -275,6 +285,14 @@ class WebSocketService extends ChangeNotifier {
 
   /// Simulates a server-initiated close without a real socket.
   /// Use only in tests annotated with @visibleForTesting.
+  /// Feeds a server hello through the handshake wait without a real socket.
+  @visibleForTesting
+  Future<void> receiveHelloForTesting() async {
+    final hello = _waitForServerHello();
+    _messageController.add({'event': 'hello', 'version': '3.1.0'});
+    await hello;
+  }
+
   @visibleForTesting
   void processCloseForTesting(int? code, String? reason) =>
       _processClose(code, reason);
@@ -284,7 +302,6 @@ class WebSocketService extends ChangeNotifier {
   @visibleForTesting
   void forceConnectedForTesting() {
     _status = ConnectionStatus.connected;
-    _isAuthenticatedSession = true;
     _isIntentionalDisconnect = false;
   }
 
@@ -334,7 +351,6 @@ class WebSocketService extends ChangeNotifier {
       final event = json['event'];
 
       if (event == 'authenticated') {
-        _isAuthenticatedSession = true;
         _handshake.transitionTo(HandshakeState.authenticated);
         _updateStatus(ConnectionStatus.connected);
         _logger.info('Handshake success | CID: $_connectionId');
@@ -438,7 +454,6 @@ class WebSocketService extends ChangeNotifier {
       _updateStatus(ConnectionStatus.disconnected);
     }
 
-    _isAuthenticatedSession = false;
     _channel = null;
     _connectionId = null;
     _heartbeat.stop();
@@ -519,6 +534,7 @@ class WebSocketService extends ChangeNotifier {
         _backendSecVersion = val['sec_version']?.toString();
         _backendServerVersion = val['version']?.toString();
         _connectionId = val['cid']?.toString();
+        _serverProblem = ServerProblem.none;
         notifyListeners(); // Signal that version requirements are now available
       }
 

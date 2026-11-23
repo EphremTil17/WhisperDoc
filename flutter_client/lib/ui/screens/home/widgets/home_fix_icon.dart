@@ -9,13 +9,14 @@ extension HomeFixIcon on HomeFix {
   IconData get problemIcon => switch (this) {
     HomeFix.openSettings || HomeFix.retryMicrophone => AppIcons.micOff,
     HomeFix.openAccount => AppIcons.keyRound,
+    HomeFix.retryServer => AppIcons.serverOff,
     HomeFix.none => AppIcons.ban,
   };
 
   /// On the fix button: the action.
   IconData get actionIcon => switch (this) {
     HomeFix.openSettings => AppIcons.mic,
-    HomeFix.retryMicrophone => AppIcons.refreshCw,
+    HomeFix.retryMicrophone || HomeFix.retryServer => AppIcons.refreshCw,
     HomeFix.openAccount => AppIcons.keyRound,
     HomeFix.none => AppIcons.ban,
   };

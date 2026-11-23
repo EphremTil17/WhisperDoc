@@ -1,4 +1,5 @@
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
 
 /// Maps [HomeSignals] onto a [HomeStatus]. Order matters: an active session
@@ -118,23 +119,63 @@ abstract final class HomeStatusMapper {
       );
     }
 
-    return s.isSignedIn
-        ? null
-        : HomeStatus(
-            phase: HomePhase.blocked,
-            cue: 'not signed in',
-            tone: CueTone.alert,
-            badge: badge,
-            headline: 'Sign in to start dictating.',
-            fix: HomeFix.openAccount,
-            fixLabel: 'Sign in',
-          );
+    if (!s.isSignedIn) {
+      return HomeStatus(
+        phase: HomePhase.blocked,
+        cue: 'not signed in',
+        tone: CueTone.alert,
+        badge: badge,
+        headline: 'Sign in to start dictating.',
+        fix: HomeFix.openAccount,
+        fixLabel: 'Sign in',
+      );
+    }
+
+    return _serverProblem(s, badge);
+  }
+
+  /// Signed in, but the server never answered. An idle disconnect is not a
+  /// problem: dictation reconnects on demand.
+  static HomeStatus? _serverProblem(HomeSignals s, AccountBadge badge) {
+    return switch (s.serverProblem) {
+      ServerProblem.none => null,
+      ServerProblem.unreachable when s.isConnecting => HomeStatus(
+        phase: HomePhase.blocked,
+        cue: 'connecting',
+        tone: CueTone.muted,
+        badge: badge,
+        headline: 'Trying your server again.',
+        // Keeps the server glyph on the cue; no label, so no button.
+        fix: HomeFix.retryServer,
+      ),
+      ServerProblem.unreachable => HomeStatus(
+        phase: HomePhase.blocked,
+        cue: 'server offline',
+        tone: CueTone.alert,
+        badge: badge,
+        headline: 'Your server isn’t answering. Check that it’s running.',
+        fix: HomeFix.retryServer,
+        fixLabel: 'Try again',
+      ),
+      ServerProblem.insecure => HomeStatus(
+        phase: HomePhase.blocked,
+        cue: 'address not allowed',
+        tone: CueTone.alert,
+        badge: badge,
+        headline: 'Servers outside your network need a wss:// address.',
+        fix: HomeFix.openAccount,
+        fixLabel: 'Check address',
+      ),
+    };
   }
 
   static AccountBadge _badge(HomeSignals s) {
     final accountBroken = s.isGroqMode
         ? !s.hasGroqKey
-        : (s.handshakeFailed || s.isBanned || !s.isSignedIn);
+        : (s.handshakeFailed ||
+              s.isBanned ||
+              !s.isSignedIn ||
+              s.serverProblem == ServerProblem.insecure);
     if (accountBroken || s.updateStatus == UpdateStatus.required) {
       return AccountBadge.attention;
     }
@@ -152,7 +193,7 @@ enum HomePhase { ready, listening, working, blocked }
 enum CueTone { muted, live, alert }
 
 /// The single action that resolves a blocked state.
-enum HomeFix { none, openAccount, openSettings, retryMicrophone }
+enum HomeFix { none, openAccount, openSettings, retryMicrophone, retryServer }
 
 /// The dot on the account indicator.
 enum AccountBadge { none, update, attention }
@@ -165,6 +206,8 @@ class HomeSignals {
     required this.isSignedIn,
     required this.handshakeFailed,
     required this.isBanned,
+    required this.serverProblem,
+    required this.isConnecting,
     required this.updateStatus,
     required this.inputStatus,
     required this.isRecording,
@@ -177,10 +220,17 @@ class HomeSignals {
   final bool isGroqMode;
   final bool hasGroqKey;
 
-  /// Self-hosted mode: the session is authenticated (connects on demand).
+  /// Self-hosted mode: holds a sign-in or API key. The connection itself
+  /// opens on demand and closes when idle.
   final bool isSignedIn;
   final bool handshakeFailed;
   final bool isBanned;
+
+  /// Self-hosted mode: why the last attempt never reached the server.
+  final ServerProblem serverProblem;
+
+  /// Self-hosted mode: an attempt to reach the server is under way.
+  final bool isConnecting;
   final UpdateStatus updateStatus;
   final AudioInputStatus inputStatus;
   final bool isRecording;

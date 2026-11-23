@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_client/controllers/profile_controller.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
@@ -14,17 +15,25 @@ import 'package:flutter_client/services/utility/update_service.dart';
 /// rebuild the stage, bottom bar or account indicator.
 extension HomeStatusReader on BuildContext {
   HomeStatus watchHomeStatus() {
-    final (isGroqMode, style) = select(
-      (SettingsService s) => (s.isGroqMode, s.dictationProfile),
+    final (isGroqMode, style, hasApiKey) = select(
+      (SettingsService s) => (
+        s.isGroqMode,
+        s.dictationProfile,
+        s.cachedApiKey?.isNotEmpty ?? false,
+      ),
     );
     final hasGroqKey = select(
       (GroqTranscriptionService g) => g.hasValidCredentials,
     );
-    final (isSignedIn, handshakeFailed, isBanned) = select(
+    // Signed in means holding credentials, not holding a socket: the
+    // connection closes when idle and reopens on the next dictation.
+    final hasSignIn = select((ProfileController p) => p.isAuthenticated);
+    final (handshakeFailed, isBanned, serverProblem, isConnecting) = select(
       (WebSocketService ws) => (
-        ws.isAuthenticatedSession,
         ws.handshakeState.state == HandshakeState.failed,
         ws.status == ConnectionStatus.banned,
+        ws.serverProblem,
+        ws.status == ConnectionStatus.connecting,
       ),
     );
     final updateStatus = select((UpdateService u) => u.status);
@@ -48,9 +57,11 @@ extension HomeStatusReader on BuildContext {
       HomeSignals(
         isGroqMode: isGroqMode,
         hasGroqKey: hasGroqKey,
-        isSignedIn: isSignedIn,
+        isSignedIn: hasSignIn || hasApiKey,
         handshakeFailed: handshakeFailed,
         isBanned: isBanned,
+        serverProblem: serverProblem,
+        isConnecting: isConnecting,
         updateStatus: updateStatus,
         inputStatus: inputStatus,
         isRecording: isRecording,

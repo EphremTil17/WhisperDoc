@@ -135,4 +135,7 @@ abstract final class AppIcons {
 
   /// Secret fields: reveal.
   static const IconData eye = IconData(57530, fontFamily: _family);
+
+  /// Home: the server isn't answering.
+  static const IconData serverOff = IconData(57834, fontFamily: _family);
 }
