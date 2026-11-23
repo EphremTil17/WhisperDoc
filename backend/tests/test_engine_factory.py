@@ -65,6 +65,9 @@ class TestParakeetSelection:
     def test_parakeet_creates_sidecar_engine(self, monkeypatch, value):
         monkeypatch.setenv("ASR_ENGINE", value)
         monkeypatch.setenv("PARAKEET_BASE_URL", "http://native-asr:8080")
+        # conftest loads the developer's .env, which may tune this; the test
+        # checks the default.
+        monkeypatch.delenv("PARAKEET_MAX_AUDIO_SECONDS", raising=False)
         with patch("engine.parakeet_engine.ParakeetEngine") as MockParakeet:
             mock_instance = MagicMock(spec=BaseEngine)
             MockParakeet.return_value = mock_instance

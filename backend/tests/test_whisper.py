@@ -57,19 +57,20 @@ def test_whisper_cpu_basic():
         # 1 second of silence
         audio = np.zeros(16000, dtype=np.float32)
         result = model.transcribe(audio)
-
-        # Diagnostic check
-        if not isinstance(result, tuple) or len(result) != 2:
-            pytest.fail(
-                f"Unexpected return from model.transcribe: type={type(result)}, value={result}"
-            )
-
-        segments, info = result
-        list(segments)  # Trigger execution
-        assert info is not None
-        print("✅ CPU Basic test passed.")
     except Exception as e:
         pytest.fail(f"CPU transcription failed: {e}")
+
+    # Assertions stay outside the try: an AssertionError must fail the test,
+    # not be caught and reworded by the except clause above.
+    if not isinstance(result, tuple) or len(result) != 2:
+        pytest.fail(
+            f"Unexpected return from model.transcribe: type={type(result)}, value={result}"
+        )
+
+    segments, info = result
+    list(segments)  # Trigger execution
+    assert info is not None
+    print("✅ CPU Basic test passed.")
 
 
 @pytest.mark.skipif(
@@ -93,20 +94,20 @@ def test_whisper_gpu_full():
         # 1 second of silence
         audio = np.zeros(16000, dtype=np.float32)
         result = model.transcribe(audio)
-
-        # Diagnostic check
-        if not isinstance(result, tuple) or len(result) != 2:
-            pytest.fail(
-                f"Unexpected return from model.transcribe: type={type(result)}, value={result}"
-            )
-
-        segments, info = result
-        list(segments)  # Trigger execution
-        # Verify it actually used the GPU
-        assert model.model.device == "cuda"
-        print("✅ GPU Smoke test passed.")
     except Exception as e:
         pytest.fail(f"GPU transcription failed: {e}")
+
+    # Assertions stay outside the try (see test_whisper_cpu_basic).
+    if not isinstance(result, tuple) or len(result) != 2:
+        pytest.fail(
+            f"Unexpected return from model.transcribe: type={type(result)}, value={result}"
+        )
+
+    segments, info = result
+    list(segments)  # Trigger execution
+    # Verify it actually used the GPU
+    assert model.model.device == "cuda"
+    print("✅ GPU Smoke test passed.")
 
 
 if __name__ == "__main__":

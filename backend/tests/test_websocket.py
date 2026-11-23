@@ -97,13 +97,14 @@ async def test_websocket_integration():
         pytest.skip("WHISPER_DOC_API_KEY not set; required for live server auth")
     try:
         result = await run_websocket_test()
-        assert result is not None
     except (asyncio.TimeoutError, ConnectionRefusedError):
         pytest.skip(
             "Backend server not running at localhost:9989 - skipping integration test."
         )
     except Exception as e:
         pytest.fail(f"WebSocket test failed: {e}")
+    # Outside the try: an AssertionError must fail the test, not be reworded.
+    assert result is not None
 
 
 if __name__ == "__main__":

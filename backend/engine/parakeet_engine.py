@@ -21,7 +21,11 @@ from urllib.parse import urlparse
 import requests
 
 from engine.base_engine import BaseEngine, SegmentResult, TranscriptionResult
-from engine.silence_chunker import PCM_SAMPLE_WIDTH_BYTES, plan_silence_aware_chunks
+from engine.silence_chunker import (
+    PCM_SAMPLE_WIDTH_BYTES,
+    ChunkWindow,
+    plan_silence_aware_chunks,
+)
 from logging_config import log
 
 _SAMPLE_RATE = 16000
@@ -273,6 +277,41 @@ class ParakeetEngine(BaseEngine):
         except (EOFError, wave.Error) as error:
             raise ValueError("Parakeet.cpp input is not a valid WAV file.") from error
 
+    @staticmethod
+    def _owned_segment(
+        window: ChunkWindow,
+        words: tuple[_TimedWord, ...],
+        *,
+        total_samples: int,
+    ) -> SegmentResult | None:
+        """The words one chunk owns, as a segment on the recording's timeline.
+
+        Overlapping chunks hear the same words twice; each word belongs to the
+        chunk whose keep range holds its midpoint, and the final chunk keeps
+        its tail. None when the chunk owns no words.
+        """
+        audio_start = window.audio_start_sample / _SAMPLE_RATE
+        keep_start = window.keep_start_sample / _SAMPLE_RATE
+        keep_end = window.keep_end_sample / _SAMPLE_RATE
+        is_final_window = window.keep_end_sample == total_samples
+
+        owned: list[tuple[_TimedWord, float, float]] = []
+        for word in words:
+            global_start = audio_start + word.start
+            global_end = audio_start + word.end
+            midpoint = (global_start + global_end) / 2
+            past_keep = not is_final_window and midpoint >= keep_end
+            if midpoint >= keep_start and not past_keep:
+                owned.append((word, global_start, global_end))
+        if not owned:
+            return None
+
+        return SegmentResult(
+            start=max(keep_start, owned[0][1]),
+            end=min(keep_end, owned[-1][2]),
+            text=" ".join(word.text for word, _, _ in owned),
+        )
+
     def transcribe(self, audio_path: str) -> TranscriptionResult:
         if not self.is_loaded():
             self.warmup()
@@ -321,34 +360,14 @@ class ParakeetEngine(BaseEngine):
                 )
                 continue
 
-            audio_start = window.audio_start_sample / _SAMPLE_RATE
-            keep_start = window.keep_start_sample / _SAMPLE_RATE
-            keep_end = window.keep_end_sample / _SAMPLE_RATE
-            is_final_window = (
-                window.keep_end_sample == len(pcm) // PCM_SAMPLE_WIDTH_BYTES
+            segment = self._owned_segment(
+                window,
+                transcript.words,
+                total_samples=len(pcm) // PCM_SAMPLE_WIDTH_BYTES,
             )
-            owned_words: list[tuple[_TimedWord, float, float]] = []
-            for word in transcript.words:
-                global_start = audio_start + word.start
-                global_end = audio_start + word.end
-                midpoint = (global_start + global_end) / 2
-                if midpoint < keep_start:
-                    continue
-                if not is_final_window and midpoint >= keep_end:
-                    continue
-                owned_words.append((word, global_start, global_end))
-
-            if not owned_words:
-                continue
-            chunk_text = " ".join(word.text for word, _, _ in owned_words)
-            transcript_parts.append(chunk_text)
-            segment_results.append(
-                SegmentResult(
-                    start=max(keep_start, owned_words[0][1]),
-                    end=min(keep_end, owned_words[-1][2]),
-                    text=chunk_text,
-                )
-            )
+            if segment is not None:
+                transcript_parts.append(segment.text)
+                segment_results.append(segment)
 
         processing_time = time.perf_counter() - started
         text = " ".join(transcript_parts)
