@@ -1,10 +1,13 @@
 // ignore_for_file: avoid-dynamic, no-empty-block
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' show SocketException;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
+import 'package:flutter_client/services/transport/reconnection_manager.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
@@ -23,6 +26,9 @@ abstract final class _WebSocketServiceTest {
   static const int signOutReconnectCount = 3;
   static const int idleEvictionCloseCode = 4001;
   static const int unauthorizedCloseCode = 1008;
+  static const int noStatusCloseCode = 1005;
+  static const int framesAfterHandshake = 3; // hello, audio, end-of-stream
+  static const int backoffSteps = 7;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +50,10 @@ class _StubAuthService extends ChangeNotifier implements AuthService {
   Map<String, dynamic>? get currentUser =>
       _isAuthenticated && _userId != null ? {'id': _userId} : null;
 
+  @override
+  Future<String?> getAccessToken() async =>
+      _isAuthenticated ? 'oidc-token' : null;
+
   void setAuthenticated(bool value, {String? userId}) {
     _isAuthenticated = value;
     _userId = value ? userId : null;
@@ -57,8 +67,10 @@ class _StubAuthService extends ChangeNotifier implements AuthService {
 
 class _StubSettingsService extends ChangeNotifier implements SettingsService {
   // Fields
-  String _serverUri = 'ws://localhost';
+  String _serverUri;
   final String? _apiKey;
+  bool _groqMode = false;
+  final Set<String> trusted = {};
 
   // Getters — must precede constructors per DCM member-ordering
   @override
@@ -71,17 +83,37 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
   bool get incognitoMode => false;
 
   @override
-  String get transcriptionMode => 'backend';
+  String get transcriptionMode => _groqMode ? 'groq' : 'backend';
 
   @override
-  bool get isGroqMode => false;
+  bool get isGroqMode => _groqMode;
 
   // Constructor
-  _StubSettingsService({this._apiKey});
+  _StubSettingsService({this._apiKey, this._serverUri = 'ws://localhost'});
 
   // Methods
   void changeUri(String newUri) {
     _serverUri = newUri;
+    notifyListeners();
+  }
+
+  void setGroqMode(bool value) {
+    _groqMode = value;
+    notifyListeners();
+  }
+
+  @override
+  bool isTrustedServer(String origin) => trusted.contains(origin);
+
+  @override
+  Future<void> trustServer(String origin) async {
+    trusted.add(origin);
+    notifyListeners();
+  }
+
+  @override
+  Future<void> clearTrustedServers() async {
+    trusted.clear();
     notifyListeners();
   }
 
@@ -100,6 +132,12 @@ class _FakeWebSocketChannel
   int? _closeCode;
   String? _closeReason;
 
+  /// False: closing the sink leaves the stream open, like a socket whose
+  /// close is slow to land, until [finishClosing].
+  bool closesPromptly = true;
+
+  bool get isClosed => _closeCode != null;
+
   @override
   Stream<dynamic> get stream => _controller.stream;
 
@@ -107,11 +145,19 @@ class _FakeWebSocketChannel
   WebSocketSink get sink => _FakeWebSocketSink(
     onAdd: sent.add,
     onClose: (code, reason) async {
-      _closeCode = code;
+      _closeCode = code ?? _WebSocketServiceTest.noStatusCloseCode;
       _closeReason = reason;
-      await _controller.close();
+      if (closesPromptly) await finishClosing();
     },
   );
+
+  /// A frame from the server.
+  void receive(Map<String, dynamic> frame) =>
+      _controller.add(jsonEncode(frame));
+
+  Future<void> finishClosing() async {
+    if (!_controller.isClosed) await _controller.close();
+  }
 
   @override
   int? get closeCode => _closeCode;
@@ -169,10 +215,28 @@ class _FakeWebSocketSink implements WebSocketSink {
 // ---------------------------------------------------------------------------
 
 abstract final class _ServiceFactory {
-  static WebSocketService make({String? apiKey}) {
+  /// No socket ever opens: the attempt waits, as on a black-holed network.
+  static Future<WebSocketChannel> neverOpens(String _) =>
+      Completer<WebSocketChannel>().future;
+
+  /// Nothing listens at the address.
+  static Future<WebSocketChannel> refused(String _) async =>
+      throw const SocketException('Connection refused');
+
+  static WebSocketService make({
+    String? apiKey,
+    bool signedIn = false,
+    String serverUri = 'ws://localhost',
+    ChannelOpener openChannel = neverOpens,
+    _StubSettingsService? settings,
+  }) {
+    final auth = _StubAuthService();
+    if (signedIn) auth.setAuthenticated(true, userId: 'user123');
+
     return WebSocketService(
-      _StubSettingsService(apiKey: apiKey),
-      _StubAuthService(),
+      settings ?? _StubSettingsService(apiKey: apiKey, serverUri: serverUri),
+      auth,
+      openChannel: openChannel,
     );
   }
 }
@@ -182,6 +246,16 @@ abstract final class _ServiceFactory {
 // ---------------------------------------------------------------------------
 
 void main() {
+  setUpAll(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'WhisperDoc',
+      packageName: 'whisperdoc',
+      version: '3.1.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
+  });
+
   // --- Existing placeholder tests (kept for compatibility) ------------------
 
   group('WebSocketService Connection States', () {
@@ -275,12 +349,16 @@ void main() {
     //
     // Expected lifecycle:
     //   1. _handleDisconnect sees configPending=true → fires connect() immediately.
-    //   2. connect() fails (no credentials in this stub) → returns false.
-    //   3. The .then fallback arms the backoff timer so the app does not go
-    //      silently idle — this is intentional, not a regression.
+    //   2. connect() fails (nothing listens at the address) → returns false.
+    //   3. The backoff timer is armed so the app does not go silently idle.
     test('pending config change fires immediate reconnect then falls back to timer on failure', () async {
-      final svc =
-          _ServiceFactory.make(); // no API key → immediate connect() will fail
+      final svc = _ServiceFactory.make(
+        apiKey: 'test-key',
+        openChannel: _ServiceFactory.refused,
+      );
+      // Let the launch auto-connect fail, then start from a clean timer.
+      await pumpEventQueue();
+      svc.reconnectionManagerForTesting.reset();
 
       svc.forceConnectedForTesting();
       svc.pendingConfigChangeForTesting = true;
@@ -288,7 +366,7 @@ void main() {
       svc.onStatusChanged.listen(statuses.add);
 
       svc.processCloseForTesting(null, null);
-      await Future<void>.delayed(Duration.zero);
+      await pumpEventQueue();
 
       // Step 1: immediate connect() was attempted — status hit 'connecting'.
       expect(
@@ -298,7 +376,7 @@ void main() {
             'config-driven reconnect must fire connect() immediately, '
             'not wait for the backoff timer',
       );
-      // Step 2: connect() failed (no credentials) → fallback timer is now armed.
+      // Step 2: connect() failed → fallback timer is now armed.
       expect(
         svc.reconnectionManagerForTesting.isScheduled,
         isTrue,
@@ -313,6 +391,37 @@ void main() {
         reason: 'flag must be consumed, not left dangling',
       );
 
+      svc.dispose();
+    });
+
+    test('a config change after sign-out does not reconnect', () async {
+      final svc = _ServiceFactory.make(); // no credentials left
+      svc.forceConnectedForTesting();
+      svc.pendingConfigChangeForTesting = true;
+      final statuses = <ConnectionStatus>[];
+      svc.onStatusChanged.listen(statuses.add);
+
+      svc.processCloseForTesting(null, null);
+      await pumpEventQueue();
+
+      expect(statuses, isNot(contains(ConnectionStatus.connecting)));
+      expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
+      svc.dispose();
+    });
+
+    test('switching to Groq mid-connect does not reconnect to the backend', () async {
+      final settings = _StubSettingsService(apiKey: 'test-key');
+      final svc = _ServiceFactory.make(settings: settings);
+      await pumpEventQueue(); // the launch auto-connect is now in flight
+      final statuses = <ConnectionStatus>[];
+      svc.onStatusChanged.listen(statuses.add);
+
+      settings.setGroqMode(true);
+      svc.processCloseForTesting(null, null); // the half-open attempt drops
+      await pumpEventQueue();
+
+      expect(statuses, [ConnectionStatus.disconnected]);
+      expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
       svc.dispose();
     });
   });
@@ -585,49 +694,42 @@ void main() {
   });
 
   group('WebSocketService server problems', () {
-    // Something answers but refuses the upgrade, so connecting fails at
-    // once. A closed port takes seconds to refuse on Windows.
-    Future<String> notAServer() async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(server.close);
-      server.listen((request) {
-        request.response.statusCode = HttpStatus.notFound;
-        unawaited(request.response.close());
-      });
-
-      return 'ws://127.0.0.1:${server.port}';
-    }
-
-    test('a server that refuses the connection is unreachable', () async {
-      final svc = _ServiceFactory.make();
-
-      final connected = await svc.connect(
-        uriOverride: await notAServer(),
-        apiKeyOverride: 'key',
+    test('nothing listening is unreachable, and retries are scheduled', () async {
+      final svc = _ServiceFactory.make(
+        apiKey: 'key',
+        openChannel: _ServiceFactory.refused,
       );
+      await pumpEventQueue();
 
-      expect(connected, isFalse);
       expect(svc.serverProblem, ServerProblem.unreachable);
       expect(svc.handshakeState.state, isNot(HandshakeState.failed));
+      expect(svc.reconnectionManagerForTesting.isScheduled, isTrue);
       svc.dispose();
     });
 
-    test('a refused address is insecure, not offline', () async {
-      final svc = _ServiceFactory.make();
+    test('a refused address is insecure, never opened, never retried', () async {
+      var opened = 0;
+      final svc = _ServiceFactory.make(
+        apiKey: 'key',
+        serverUri: 'ftp://example.com',
+        openChannel: (uri) {
+          opened++;
 
-      await svc.connect(
-        uriOverride: 'ftp://example.com',
-        apiKeyOverride: 'key',
+          return _ServiceFactory.refused(uri);
+        },
       );
+      await pumpEventQueue();
 
       expect(svc.serverProblem, ServerProblem.insecure);
+      expect(opened, 0);
+      expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
       svc.dispose();
     });
 
     test('missing credentials fail the sign-in, not the server', () async {
       final svc = _ServiceFactory.make();
 
-      await svc.connect();
+      expect(await svc.connect(), isFalse);
 
       expect(svc.serverProblem, ServerProblem.none);
       expect(svc.handshakeState.state, HandshakeState.failed);
@@ -635,14 +737,337 @@ void main() {
     });
 
     test('a server hello clears the problem', () async {
-      final svc = _ServiceFactory.make();
-      await svc.connect(uriOverride: await notAServer(), apiKeyOverride: 'key');
+      final channel = _FakeWebSocketChannel();
+      var refuse = true;
+      final svc = _ServiceFactory.make(
+        apiKey: 'key',
+        openChannel: (uri) =>
+            refuse ? _ServiceFactory.refused(uri) : Future.value(channel),
+      );
+      await pumpEventQueue();
       expect(svc.serverProblem, ServerProblem.unreachable);
 
-      await svc.receiveHelloForTesting();
+      refuse = false;
+      svc.reconnectionManagerForTesting.reset();
+      unawaited(svc.connect());
+      await pumpEventQueue();
+      channel.receive({'event': 'hello', 'version': '3.1.0'});
+      await pumpEventQueue();
 
       expect(svc.serverProblem, ServerProblem.none);
       svc.dispose();
+    });
+  });
+
+  group('WebSocketService sign-in scope', () {
+    const customServer = 'wss://custom.example.com';
+
+    test('the sign-in is never sent to a server not yet trusted', () async {
+      var opened = 0;
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        serverUri: customServer,
+        openChannel: (uri) {
+          opened++;
+
+          return _ServiceFactory.neverOpens(uri);
+        },
+      );
+      await pumpEventQueue();
+
+      expect(svc.serverProblem, ServerProblem.untrusted);
+      expect(svc.serverHost, 'custom.example.com');
+      expect(opened, 0, reason: 'no socket, so no token, goes out');
+      expect(svc.reconnectionManagerForTesting.isScheduled, isFalse);
+      svc.dispose();
+    });
+
+    test('trusting the server lets the sign-in through', () async {
+      final settings = _StubSettingsService(serverUri: customServer);
+      final opened = <String>[];
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        settings: settings,
+        openChannel: (uri) {
+          opened.add(uri);
+
+          return _ServiceFactory.neverOpens(uri);
+        },
+      );
+      await pumpEventQueue();
+      expect(opened, isEmpty);
+
+      unawaited(svc.trustServerAndConnect());
+      await pumpEventQueue();
+
+      expect(settings.trusted, {'wss://custom.example.com:443'});
+      expect(opened, ['wss://custom.example.com/ws']);
+      svc.dispose();
+    });
+
+    test('the built-in server needs no trust', () async {
+      var opened = 0;
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        serverUri: AppConstants.defaultServerUri,
+        openChannel: (uri) {
+          opened++;
+
+          return _ServiceFactory.neverOpens(uri);
+        },
+      );
+      await pumpEventQueue();
+
+      expect(opened, 1);
+      expect(svc.serverProblem, ServerProblem.none);
+      svc.dispose();
+    });
+
+    test('an API key is used with a server not trusted with the sign-in', () async {
+      final channel = _FakeWebSocketChannel();
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        apiKey: 'server-key',
+        serverUri: customServer,
+        openChannel: (_) => Future.value(channel),
+      );
+      await pumpEventQueue();
+      channel.receive({'event': 'hello'});
+      await pumpEventQueue();
+
+      final hello = jsonDecode(channel.sent.single as String) as Map;
+      expect(hello['auth_type'], 'api_key');
+      expect(hello['token'], 'server-key');
+      svc.dispose();
+    });
+  });
+
+  group('WebSocketService handshake', () {
+    Future<(WebSocketService, _FakeWebSocketChannel, Future<bool>)>
+    helloSent() async {
+      final channel = _FakeWebSocketChannel();
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        serverUri: AppConstants.defaultServerUri,
+        openChannel: (_) => Future.value(channel),
+      );
+      final connected = svc.connect();
+      await pumpEventQueue();
+      channel.receive({'event': 'hello'});
+      await pumpEventQueue();
+
+      return (svc, channel, connected);
+    }
+
+    test('connect resolves only once the server accepts the sign-in', () async {
+      final (svc, channel, connected) = await helloSent();
+      final hello = jsonDecode(channel.sent.single as String) as Map;
+      expect(hello['auth_type'], 'oidc');
+      expect(hello['token'], 'oidc-token');
+      expect(svc.status, ConnectionStatus.connecting);
+
+      channel.receive({'event': 'authenticated'});
+
+      expect(await connected, isTrue);
+      expect(svc.status, ConnectionStatus.connected);
+      svc.dispose();
+    });
+
+    test('concurrent connects share one socket', () async {
+      var opened = 0;
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        serverUri: AppConstants.defaultServerUri,
+        openChannel: (uri) {
+          opened++;
+
+          return _ServiceFactory.neverOpens(uri);
+        },
+      );
+      unawaited(svc.connect());
+      unawaited(svc.ensureConnected());
+      await pumpEventQueue();
+
+      expect(opened, 1);
+      svc.dispose();
+    });
+
+    test('a handshake that times out closes its socket', () async {
+      final (svc, channel, connected) = await helloSent();
+
+      svc.handshakeState.transitionTo(HandshakeState.failed);
+      await pumpEventQueue();
+
+      expect(await connected, isFalse);
+      expect(channel.isClosed, isTrue);
+      expect(svc.status, ConnectionStatus.disconnected);
+      svc.dispose();
+    });
+
+    test('a rejected sign-in closes the socket and settles connect', () async {
+      final (svc, channel, connected) = await helloSent();
+
+      channel.receive({
+        'event': 'error',
+        'error_code': 'AUTH_FAILED',
+        'message': 'Invalid token',
+      });
+
+      expect(await connected, isFalse);
+      expect(channel.isClosed, isTrue);
+      expect(svc.handshakeState.state, HandshakeState.failed);
+      svc.dispose();
+    });
+
+    test('a stale socket closing late leaves its replacement alone', () async {
+      final first = _FakeWebSocketChannel()..closesPromptly = false;
+      final second = _FakeWebSocketChannel();
+      final channels = [first, second];
+      final svc = _ServiceFactory.make(
+        signedIn: true,
+        serverUri: AppConstants.defaultServerUri,
+        openChannel: (_) => Future.value(channels.removeAt(0)),
+      );
+
+      // The launch attempt's handshake fails; its socket is slow to close.
+      final firstAttempt = svc.connect();
+      await pumpEventQueue();
+      first.receive({'event': 'hello'});
+      await pumpEventQueue();
+      svc.handshakeState.transitionTo(HandshakeState.failed);
+      expect(await firstAttempt, isFalse);
+
+      final secondAttempt = svc.connect();
+      await pumpEventQueue();
+      second.receive({'event': 'hello'});
+      await pumpEventQueue();
+      second.receive({'event': 'authenticated'});
+      expect(await secondAttempt, isTrue);
+
+      first.receive({'event': 'error', 'error_code': 'AUTH_FAILED'});
+      await first.finishClosing();
+      await pumpEventQueue();
+
+      expect(svc.status, ConnectionStatus.connected);
+      expect(second.isClosed, isFalse);
+      svc.dispose();
+    });
+
+    test('an end signal during the handshake follows the buffered audio', () async {
+      final (svc, channel, connected) = await helloSent();
+      final audio = Uint8List.fromList([1, 2, 3]);
+
+      svc.sendAudioChunk(audio);
+      expect(svc.sendEndSignal(), isTrue);
+      channel.receive({'event': 'authenticated'});
+      await connected;
+
+      expect(channel.sent, hasLength(_WebSocketServiceTest.framesAfterHandshake));
+      expect(channel.sent[1], audio);
+      expect(jsonDecode(channel.sent[2] as String), {'event': 'end-of-stream'});
+      svc.dispose();
+    });
+
+    test('there is no end signal without a session', () {
+      final svc = _ServiceFactory.make();
+
+      expect(svc.sendEndSignal(), isFalse);
+      svc.dispose();
+    });
+  });
+
+  group('ReconnectionManager backoff', () {
+    testWidgets('retries back off from 2s to a one-minute cap', (tester) async {
+      final manager = ReconnectionManager();
+      final delays = <int>[];
+      Future<void> retry() async => manager.schedule(onRetry: retry);
+
+      manager.schedule(onRetry: retry);
+      for (var i = 0; i < _WebSocketServiceTest.backoffSteps; i++) {
+        delays.add(manager.nextDelay.inSeconds);
+        await tester.pump(manager.nextDelay);
+      }
+      manager.reset();
+
+      expect(delays, [2, 4, 8, 16, 32, 60, 60]);
+      expect(manager.nextDelay, const Duration(seconds: 2));
+      expect(manager.isScheduled, isFalse);
+    });
+  });
+
+  group('ConfigurationManager trusted servers', () {
+    const origin = 'wss://custom.example.com:443';
+
+    (ConfigurationManager, _StubAuthService, _StubSettingsService) observe() {
+      final auth = _StubAuthService();
+      final settings = _StubSettingsService()..trusted.add(origin);
+      final cm = ConfigurationManager(auth, settings)
+        ..startObserving(onReconnectNeeded: () {}, onAutoConnectDesired: () {});
+
+      return (cm, auth, settings);
+    }
+
+    test('signing in keeps the servers trusted before it', () {
+      final (cm, auth, settings) = observe();
+
+      auth.setAuthenticated(true, userId: 'user123');
+
+      expect(settings.trusted, {origin});
+      cm.stopObserving();
+    });
+
+    test('signing out forgets them', () {
+      final (cm, auth, settings) = observe();
+      auth.setAuthenticated(true, userId: 'user123');
+
+      auth.setAuthenticated(false);
+
+      expect(settings.trusted, isEmpty);
+      cm.stopObserving();
+    });
+
+    test('another account signing in forgets them', () {
+      final (cm, auth, settings) = observe();
+      auth.setAuthenticated(true, userId: 'user123');
+      settings.trusted.add(origin);
+
+      auth.setAuthenticated(true, userId: 'user456');
+
+      expect(settings.trusted, isEmpty);
+      cm.stopObserving();
+    });
+
+    test('a silent token refresh keeps them', () {
+      final (cm, auth, settings) = observe();
+      auth.setAuthenticated(true, userId: 'user123');
+
+      auth.notifyListeners();
+
+      expect(settings.trusted, {origin});
+      cm.stopObserving();
+    });
+  });
+
+  group('ConfigurationManager in Groq mode', () {
+    test('changes made while dormant are recorded, not replayed later', () {
+      final settings = _StubSettingsService(apiKey: 'key')..setGroqMode(true);
+      final cm = ConfigurationManager(_StubAuthService(), settings);
+      var reconnects = 0;
+      var autoConnects = 0;
+      cm.startObserving(
+        onReconnectNeeded: () => reconnects++,
+        onAutoConnectDesired: () => autoConnects++,
+      );
+
+      settings.changeUri('wss://other.example.com');
+      expect((reconnects, autoConnects), (0, 0), reason: 'dormant');
+
+      settings.setGroqMode(false);
+      expect((reconnects, autoConnects), (0, 1), reason: 'server mode resumes');
+
+      settings.notifyListeners();
+      expect((reconnects, autoConnects), (0, 1), reason: 'nothing changed');
+      cm.stopObserving();
     });
   });
 }

@@ -20,12 +20,17 @@ import 'heartbeat_manager.dart';
 import 'reconnection_manager.dart';
 import 'server_problem.dart';
 
+/// Opens a socket to an already validated, normalized server address.
+typedef ChannelOpener = Future<WebSocketChannel> Function(String uri);
+
 /// Lean orchestrator for WebSocket connectivity.
 /// Delegates specialized logic to sub-managers for buffering, reconnection, and heartbeats.
 class WebSocketService extends ChangeNotifier {
   static const int _normalCloseCode = 1000;
   static const int _policyViolationCode = 1008;
   static const int _serverIdleCloseCode = 4001;
+  static const Duration _pingInterval = Duration(seconds: 30);
+  static const Duration _helloTimeout = Duration(seconds: 5);
 
   /// Backend `error_code`s that end the session. Everything else (NO_AUDIO,
   /// TRANSCRIPTION_FAILED, ...) is operational and goes to [onMessage].
@@ -42,6 +47,7 @@ class WebSocketService extends ChangeNotifier {
 
   final SettingsService _settingsService;
   final AuthService _authService;
+  final ChannelOpener _openChannel;
 
   // Internal Managers
   final TransportSecurityService _transportSecurity =
@@ -64,6 +70,11 @@ class WebSocketService extends ChangeNotifier {
   bool _isConnecting = false;
   bool _isIntentionalDisconnect = false;
   bool _pendingConfigChange = false;
+  bool _endSignalPending = false;
+  bool _disposed = false;
+  int _connectGeneration = 0;
+  Future<bool>? _attempt;
+  Completer<bool>? _authWaiter;
   String? _lastHandshakeError;
   ServerProblem _serverProblem = ServerProblem.none;
   String? _activeApiKey;
@@ -75,12 +86,18 @@ class WebSocketService extends ChangeNotifier {
 
   // State Getters
   ConnectionStatus get status => _status;
-  bool get isConnecting => _isConnecting;
   String? get lastHandshakeError => _lastHandshakeError;
 
   /// Kept through later attempts, so a retry doesn't flash "ready" before it
   /// fails again. Cleared once a server says hello.
   ServerProblem get serverProblem => _serverProblem;
+
+  /// The configured server's host, for asking whether to trust it.
+  String get serverHost =>
+      Uri.tryParse(
+        _transportSecurity.normalizeUri(_settingsService.serverUri),
+      )?.host ??
+      _settingsService.serverUri;
   SecurityStatus get securityStatus => _securityStatus;
   BanStateService get banState => _banState;
   HandshakeStateMachine get handshakeState => _handshake;
@@ -92,6 +109,13 @@ class WebSocketService extends ChangeNotifier {
   bool get hasValidCredentials =>
       _authService.isAuthenticated ||
       (_settingsService.cachedApiKey?.isNotEmpty ?? false);
+
+  /// Server mode with credentials: a dropped or unreachable connection is
+  /// worth retrying. Groq mode, sign-out and bans end every retry.
+  bool get _wantsConnection =>
+      !_settingsService.isGroqMode &&
+      hasValidCredentials &&
+      !_banState.isBanned;
 
   @visibleForTesting
   bool get pendingConfigChangeForTesting => _pendingConfigChange;
@@ -111,19 +135,28 @@ class WebSocketService extends ChangeNotifier {
   @visibleForTesting
   set channelForTesting(WebSocketChannel? channel) => _channel = channel;
 
-  WebSocketService(this._settingsService, this._authService)
-    : _config = ConfigurationManager(_authService, _settingsService) {
+  WebSocketService(
+    this._settingsService,
+    this._authService, {
+    ChannelOpener? openChannel,
+  }) : _openChannel = openChannel ?? _openSocket,
+       _config = ConfigurationManager(_authService, _settingsService) {
     // Wire up configuration changes
     _config.startObserving(
       onReconnectNeeded: () {
+        if (_status == ConnectionStatus.connected ||
+            _status == ConnectionStatus.connecting) {
+          // Apply the new config once this connection is gone: reconnect at
+          // once if it is still wanted (not in Groq mode, still signed in).
+          _pendingConfigChange = true;
+        }
         if (_status == ConnectionStatus.connected) {
           unawaited(
             disconnect(reason: 'Configuration/Identity update required'),
           );
-        } else if (_status == ConnectionStatus.connecting) {
-          // Can't safely tear down a half-open connection; remember to apply
-          // the new config once the current attempt settles.
-          _pendingConfigChange = true;
+        } else {
+          // New settings: retries start over against the new target.
+          _reconnection.reset();
         }
       },
       onAutoConnectDesired: () {
@@ -137,17 +170,25 @@ class WebSocketService extends ChangeNotifier {
     // _handleRawMessage so the _pendingConfigChange guard runs before any audio
     // is written to the channel.
     _handshake.stateStream.listen((state) {
-      if (state == HandshakeState.failed) {
-        _audioBuffer.clear();
+      if (state != HandshakeState.failed) return;
+      _audioBuffer.clear();
+      // A handshake that timed out leaves its socket open: close it. Checked
+      // on delivery, so a newer attempt that already reset the state is safe.
+      if (_handshake.state == HandshakeState.failed && _channel != null) {
+        _lastHandshakeError ??= 'The server did not confirm the sign-in';
+        _isIntentionalDisconnect = true;
+        _handleDisconnect();
       }
     });
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _heartbeat.stop();
     _reconnection.stop();
     _config.stopObserving();
+    _dropChannel();
     _handshake.dispose();
     _banState.dispose();
     unawaited(_statusController.close());
@@ -155,90 +196,46 @@ class WebSocketService extends ChangeNotifier {
     super.dispose();
   }
 
+  @override
+  void notifyListeners() {
+    // A connect attempt can settle after dispose.
+    if (!_disposed) super.notifyListeners();
+  }
+
   // --- External API ---
 
-  Future<bool> connect({String? uriOverride, String? apiKeyOverride}) async {
-    if (_status == ConnectionStatus.connected &&
-        uriOverride == null &&
-        apiKeyOverride == null) {
-      return true;
+  /// Connects and completes the sign-in handshake. True once the server has
+  /// accepted the sign-in; false on any failure. Calls while an attempt is
+  /// in flight share it rather than opening a second socket.
+  Future<bool> connect({String? uriOverride, String? apiKeyOverride}) {
+    final overridden = uriOverride != null || apiKeyOverride != null;
+    if (_status == ConnectionStatus.connected && !overridden) {
+      return Future.value(true);
     }
-    if (_isConnecting || _banState.isBanned) return false;
+    if (_banState.isBanned || _disposed) return Future.value(false);
 
-    _isConnecting = true;
-    _isIntentionalDisconnect = false;
-    _lastHandshakeError = null;
-    _updateStatus(ConnectionStatus.connecting);
-    notifyListeners();
-    _handshake.reset();
-    var problem = ServerProblem.unreachable;
+    final inFlight = _attempt;
+    if (inFlight != null) return inFlight;
 
-    try {
-      final uriString = uriOverride ?? _settingsService.serverUri;
-      _activeApiKey = apiKeyOverride ?? _settingsService.cachedApiKey;
+    final attempt = _connect(uriOverride, apiKeyOverride);
+    _attempt = attempt;
+    unawaited(
+      attempt.whenComplete(() {
+        if (identical(_attempt, attempt)) _attempt = null;
+      }),
+    );
 
-      _logger.info(
-        'Connecting to: $uriString (Auth: ${_authService.isAuthenticated ? "OIDC" : "API_KEY"})',
-      );
-      if (!_authService.isAuthenticated && (_activeApiKey?.isEmpty ?? true)) {
-        _lastHandshakeError = 'Authentication required';
-        _handshake.transitionTo(HandshakeState.failed);
-        throw Exception('No authentication available');
-      }
+    return attempt;
+  }
 
-      final security = await _transportSecurity.validateServerUri(uriString);
-      _securityStatus = security;
-      if (security == SecurityStatus.blocked) {
-        problem = ServerProblem.insecure;
-        throw Exception('Security violation');
-      }
+  /// Remembers the configured server as safe for the user's sign-in, then
+  /// connects to it.
+  Future<bool> trustServerAndConnect() async {
+    final origin = _transportSecurity.serverOrigin(_settingsService.serverUri);
+    if (origin == null) return false;
+    await _settingsService.trustServer(origin);
 
-      // Open the socket manually so we can set pingInterval before handing
-      // it to the channel. Dart's IOWebSocketChannel.connect() convenience
-      // constructor does not expose this — but the underlying dart:io WebSocket
-      // sends protocol-level ping frames automatically when pingInterval is set,
-      // Python's websockets library does this by default (every 20 s); we match
-      // that behaviour here so the Flutter client stays connected as long as the
-      // terminal client does under the same tunnel.
-      final socket = await WebSocket.connect(
-        _transportSecurity.normalizeUri(uriString),
-      ).timeout(AppConstants.wsConnectTimeout);
-      socket.pingInterval = const Duration(seconds: 30);
-      // The socket is already open, so the channel is ready immediately.
-      final ch = IOWebSocketChannel(socket);
-      _channel = ch;
-
-      ch.stream.listen(
-        _handleRawMessage,
-        onError: _handleSocketError,
-        onDone: _handleSocketClose,
-      );
-
-      final hello = await _waitForServerHello();
-      if (hello == null) throw Exception('Handshake timeout');
-
-      // _pendingConfigChange is checked in _handleRawMessage when the
-      // 'authenticated' event arrives — the first moment _status is confirmed
-      // connected. Nothing useful can be checked here while still connecting.
-      await _sendClientHello();
-      _isConnecting = false;
-
-      return true;
-    } catch (e) {
-      _logger.error('Connection failed', error: e);
-      if (e is _MissingAuthTokenException) {
-        _lastHandshakeError = 'Identity session expired or missing';
-        _handshake.transitionTo(HandshakeState.failed);
-      }
-      // A failed handshake is a credential problem, not a missing server.
-      if (_handshake.state != HandshakeState.failed) {
-        _serverProblem = problem;
-      }
-      _isConnecting = false;
-      _handleDisconnect(); // consumes _pendingConfigChange for the failure path
-
-      return false;
-    }
+    return connect();
   }
 
   Future<void> disconnect({String reason = 'Client closed'}) async {
@@ -281,18 +278,25 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
-  void sendEndSignal() => _sendJson({'event': 'end-of-stream'});
+  /// Tells the server the dictation is over. Sent now on a live session, or
+  /// after the buffered audio once a handshake in flight completes. False
+  /// when there is no session to send it on: the dictation is lost.
+  bool sendEndSignal() {
+    if (_handshake.canSendAudio() && _channel != null) {
+      _sendJson({'event': 'end-of-stream'});
 
-  /// Simulates a server-initiated close without a real socket.
-  /// Use only in tests annotated with @visibleForTesting.
-  /// Feeds a server hello through the handshake wait without a real socket.
-  @visibleForTesting
-  Future<void> receiveHelloForTesting() async {
-    final hello = _waitForServerHello();
-    _messageController.add({'event': 'hello', 'version': '3.1.0'});
-    await hello;
+      return true;
+    }
+    if (_isConnecting) {
+      _endSignalPending = true;
+
+      return true;
+    }
+
+    return false;
   }
 
+  /// Simulates a server-initiated close without a real socket.
   @visibleForTesting
   void processCloseForTesting(int? code, String? reason) =>
       _processClose(code, reason);
@@ -324,17 +328,153 @@ class WebSocketService extends ChangeNotifier {
 
   // --- Internal Logic ---
 
-  Future<void> _sendClientHello() async {
-    final String? token = _authService.isAuthenticated
+  /// Opens the socket manually so pingInterval can be set: dart:io then sends
+  /// protocol-level pings, as Python's websockets library does by default, so
+  /// this client stays connected as long as the terminal client does under
+  /// the same tunnel.
+  static Future<WebSocketChannel> _openSocket(String uri) async {
+    final pending = WebSocket.connect(uri);
+    try {
+      final socket = await pending.timeout(AppConstants.wsConnectTimeout);
+      socket.pingInterval = _pingInterval;
+
+      return IOWebSocketChannel(socket);
+    } on TimeoutException {
+      unawaited(_closeLateSocket(pending));
+      rethrow;
+    }
+  }
+
+  /// A socket that opens after we gave up must not linger.
+  static Future<void> _closeLateSocket(Future<WebSocket> pending) async {
+    try {
+      final socket = await pending;
+      await socket.close();
+    } on Object catch (e) {
+      LoggingService().info('Abandoned socket never opened: $e');
+    }
+  }
+
+  Future<bool> _connect(String? uriOverride, String? apiKeyOverride) async {
+    // Any disconnect ends this attempt; after one, it must not touch the
+    // state its replacement now owns.
+    final generation = ++_connectGeneration;
+
+    _isConnecting = true;
+    _isIntentionalDisconnect = false;
+    _lastHandshakeError = null;
+    _updateStatus(ConnectionStatus.connecting);
+    notifyListeners();
+    _handshake.reset();
+    var problem = ServerProblem.unreachable;
+
+    try {
+      final uriString = uriOverride ?? _settingsService.serverUri;
+      _activeApiKey = apiKeyOverride ?? _settingsService.cachedApiKey;
+      final hasApiKey = _activeApiKey?.isNotEmpty ?? false;
+
+      if (!_authService.isAuthenticated && !hasApiKey) {
+        _lastHandshakeError = 'Authentication required';
+        _handshake.transitionTo(HandshakeState.failed);
+        throw Exception('No authentication available');
+      }
+
+      final security = await _transportSecurity.validateServerUri(uriString);
+      if (generation != _connectGeneration) return false;
+      _securityStatus = security;
+      if (security == SecurityStatus.blocked) {
+        problem = ServerProblem.insecure;
+        throw Exception('Security violation');
+      }
+
+      // The sign-in token lets whoever receives it act as the user, so it
+      // goes only to a server the user agreed to. An API key was issued by
+      // the server it is set for, so it needs no such check.
+      final useSignIn =
+          _authService.isAuthenticated && _isTrustedForSignIn(uriString);
+      if (!useSignIn && !hasApiKey) {
+        problem = ServerProblem.untrusted;
+        throw Exception('Server not trusted with the sign-in');
+      }
+
+      _logger.info(
+        'Connecting to: $uriString (Auth: ${useSignIn ? "OIDC" : "API_KEY"})',
+      );
+      final ch = await _openChannel(_transportSecurity.normalizeUri(uriString));
+      if (generation != _connectGeneration || _disposed) {
+        ch.sink.close(_normalCloseCode).ignore();
+
+        return false;
+      }
+      _channel = ch;
+
+      // Each socket reports only while it is the current one: a stale socket
+      // closing late must not tear down its replacement.
+      ch.stream.listen(
+        (data) {
+          if (identical(ch, _channel)) _handleRawMessage(data);
+        },
+        onError: (Object error) {
+          if (identical(ch, _channel)) _handleSocketError(error);
+        },
+        onDone: () {
+          if (identical(ch, _channel)) _handleSocketClose();
+        },
+      );
+
+      final hello = await _waitForServerHello();
+      if (generation != _connectGeneration) return false;
+      if (hello == null) throw Exception('Handshake timeout');
+
+      final accepted = Completer<bool>();
+      _authWaiter = accepted;
+      await _sendClientHello(useSignIn: useSignIn);
+      if (generation != _connectGeneration) return false;
+
+      // Settled by the 'authenticated' event, or false by any disconnect
+      // (rejection, timeout, dropped socket).
+      return await accepted.future;
+    } catch (e) {
+      _logger.error('Connection failed', error: e);
+      if (generation != _connectGeneration) return false;
+      if (e is _MissingAuthTokenException) {
+        _lastHandshakeError = 'Identity session expired or missing';
+        _handshake.transitionTo(HandshakeState.failed);
+      }
+      // A failed handshake is a credential problem, not a missing server.
+      final serverAtFault = _handshake.state != HandshakeState.failed;
+      if (serverAtFault) _serverProblem = problem;
+      _handleDisconnect(); // consumes _pendingConfigChange for the failure path
+      if (serverAtFault && problem == ServerProblem.unreachable) {
+        _scheduleRetry();
+      }
+
+      return false;
+    }
+  }
+
+  /// The built-in server, or one the user agreed to send their sign-in to.
+  bool _isTrustedForSignIn(String uriString) {
+    final origin = _transportSecurity.serverOrigin(uriString);
+    if (origin == null) return false;
+
+    return origin ==
+            _transportSecurity.serverOrigin(AppConstants.defaultServerUri) ||
+        _settingsService.isTrustedServer(origin);
+  }
+
+  Future<void> _sendClientHello({required bool useSignIn}) async {
+    final String? token = useSignIn
         ? await _authService.getAccessToken()
         : _activeApiKey;
-    final String authType = _authService.isAuthenticated ? 'oidc' : 'api_key';
 
-    if (token == null) throw const _MissingAuthTokenException();
+    if (token == null || token.isEmpty) {
+      throw const _MissingAuthTokenException();
+    }
 
     final payload = await _payloadBuilder.buildHello(
       token: token,
-      authType: authType,
+      authType: useSignIn ? 'oidc' : 'api_key',
       incognito: _settingsService.incognitoMode,
     );
 
@@ -352,6 +492,8 @@ class WebSocketService extends ChangeNotifier {
 
       if (event == 'authenticated') {
         _handshake.transitionTo(HandshakeState.authenticated);
+        _isConnecting = false;
+        _reconnection.reset();
         _updateStatus(ConnectionStatus.connected);
         _logger.info('Handshake success | CID: $_connectionId');
         if (_pendingConfigChange) {
@@ -360,17 +502,21 @@ class WebSocketService extends ChangeNotifier {
           // incognito flag are already stale. The buffer will refill after the
           // reconnect completes with fresh settings.
           _audioBuffer.clear();
+          _endSignalPending = false;
           unawaited(
             disconnect(reason: 'Configuration/Identity update required'),
           );
         } else {
-          // Happy path: flush any audio that was buffered during the handshake.
-          // _channel is non-null here by construction — it is assigned in
-          // connect() before the stream listener that delivers this event is
-          // attached — but the guard makes that ordering invariant explicit.
+          // Happy path: flush any audio that was buffered during the handshake,
+          // then end the dictation if it finished while connecting.
           final ch = _channel;
           if (ch != null) _audioBuffer.flush(ch);
+          if (_endSignalPending) {
+            _endSignalPending = false;
+            _sendJson({'event': 'end-of-stream'});
+          }
         }
+        _settleAuth(accepted: true);
       } else if (event == 'error' &&
           _sessionErrorCodes.contains(json['error_code'])) {
         _handleAuthError(
@@ -454,10 +600,14 @@ class WebSocketService extends ChangeNotifier {
       _updateStatus(ConnectionStatus.disconnected);
     }
 
-    _channel = null;
+    _dropChannel();
     _connectionId = null;
     _heartbeat.stop();
     _isConnecting = false;
+    _attempt = null;
+    _connectGeneration++;
+    _endSignalPending = false;
+    _settleAuth(accepted: false);
     // Preserve the failed state so UI can display auth error messaging.
     // connect() resets it at the start of the next attempt.
     if (_handshake.state != HandshakeState.failed) {
@@ -467,41 +617,54 @@ class WebSocketService extends ChangeNotifier {
     final bool configPending = _pendingConfigChange;
     _pendingConfigChange = false;
 
-    if (configPending && !_banState.isBanned) {
+    if (configPending && _wantsConnection) {
       _logger.info(
         'Reconnecting immediately | Reason: configuration or identity update',
       );
       // Config/identity changed mid-session: reconnect immediately with fresh
-      // settings. Bypassing ReconnectionManager's backoff timer avoids a gap
-      // where connect() has already returned true but the socket is gone and
-      // live audio can neither be sent nor buffered.
-      //
-      // If the immediate attempt fails (e.g. bad new credentials, unreachable
-      // URI), fall back to the normal backoff timer so the app does not go
-      // silently idle with no recovery path.
+      // settings, bypassing the backoff timer. If that attempt fails, the
+      // normal backoff takes over so the app does not go silently idle.
       unawaited(_attemptImmediateReconnect());
-    } else if (!_isIntentionalDisconnect && wasActive && !_banState.isBanned) {
+    } else if (!_isIntentionalDisconnect && wasActive) {
       _logger.warning(
         'Unexpected disconnect while active | Scheduling reconnect with backoff',
       );
-      // Genuine unexpected drop: use the backoff timer so we don't hammer the
-      // server after a transient network failure.
-      _reconnection.schedule(
-        onRetry: () => connect(),
-        lastError: _lastHandshakeError,
-        isBanned: _banState.isBanned,
-      );
+      _scheduleRetry();
     }
+  }
+
+  /// Forgets the current socket and closes it, so nothing it says later is
+  /// heard and the server sees the session end.
+  void _dropChannel() {
+    final ch = _channel;
+    _channel = null;
+    ch?.sink.close(_normalCloseCode).ignore();
+  }
+
+  void _settleAuth({required bool accepted}) {
+    final waiter = _authWaiter;
+    _authWaiter = null;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(accepted);
   }
 
   Future<void> _attemptImmediateReconnect() async {
     final success = await connect();
-    if (!success && !_banState.isBanned) {
-      _reconnection.schedule(
-        onRetry: () => connect(),
-        lastError: _lastHandshakeError,
-        isBanned: _banState.isBanned,
-      );
+    if (!success) _scheduleRetry();
+  }
+
+  void _scheduleRetry() {
+    if (!_wantsConnection || _disposed) return;
+    _reconnection.schedule(
+      onRetry: _retry,
+      lastError: _lastHandshakeError,
+      isBanned: _banState.isBanned,
+    );
+  }
+
+  Future<void> _retry() async {
+    // Settings may have changed while the timer ran.
+    if (_wantsConnection && _status == ConnectionStatus.disconnected) {
+      await connect();
     }
   }
 
@@ -523,10 +686,8 @@ class WebSocketService extends ChangeNotifier {
 
     try {
       final val = await completer.future.timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          return null;
-        },
+        _helloTimeout,
+        onTimeout: () => null,
       );
 
       if (val != null) {
@@ -545,7 +706,7 @@ class WebSocketService extends ChangeNotifier {
   }
 
   void _updateStatus(ConnectionStatus newStatus) {
-    if (_status != newStatus) {
+    if (_status != newStatus && !_disposed) {
       _status = newStatus;
       _statusController.add(newStatus);
       notifyListeners();

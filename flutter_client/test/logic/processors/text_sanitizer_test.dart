@@ -74,5 +74,30 @@ void main() {
         'safe text',
       );
     });
+
+    test('strips any CSI sequence, such as a screen clear', () {
+      expect(TextSanitizer.sanitize('a\x1b[2Jb\x1b[?25lc'), 'abc');
+    });
+
+    test('strips OSC sequences ended by ST, such as hyperlinks', () {
+      expect(
+        TextSanitizer.sanitize(
+          '\x1b]8;;https://x.test\x1b\\link\x1b]8;;\x1b\\',
+        ),
+        'link',
+      );
+    });
+
+    test('strips bidi overrides and isolates (Trojan Source)', () {
+      expect(
+        TextSanitizer.sanitize('rm \u202eexe.txt\u2066 \u2069done'),
+        'rm exe.txt done',
+      );
+    });
+
+    test('keeps the joiners real scripts and emoji need', () {
+      const joined = 'می\u200cخواهم \u{1F469}\u200d\u{1F4BB}';
+      expect(TextSanitizer.sanitize(joined), joined);
+    });
   });
 }

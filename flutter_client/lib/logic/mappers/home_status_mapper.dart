@@ -134,19 +134,36 @@ abstract final class HomeStatusMapper {
     return _serverProblem(s, badge);
   }
 
-  /// Signed in, but the server never answered. An idle disconnect is not a
-  /// problem: dictation reconnects on demand.
+  /// Signed in, but the last attempt never reached the server. An idle
+  /// disconnect is not a problem: dictation reconnects on demand.
   static HomeStatus? _serverProblem(HomeSignals s, AccountBadge badge) {
-    return switch (s.serverProblem) {
-      ServerProblem.none => null,
-      ServerProblem.unreachable when s.isConnecting => HomeStatus(
+    if (s.serverProblem == ServerProblem.none) return null;
+    // A retry or a just-trusted server: hold the problem's place quietly
+    // until the attempt settles, rather than flash "ready".
+    if (s.isConnecting) {
+      return HomeStatus(
         phase: HomePhase.blocked,
         cue: 'connecting',
         tone: CueTone.muted,
         badge: badge,
-        headline: 'Trying your server again.',
+        headline: 'Connecting to your server.',
         // Keeps the server glyph on the cue; no label, so no button.
         fix: HomeFix.retryServer,
+      );
+    }
+
+    return switch (s.serverProblem) {
+      ServerProblem.none => null,
+      ServerProblem.untrusted => HomeStatus(
+        phase: HomePhase.blocked,
+        cue: 'new server',
+        tone: CueTone.alert,
+        badge: badge,
+        headline:
+            'Send your sign-in to ${s.serverHost}? Only trust a server you '
+            'run or know.',
+        fix: HomeFix.trustServer,
+        fixLabel: 'Trust server',
       ),
       ServerProblem.unreachable => HomeStatus(
         phase: HomePhase.blocked,
@@ -193,7 +210,14 @@ enum HomePhase { ready, listening, working, blocked }
 enum CueTone { muted, live, alert }
 
 /// The single action that resolves a blocked state.
-enum HomeFix { none, openAccount, openSettings, retryMicrophone, retryServer }
+enum HomeFix {
+  none,
+  openAccount,
+  openSettings,
+  retryMicrophone,
+  retryServer,
+  trustServer,
+}
 
 /// The dot on the account indicator.
 enum AccountBadge { none, update, attention }
@@ -207,6 +231,7 @@ class HomeSignals {
     required this.handshakeFailed,
     required this.isBanned,
     required this.serverProblem,
+    required this.serverHost,
     required this.isConnecting,
     required this.updateStatus,
     required this.inputStatus,
@@ -228,6 +253,10 @@ class HomeSignals {
 
   /// Self-hosted mode: why the last attempt never reached the server.
   final ServerProblem serverProblem;
+
+  /// Self-hosted mode: the configured server's host, named when asking
+  /// whether to trust it.
+  final String serverHost;
 
   /// Self-hosted mode: an attempt to reach the server is under way.
   final bool isConnecting;

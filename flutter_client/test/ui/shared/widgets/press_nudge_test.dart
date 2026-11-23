@@ -1,3 +1,6 @@
+// Each tester.startGesture() puts down a separate pointer; the tests need
+// two at once, so the repeats can't share one value.
+// ignore_for_file: prefer-moving-to-variable
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/press_nudge.dart';
 import 'package:flutter_test/flutter_test.dart';

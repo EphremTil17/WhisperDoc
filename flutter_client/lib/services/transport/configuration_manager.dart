@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../auth/auth_service.dart';
@@ -85,6 +87,13 @@ class ConfigurationManager {
         'ConfigurationManager: OIDC identity state changed '
         '(identity: $identityChanged, authState: $authStateChanged)',
       );
+      // Trust was given by the account that just left (signed out, or
+      // another account signed in): the next one decides for itself.
+      final signedOut = _lastKnownIsAuthenticated && !isAuthenticated;
+      final switchedAccount = _lastKnownUserId != null && identityChanged;
+      if (signedOut || switchedAccount) {
+        unawaited(_settingsService.clearTrustedServers());
+      }
       _lastKnownUserId = currentUserId;
       _lastKnownIsAuthenticated = isAuthenticated;
       _onReconnectNeeded?.call();
@@ -107,62 +116,40 @@ class ConfigurationManager {
     final currentApiKey = _settingsService.cachedApiKey;
     final currentMode = _settingsService.transcriptionMode;
 
-    // Detect transcription mode change first — it overrides other signals.
-    if (currentMode != _lastKnownMode) {
-      _logger.info(
-        'ConfigurationManager: Transcription mode changed '
-        '$_lastKnownMode → $currentMode',
-      );
-      _lastKnownMode = currentMode;
+    final modeChanged = currentMode != _lastKnownMode;
+    final connectionChanged =
+        currentUri != _lastKnownUri ||
+        currentApiKey != _lastKnownApiKey ||
+        currentIncognito != _lastKnownIncognito;
 
-      if (_settingsService.isGroqMode) {
-        // Switching TO Groq: tear down the backend connection immediately.
+    // Record every value on every change, Groq mode included, so a later
+    // unrelated change can't be mistaken for one made while dormant.
+    _lastKnownMode = currentMode;
+    _lastKnownUri = currentUri;
+    _lastKnownApiKey = currentApiKey;
+    _lastKnownIncognito = currentIncognito;
+
+    if (_settingsService.isGroqMode) {
+      if (modeChanged) {
+        // Switching TO Groq: tear down the backend connection, no reconnect.
+        _logger.info('ConfigurationManager: Groq mode on, backend dormant');
         _onReconnectNeeded?.call();
-        _logger.info(
-          'ConfigurationManager: Backend dormant — WebSocket disconnected',
-        );
-      } else {
-        // Switching TO backend: resume normal auto-connect if creds exist.
-        if ((currentApiKey?.isNotEmpty ?? false) ||
-            _authService.isAuthenticated) {
-          _onAutoConnectDesired?.call();
-        }
       }
 
       return;
     }
 
-    // In Groq mode, suppress all backend reconnect/auto-connect signals.
-    if (_settingsService.isGroqMode) return;
-
-    bool needsReconnect = false;
-
-    if (currentUri != _lastKnownUri) {
-      _logger.info('ConfigurationManager: URI changed');
-      _lastKnownUri = currentUri;
-      needsReconnect = true;
-    }
-
-    if (currentApiKey != _lastKnownApiKey) {
-      _logger.info('ConfigurationManager: API Key changed');
-      _lastKnownApiKey = currentApiKey;
-      needsReconnect = true;
-    }
-
-    if (currentIncognito != _lastKnownIncognito) {
-      _logger.info('ConfigurationManager: Incognito mode toggled');
-      _lastKnownIncognito = currentIncognito;
-      needsReconnect = true;
-    }
-
-    if (needsReconnect) {
+    if (modeChanged) {
+      _logger.info('ConfigurationManager: Server mode on');
+    } else if (connectionChanged) {
+      _logger.info('ConfigurationManager: Server, key or incognito changed');
       _onReconnectNeeded?.call();
+    } else {
+      return;
+    }
 
-      // If we have valid credentials now, try to auto-connect
-      if ((currentApiKey?.isNotEmpty ?? false) ||
-          _authService.isAuthenticated) {
-        _onAutoConnectDesired?.call();
-      }
+    if ((currentApiKey?.isNotEmpty ?? false) || _authService.isAuthenticated) {
+      _onAutoConnectDesired?.call();
     }
   }
 }

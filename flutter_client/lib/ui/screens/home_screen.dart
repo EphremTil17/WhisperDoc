@@ -8,7 +8,6 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
-import 'package:flutter_client/ui/screens/home/dialogs/auth_error_dialog.dart';
 import 'package:flutter_client/ui/screens/home/widgets/account_indicator.dart';
 import 'package:flutter_client/ui/screens/home/widgets/ban_overlay.dart';
 import 'package:flutter_client/ui/screens/home/widgets/home_bottom_bar.dart';
@@ -26,7 +25,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  static const _briefNotice = Duration(seconds: 1);
   static const _notice = Duration(seconds: 2);
 
   /// Errors can run to a sentence or two; give them time to be read.
@@ -70,37 +68,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final controller = context.read<RecordingController>();
     _settings = context.read<SettingsService>();
 
+    // Sign-in, update and server problems show on the home stage itself, so
+    // errors here are only notices. Their text may quote the server, so it
+    // never decides what happens next.
     _errorSubscription = controller.onError.listen((error) {
       if (!mounted) return;
-      final lowerError = error.toLowerCase();
-
-      // 1. Prioritize Ban Awareness (Overlay handles this)
+      // The ban overlay already explains a ban.
       if (context.read<WebSocketService>().status == ConnectionStatus.banned) {
         return;
       }
-
-      // 2. Handle Update Errors
-      if (lowerError.contains('update required')) {
-        _notify('Update required. Redirecting…', _briefNotice);
-
-        return;
-      }
-
-      // 3. Handle Auth Errors (Modular Dialog)
-      if (error.contains('Authentication Failed') ||
-          error.contains('AUTH_FAILED') ||
-          error.contains('API Key Authentication failed')) {
-        unawaited(
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AuthErrorDialog(error: error),
-          ),
-        );
-      } else {
-        // 4. Default: Ephemeral Notification
-        _notify(error, _errorNotice);
-      }
+      _notify(error, _errorNotice);
     });
 
     _lastModifiers = _settings?.hotkeyModifiers;

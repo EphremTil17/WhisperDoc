@@ -27,7 +27,8 @@ void main() {
 
       await tester.tap(find.text('Copy to clipboard'));
 
-      verify(() => settings.settings.setAutoCopy(false)).called(1);
+      final flipped = verify(() => settings.settings.setAutoCopy(false));
+      expect(flipped.callCount, 1);
     });
 
     testWidgets('the background can be held still', (tester) async {

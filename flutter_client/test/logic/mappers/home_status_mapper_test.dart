@@ -12,6 +12,7 @@ void main() {
     bool handshakeFailed = false,
     bool isBanned = false,
     ServerProblem serverProblem = ServerProblem.none,
+    String serverHost = 'whisper.example.com',
     bool isConnecting = false,
     UpdateStatus updateStatus = UpdateStatus.upToDate,
     AudioInputStatus inputStatus = AudioInputStatus.available,
@@ -26,6 +27,7 @@ void main() {
     handshakeFailed: handshakeFailed,
     isBanned: isBanned,
     serverProblem: serverProblem,
+    serverHost: serverHost,
     isConnecting: isConnecting,
     updateStatus: updateStatus,
     inputStatus: inputStatus,
@@ -177,6 +179,32 @@ void main() {
       expect(status.cue, 'address not allowed');
       expect(status.fix, HomeFix.openAccount);
       expect(status.badge, AccountBadge.attention);
+    });
+
+    test('a server not yet trusted asks, naming it, before any sign-in', () {
+      final status = HomeStatusMapper.map(
+        signals(isGroqMode: false, serverProblem: ServerProblem.untrusted),
+      );
+
+      expect(status.phase, HomePhase.blocked);
+      expect(status.cue, 'new server');
+      expect(status.headline, contains('whisper.example.com'));
+      expect(status.fix, HomeFix.trustServer);
+      expect(status.fixLabel, 'Trust server');
+      expect(status.canRecord, isFalse);
+    });
+
+    test('connecting after trusting shows connecting, not the question', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          isGroqMode: false,
+          serverProblem: ServerProblem.untrusted,
+          isConnecting: true,
+        ),
+      );
+
+      expect(status.cue, 'connecting');
+      expect(status.fixLabel, isNull);
     });
 
     test('signing out wins over an offline server', () {

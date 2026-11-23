@@ -4,13 +4,21 @@ import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
 enum DictationProfile implements DictationProfileSpec {
   raw(storageKey: 'raw', label: 'Raw', systemPrompt: null),
   clean(storageKey: 'clean', label: 'Clean', systemPrompt: _cleanPrompt),
+  // Emails and documents: paragraphs.
   professional(
     storageKey: 'professional',
     label: 'Pro',
     systemPrompt: _proPrompt,
+    keepsLineBreaks: true,
   ),
   casual(storageKey: 'casual', label: 'Casual', systemPrompt: _casualPrompt),
-  technical(storageKey: 'technical', label: 'Tech', systemPrompt: _techPrompt);
+  // Specs: sections and bullet points.
+  technical(
+    storageKey: 'technical',
+    label: 'Tech',
+    systemPrompt: _techPrompt,
+    keepsLineBreaks: true,
+  );
 
   /// Universal security & anti-injection preamble prepended to all transformation prompts.
   static const String sharedPreamble = '''
@@ -72,10 +80,14 @@ CRITICAL REQUIREMENTS:
   @override
   final String? systemPrompt;
 
+  @override
+  final bool keepsLineBreaks;
+
   const DictationProfile({
     required this.storageKey,
     required this.label,
     required this.systemPrompt,
+    this.keepsLineBreaks = false,
   });
 
   /// Whether this profile requires calling the post-processing LLM.

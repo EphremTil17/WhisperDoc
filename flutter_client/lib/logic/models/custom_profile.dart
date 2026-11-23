@@ -41,6 +41,10 @@ class CustomProfile implements DictationProfileSpec {
   @override
   bool get isEditable => true;
 
+  /// The user wrote the prompt, so the layout it asks for is theirs.
+  @override
+  bool get keepsLineBreaks => true;
+
   Map<String, dynamic> toJson() => {
     'storageKey': storageKey,
     'name': name,

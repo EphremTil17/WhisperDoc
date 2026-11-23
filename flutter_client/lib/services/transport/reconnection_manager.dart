@@ -4,8 +4,12 @@ import 'package:flutter/foundation.dart';
 
 import '../utility/logging_service.dart';
 
-/// Orchestrates WebSocket reconnection attempts with security "Kill Switch" enforcement.
+/// Retries a lost or unreachable connection with capped exponential backoff:
+/// 2s, 4s, 8s … up to once a minute, until a connection succeeds ([reset]).
 class ReconnectionManager {
+  static const Duration _firstDelay = Duration(seconds: 2);
+  static const Duration _maxDelay = Duration(minutes: 1);
+
   final LoggingService _logger = LoggingService();
   Timer? _timer;
   int _attempts = 0;
@@ -15,7 +19,19 @@ class ReconnectionManager {
   @visibleForTesting
   bool get isScheduled => _timer?.isActive ?? false;
 
-  /// Schedules a reconnection attempt if not blocked by security policy.
+  /// The wait before the next attempt, doubling per failed attempt.
+  @visibleForTesting
+  Duration get nextDelay {
+    var delay = _firstDelay;
+    for (var i = 0; i < _attempts && delay < _maxDelay; i++) {
+      delay += delay;
+    }
+
+    return delay > _maxDelay ? _maxDelay : delay;
+  }
+
+  /// Schedules the next attempt unless one is already pending, the client is
+  /// banned, or the last error was a credential the server refused.
   void schedule({
     required Future<void> Function() onRetry,
     String? lastError,
@@ -38,7 +54,7 @@ class ReconnectionManager {
       }
     }
 
-    const delay = Duration(seconds: 5);
+    final delay = nextDelay;
     _logger.info(
       'Reconnect scheduled in ${delay.inSeconds}s (Attempt ${_attempts + 1})',
     );
@@ -49,7 +65,7 @@ class ReconnectionManager {
     });
   }
 
-  /// Resets the reconnection state.
+  /// Cancels any pending attempt and starts the backoff over.
   void reset() {
     _timer?.cancel();
     _timer = null;

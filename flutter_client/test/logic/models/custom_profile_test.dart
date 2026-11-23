@@ -17,6 +17,14 @@ void main() {
       expect(profile.name, 'My Profile');
       expect(profile.label, 'My Profile');
       expect(profile.isEditable, isTrue);
+      expect(profile.keepsLineBreaks, isTrue);
+    });
+
+    test('only the multi-line built-in styles keep line breaks', () {
+      expect(
+        DictationProfile.values.where((profile) => profile.keepsLineBreaks),
+        [DictationProfile.professional, DictationProfile.technical],
+      );
     });
 
     test(

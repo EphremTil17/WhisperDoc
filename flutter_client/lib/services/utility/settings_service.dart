@@ -34,6 +34,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyGroqModel = 'groq_model';
   static const String _keyDictationProfile = 'dictation_profile';
   static const String _keyCustomProfiles = 'custom_profiles_json';
+  static const String _keyTrustedServers = 'trusted_servers';
 
   // Default Values (from AppConstants)
   static const String _defaultServerUri = AppConstants.defaultServerUri;
@@ -81,6 +82,7 @@ class SettingsService extends ChangeNotifier {
   String _groqModel = _defaultGroqModel;
   DictationProfileSpec _dictationProfile = _defaultDictationProfile;
   List<CustomProfile> _customProfiles = [];
+  Set<String> _trustedServers = {};
   String _appVersion = '...'; // Dynamic loading fallback
 
   String get appVersion => _appVersion;
@@ -109,6 +111,10 @@ class SettingsService extends ChangeNotifier {
   String get groqModel => _groqModel;
   DictationProfileSpec get dictationProfile => _dictationProfile;
   List<CustomProfile> get customProfiles => List.unmodifiable(_customProfiles);
+
+  /// Servers, as `scheme://host:port`, the user agreed to send their
+  /// sign-in to. The built-in server needs no entry.
+  bool isTrustedServer(String origin) => _trustedServers.contains(origin);
 
   /// Returns the cached API key, fetching from vault if not yet loaded.
   /// Auto-detect token type: JWT (has 2 dots) vs Static API Key.
@@ -147,6 +153,8 @@ class SettingsService extends ChangeNotifier {
           prefs.getBool(_keyAnimateBackground) ?? _defaultAnimateBackground;
       _incognitoMode =
           prefs.getBool(_keyIncognitoMode) ?? _defaultIncognitoMode;
+
+      _trustedServers = {...?prefs.getStringList(_keyTrustedServers)};
 
       // Load API key from secure vault (cached in memory)
       _apiKey = await vault.retrieveCredential(_vaultApiKeyKey);
@@ -273,6 +281,27 @@ class SettingsService extends ChangeNotifier {
     await prefs.setString(_keyServerUri, uri);
     notifyListeners();
     LoggingService().info('Server URI updated to: $uri');
+  }
+
+  /// Remembers that the user agreed to send their sign-in to [origin].
+  Future<void> trustServer(String origin) async {
+    final prefs = _requirePrefs();
+    if (!_trustedServers.add(origin)) return;
+
+    await prefs.setStringList(_keyTrustedServers, _trustedServers.toList());
+    notifyListeners();
+    LoggingService().info('Trusted server for sign-in: $origin');
+  }
+
+  /// Forgets every trusted server, for a sign-out or a new account.
+  Future<void> clearTrustedServers() async {
+    final prefs = _requirePrefs();
+    if (_trustedServers.isEmpty) return;
+
+    _trustedServers.clear();
+    await prefs.remove(_keyTrustedServers);
+    notifyListeners();
+    LoggingService().info('Trusted servers cleared');
   }
 
   Future<void> setHotkey({

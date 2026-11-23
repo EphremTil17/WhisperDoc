@@ -11,4 +11,8 @@ enum ServerProblem {
   /// The address was refused before connecting: plain ws:// to a server
   /// outside the local network.
   insecure,
+
+  /// A server the user hasn't agreed to send their sign-in to yet. Nothing
+  /// was sent: the sign-in token would let that server act as the user.
+  untrusted,
 }

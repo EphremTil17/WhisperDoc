@@ -1,3 +1,6 @@
+// Each tester.pumpAndSettle() advances the UI past a different tap, so the
+// repeats have no shared value to hold.
+// ignore_for_file: prefer-moving-to-variable
 import 'package:flutter_client/ui/screens/account_panel.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,7 +93,8 @@ void main() {
       await tester.tap(french);
       await tester.pumpAndSettle();
 
-      verify(() => account.settings.setGroqLanguage('fr')).called(1);
+      final picked = verify(() => account.settings.setGroqLanguage('fr'));
+      expect(picked.callCount, 1);
     });
 
     testWidgets('a server address that is not a WebSocket cannot be saved', (

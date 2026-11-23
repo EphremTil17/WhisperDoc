@@ -7,6 +7,7 @@ import 'package:flutter_client/services/hardware/audio_device_monitor.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -52,6 +53,7 @@ void main() {
   late _MockGroqTranscriptionService mockGroqService;
   late _MockGroqTransformService mockTransformService;
   late StreamController<Map<String, dynamic>> mockWsMessageController;
+  late StreamController<ConnectionStatus> wsStatusController;
   late StreamController<void> deviceChangeController;
   late void Function() audioStateListener;
 
@@ -69,6 +71,7 @@ void main() {
     mockAudioCueService = _MockAudioCueService();
     mockWsMessageController =
         StreamController<Map<String, dynamic>>.broadcast();
+    wsStatusController = StreamController<ConnectionStatus>.broadcast();
     deviceChangeController = StreamController<void>.broadcast();
     final mockDeviceMonitor = _MockAudioDeviceMonitor();
     when(() => mockDeviceMonitor.changes)
@@ -89,6 +92,10 @@ void main() {
     when(() => mockWsService.connect()).thenAnswer((_) async => true);
     when(() => mockWsService.onMessage)
         .thenAnswer((_) => mockWsMessageController.stream);
+    when(() => mockWsService.onStatusChanged)
+        .thenAnswer((_) => wsStatusController.stream);
+    when(() => mockWsService.serverProblem).thenReturn(ServerProblem.none);
+    when(() => mockWsService.sendEndSignal()).thenReturn(true);
     when(() => mockAutomationService.runAutomation(any()))
         .thenAnswer((_) => Future.value());
     when(
@@ -133,8 +140,20 @@ void main() {
 
   tearDown(() async {
     await mockWsMessageController.close();
+    await wsStatusController.close();
     await deviceChangeController.close();
   });
+
+  /// Ends a server-mode dictation the way the recorder does, so the
+  /// controller is waiting for its transcript.
+  Future<void> endServerDictation() async {
+    when(() => mockSettingsService.isGroqMode).thenReturn(false);
+    when(() => mockAudioService.isRecording).thenReturn(true);
+    audioStateListener();
+    when(() => mockAudioService.isRecording).thenReturn(false);
+    audioStateListener();
+    await pumpEventQueue();
+  }
 
   group('Incognito Mode', () {
     test('enableIncognitoMode sets incognitoMode to true', () async {
@@ -286,7 +305,7 @@ void main() {
       when(() => mockAudioService.isRecording).thenReturn(true);
       when(() => mockAudioService.stopRecording())
           .thenAnswer((_) => recorderStopped.future);
-      when(() => mockWsService.sendEndSignal()).thenReturn(null);
+      when(() => mockWsService.sendEndSignal()).thenReturn(true);
 
       final first = controller.stopRecording();
       final second = controller.stopRecording();
@@ -315,7 +334,7 @@ void main() {
 
         return Future.value();
       });
-      when(() => mockWsService.sendEndSignal()).thenReturn(null);
+      when(() => mockWsService.sendEndSignal()).thenReturn(true);
 
       final start = controller.toggleRecording();
       final secondPress = controller.toggleRecording();
@@ -323,14 +342,15 @@ void main() {
       captureStarted.complete();
       await Future.wait([start, secondPress]);
 
-      verify(() => mockAudioService.stopRecording()).called(1);
+      final stops = verify(() => mockAudioService.stopRecording());
+      expect(stops.callCount, 1);
       verify(() => mockWsService.sendEndSignal()).called(1);
     });
 
     test('a recorder that stops by itself still finishes the capture', () async {
       // A device error stops the recorder without stopRecording(): what was
       // captured must still be sent, and the stream dropped.
-      when(() => mockWsService.sendEndSignal()).thenReturn(null);
+      when(() => mockWsService.sendEndSignal()).thenReturn(true);
       when(() => mockAudioService.isRecording).thenReturn(true);
       audioStateListener();
       expect(controller.isRecording, isTrue);
@@ -571,6 +591,7 @@ void main() {
         when(() => mockSettingsService.dictationProfile)
             .thenReturn(DictationProfile.raw);
 
+        await endServerDictation();
         mockWsMessageController.add({
           'event': 'transcription',
           'text': 'Raw unpolished transcription.',
@@ -606,6 +627,7 @@ void main() {
           ),
         ).thenAnswer((_) async => 'Clean transcription without fillers.');
 
+        await endServerDictation();
         mockWsMessageController.add({
           'event': 'transcription',
           'text': 'um raw transcription with fillers you know',
@@ -650,6 +672,7 @@ void main() {
         String? emittedError;
         final sub = controller.onError.listen((e) => emittedError = e);
 
+        await endServerDictation();
         mockWsMessageController.add({
           'event': 'transcription',
           'text': 'Raw text fallback.',
@@ -688,6 +711,7 @@ void main() {
         when(() => mockTransformService.transform(any(), any()))
             .thenAnswer((_) => completer.future);
 
+        await endServerDictation();
         mockWsMessageController.add({
           'event': 'transcription',
           'text': 'Transcript in progress.',
@@ -721,6 +745,37 @@ void main() {
       },
     );
 
+    test('a single-passage style pastes its polish on one line', () async {
+      when(() => mockSettingsService.dictationProfile)
+          .thenReturn(DictationProfile.clean);
+      when(() => mockTransformService.transform(any(), any()))
+          .thenAnswer((_) async => 'Sure thing.\n\n  echo pwned\n');
+
+      await endServerDictation();
+      mockWsMessageController.add({'event': 'transcription', 'text': 'sure'});
+      await pumpEventQueue();
+
+      verify(
+        () => mockAutomationService.runAutomation('Sure thing. echo pwned'),
+      ).called(1);
+      expect(controller.currentText, 'Sure thing. echo pwned');
+    });
+
+    test('Pro keeps the paragraphs its polish writes', () async {
+      const email = 'Hi Sam,\n\nThanks for the notes.';
+      when(() => mockSettingsService.dictationProfile)
+          .thenReturn(DictationProfile.professional);
+      when(() => mockTransformService.transform(any(), any()))
+          .thenAnswer((_) async => email);
+
+      await endServerDictation();
+      mockWsMessageController.add({'event': 'transcription', 'text': 'hi'});
+      await pumpEventQueue();
+
+      final pasted = verify(() => mockAutomationService.runAutomation(email));
+      expect(pasted.callCount, 1);
+    });
+
     test('isSessionActive reflects recording state transition', () {
       // A recorder that stops on its own hands its capture to Groq.
       when(() => mockGroqService.finalizeAndTranscribe())
@@ -746,6 +801,7 @@ void main() {
       when(() => mockTransformService.transform(any(), any()))
           .thenAnswer((_) => completer.future);
 
+      await endServerDictation();
       mockWsMessageController.add({
         'event': 'transcription',
         'text': 'Processing transcript',
@@ -792,6 +848,144 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(errors, ['Server error: Transcription failed']);
+      await sub.cancel();
+    });
+  });
+
+  group('Server transcripts', () {
+    test('a transcript the app did not ask for is never pasted', () async {
+      mockWsMessageController.add({
+        'event': 'transcription',
+        'text': 'unsolicited text',
+      });
+      await pumpEventQueue();
+
+      verifyNever(() => mockAutomationService.runAutomation(any()));
+      expect(controller.currentText, isEmpty);
+    });
+
+    test('waiting for the transcript reads as transcribing', () async {
+      await endServerDictation();
+
+      expect(controller.isTranscribing, isTrue);
+      expect(controller.isSessionActive, isTrue);
+    });
+
+    test('the transcript is pasted as plain text on one line', () async {
+      await endServerDictation();
+      mockWsMessageController.add({
+        'event': 'transcription',
+        'text': 'Hello\r\nwhoami\u001b[31m\u0007 ',
+      });
+      await pumpEventQueue();
+
+      verify(() => mockAutomationService.runAutomation('Hello whoami')).called(1);
+      expect(controller.isTranscribing, isFalse);
+    });
+
+    test('a second transcript for one dictation is ignored', () async {
+      await endServerDictation();
+      mockWsMessageController
+        ..add({'event': 'transcription', 'text': 'first'})
+        ..add({'event': 'transcription', 'text': 'second'});
+      await pumpEventQueue();
+
+      verify(() => mockAutomationService.runAutomation(any())).called(1);
+      expect(controller.currentText, 'first');
+    });
+
+    test('a transcript that is not text is refused', () async {
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+      await endServerDictation();
+
+      mockWsMessageController.add({'event': 'transcription', 'text': 42});
+      await pumpEventQueue();
+
+      verifyNever(() => mockAutomationService.runAutomation(any()));
+      expect(errors, ['Your server sent a reply the app can’t read.']);
+      await sub.cancel();
+    });
+
+    test('a server error ends the wait and is shown short and plain', () async {
+      const longTail = 300;
+      const shownAtMost = 200;
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+      await endServerDictation();
+
+      mockWsMessageController.add({
+        'event': 'error',
+        'error_code': 'TRANSCRIPTION_FAILED',
+        'message': 'Bad\nthing\u001b[2J ${'x' * longTail}',
+      });
+      await pumpEventQueue();
+
+      expect(controller.isTranscribing, isFalse);
+      expect(errors.single, startsWith('Server error: Bad thing x'));
+      expect(errors.single, endsWith('…'));
+      expect(errors.single.length, lessThan(shownAtMost));
+      await sub.cancel();
+    });
+
+    test('an end signal with no session says the dictation is lost', () async {
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+      when(() => mockWsService.sendEndSignal()).thenReturn(false);
+
+      await endServerDictation();
+
+      expect(controller.isTranscribing, isFalse);
+      expect(errors.single, contains('wasn’t transcribed'));
+      await sub.cancel();
+    });
+
+    test('losing the connection mid-dictation stops and says so', () async {
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+      when(() => mockAudioService.stopRecording()).thenAnswer((_) async {
+        when(() => mockAudioService.isRecording).thenReturn(false);
+        audioStateListener();
+      });
+      when(() => mockAudioService.isRecording).thenReturn(true);
+      audioStateListener();
+
+      wsStatusController.add(ConnectionStatus.disconnected);
+      await pumpEventQueue();
+
+      verify(() => mockAudioService.stopRecording()).called(1);
+      verifyNever(() => mockWsService.sendEndSignal());
+      expect(controller.isRecording, isFalse);
+      expect(errors.single, contains('wasn’t transcribed'));
+      await sub.cancel();
+    });
+
+    test('losing the connection while waiting ends the wait', () async {
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+      await endServerDictation();
+
+      wsStatusController.add(ConnectionStatus.disconnected);
+      await pumpEventQueue();
+      mockWsMessageController.add({'event': 'transcription', 'text': 'late'});
+      await pumpEventQueue();
+
+      expect(controller.isTranscribing, isFalse);
+      expect(errors, hasLength(1));
+      verifyNever(() => mockAutomationService.runAutomation(any()));
+      await sub.cancel();
+    });
+
+    test('an untrusted server is named as the reason', () async {
+      final errors = <String>[];
+      final sub = controller.onError.listen(errors.add);
+      when(() => mockWsService.serverProblem)
+          .thenReturn(ServerProblem.untrusted);
+      when(() => mockWsService.sendEndSignal()).thenReturn(false);
+
+      await endServerDictation();
+
+      expect(errors.single, contains('Trust this server'));
       await sub.cancel();
     });
   });

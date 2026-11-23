@@ -146,6 +146,13 @@ class HomeOrchestrator {
     when(() => ws.serverProblem).thenReturn(ServerProblem.unreachable);
   }
 
+  /// A custom server the sign-in hasn't been trusted with yet.
+  void pointAtUntrustedServer() {
+    when(() => ws.serverProblem).thenReturn(ServerProblem.untrusted);
+    when(() => ws.serverHost).thenReturn('whisper.example.com');
+    when(ws.trustServerAndConnect).thenAnswer((_) async => true);
+  }
+
   void unplugMicrophone() {
     when(() => recording.inputStatus).thenReturn(AudioInputStatus.noDevice);
   }

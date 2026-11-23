@@ -84,8 +84,10 @@ class HandshakeStateMachine {
             to == HandshakeState.failed;
 
       case HandshakeState.authenticating:
+        // locked: the socket dropped mid-handshake and a new attempt starts.
         return to == HandshakeState.authenticated ||
-            to == HandshakeState.failed;
+            to == HandshakeState.failed ||
+            to == HandshakeState.locked;
 
       case HandshakeState.authenticated:
         // Can only go back to locked on reconnect

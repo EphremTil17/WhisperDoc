@@ -31,7 +31,8 @@ void main() {
       await home.pump();
 
       await tester.tap(find.text('Record'));
-      verify(home.recording.toggleRecording).called(1);
+      final toggles = verify(home.recording.toggleRecording);
+      expect(toggles.callCount, 1);
     });
 
     testWidgets('the last transcript is set as captions', (tester) async {
@@ -107,6 +108,23 @@ void main() {
 
       await tester.tap(find.text('Try again'));
       verify(home.ws.connect).called(1);
+    });
+
+    testWidgets('an untrusted server asks first; Trust server connects', (
+      tester,
+    ) async {
+      final home = HomeOrchestrator(tester)
+        ..signInToServer()
+        ..pointAtUntrustedServer();
+      await home.pump();
+
+      expect(find.text('[ new server ]'), findsOneWidget);
+      expect(find.textContaining('whisper.example.com'), findsOneWidget);
+      expect(recordButton(tester).onPressed, isNull);
+
+      await tester.tap(find.text('Trust server'));
+      verify(home.ws.trustServerAndConnect).called(1);
+      verifyNever(home.ws.connect);
     });
 
     testWidgets('an optional update only adds the amber badge', (tester) async {

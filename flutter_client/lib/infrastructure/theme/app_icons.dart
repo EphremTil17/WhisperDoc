@@ -138,4 +138,7 @@ abstract final class AppIcons {
 
   /// Home: the server isn't answering.
   static const IconData serverOff = IconData(57834, fontFamily: _family);
+
+  /// Home: a server not yet trusted with the sign-in.
+  static const IconData shieldAlert = IconData(57854, fontFamily: _family);
 }

@@ -9,9 +9,18 @@
 /// This is critical for the Groq Cloud path, which bypasses the backend
 /// sanitizer entirely. On the backend path it is idempotent defense-in-depth.
 class TextSanitizer {
-  // ANSI CSI sequences (colors, cursor moves) and OSC title sequences.
+  // Any ANSI CSI sequence (colors, cursor moves, screen clears: parameter
+  // bytes, intermediates, one final byte) and any OSC sequence (titles,
+  // hyperlinks), ended by BEL or ST.
   static final RegExp _ansiEscapeRegex = RegExp(
-    r'\x1b\[[0-9;]*[mGKH]|\x1b\]0;.*?\x07',
+    r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)',
+  );
+
+  // Bidi embeddings, overrides and isolates. Speech never needs them, and in
+  // pasted text they make code or a command display differently from what it
+  // is ("Trojan Source"). ZWJ/ZWNJ stay: real scripts and emoji use them.
+  static final RegExp _bidiControlRegex = RegExp(
+    r'[\u202a-\u202e\u2066-\u2069]',
   );
 
   // C0 controls (except \t \n \r), DEL, and C1 controls. ESC (\x1b) and the
@@ -21,9 +30,11 @@ class TextSanitizer {
     r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]',
   );
 
-  /// Strips ANSI escapes and control characters from [text], then trims.
+  /// Strips ANSI escapes, control characters and bidi controls from [text],
+  /// then trims.
   static String sanitize(String text) => text
       .replaceAll(_ansiEscapeRegex, '')
       .replaceAll(_controlCharRegex, '')
+      .replaceAll(_bidiControlRegex, '')
       .trim();
 }

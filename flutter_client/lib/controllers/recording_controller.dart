@@ -10,7 +10,9 @@ import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
+import 'package:flutter_client/logic/processors/text_sanitizer.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -38,7 +40,13 @@ class RecordingController extends ChangeNotifier {
 
   StreamSubscription? _audioSubscription;
   StreamSubscription? _messageSubscription;
+  StreamSubscription<ConnectionStatus>? _statusSubscription;
   StreamSubscription<void>? _deviceChangeSubscription;
+
+  /// Server mode: a dictation ended and its transcript is due. Only then is a
+  /// `transcription` frame accepted, so a server can't paste text unasked.
+  bool _awaitingTranscript = false;
+  Timer? _transcriptTimeout;
 
   // Buffer of transcription segments (limited to prevent memory issues)
   final List<HistoryEntry> _history = [];
@@ -69,7 +77,10 @@ class RecordingController extends ChangeNotifier {
 
   // Getters
   bool get showSilenceWarning => _showSilenceWarning;
-  bool get isTranscribing => _isTranscribing;
+
+  /// A transcript is being produced: by Groq, or by the server after a
+  /// dictation ended.
+  bool get isTranscribing => _isTranscribing || _awaitingTranscript;
   bool get incognitoMode => _settingsService.incognitoMode;
   String get currentText => _currentBuffer;
 
@@ -77,8 +88,8 @@ class RecordingController extends ChangeNotifier {
   DateTime? get transcriptAt => _transcriptAt;
   bool get isRecording => _isRecording;
 
-  /// True while recording or while a Groq transcription/transform is in flight.
-  bool get isSessionActive => _isRecording || _isTranscribing;
+  /// True while recording or while a transcription/transform is in flight.
+  bool get isSessionActive => _isRecording || isTranscribing;
   AudioInputStatus get inputStatus => _audioService.inputStatus;
   List<HistoryEntry> get history => List.unmodifiable(_history);
 
@@ -249,13 +260,11 @@ class RecordingController extends ChangeNotifier {
           _wsService.sendAudioChunk(data);
         });
 
-        // 5. TRANSPORT AUTONOMY: Ensure server is awake in parallel.
+        // 5. TRANSPORT AUTONOMY: Ensure server is awake in parallel. A drop
+        // later on is caught by _onConnectionStatus.
         unawaited(() async {
           final connected = await _wsService.ensureConnected();
-          if (!connected && _isRecording) {
-            unawaited(stopRecording());
-            _errorController.add('Failed to wake up server connection.');
-          }
+          if (!connected) await _abandonDictation();
         }());
       }
 
@@ -317,9 +326,77 @@ class RecordingController extends ChangeNotifier {
 
     if (_settingsService.isGroqMode) {
       unawaited(_transcribeWithGroq());
+    } else if (_wsService.sendEndSignal()) {
+      _expectTranscript();
     } else {
-      _wsService.sendEndSignal();
+      _errorController.add(_lostDictationMessage());
     }
+  }
+
+  void _expectTranscript() {
+    _awaitingTranscript = true;
+    _transcriptTimeout?.cancel();
+    _transcriptTimeout = Timer(AppConstants.serverTranscriptTimeout, () {
+      if (!_awaitingTranscript) return;
+      _stopAwaitingTranscript();
+      _errorController.add('Your server didn’t send the text back in time.');
+    });
+    notifyListeners();
+  }
+
+  void _stopAwaitingTranscript() {
+    _transcriptTimeout?.cancel();
+    _transcriptTimeout = null;
+    if (!_awaitingTranscript) return;
+    _awaitingTranscript = false;
+    notifyListeners();
+  }
+
+  /// The connection went away mid-dictation, or never came up: stop
+  /// capturing and say the dictation is lost rather than dropping it
+  /// silently. Safe to call twice; only the first reports.
+  Future<void> _abandonDictation() async {
+    final wasAwaiting = _awaitingTranscript;
+    final wasRecording = _isRecording && !_isStopping;
+    if (!wasRecording && !wasAwaiting) return;
+
+    _stopAwaitingTranscript();
+    _errorController.add(_lostDictationMessage());
+    if (!wasRecording) return;
+
+    _isStopping = true;
+    try {
+      await _audioService.stopRecording();
+      _audioCueService.playStopCue();
+      await _audioSubscription?.cancel();
+      _audioSubscription = null;
+    } finally {
+      _isStopping = false;
+    }
+  }
+
+  void _onConnectionStatus(ConnectionStatus status) {
+    final lost =
+        status == ConnectionStatus.disconnected ||
+        status == ConnectionStatus.banned;
+    if (lost && !_settingsService.isGroqMode) {
+      unawaited(_abandonDictation());
+    }
+  }
+
+  /// Why a server dictation was lost, as specifically as the connection
+  /// knows.
+  String _lostDictationMessage() {
+    return switch (_wsService.serverProblem) {
+      ServerProblem.untrusted =>
+        'Your sign-in wasn’t sent. Trust this server on the home screen first.',
+      ServerProblem.insecure =>
+        'This server address isn’t allowed, so nothing was transcribed.',
+      ServerProblem.unreachable =>
+        'Your server isn’t answering, so this dictation wasn’t transcribed.',
+      ServerProblem.none =>
+        'Lost the connection to your server, so this dictation wasn’t transcribed.',
+    };
   }
 
   @override
@@ -332,6 +409,8 @@ class RecordingController extends ChangeNotifier {
     _settingsService.removeListener(_onSettingsChanged);
     unawaited(_audioSubscription?.cancel());
     unawaited(_messageSubscription?.cancel());
+    unawaited(_statusSubscription?.cancel());
+    _transcriptTimeout?.cancel();
     unawaited(_deviceChangeSubscription?.cancel());
     unawaited(_errorController.close());
     super.dispose();
@@ -339,6 +418,9 @@ class RecordingController extends ChangeNotifier {
 
   void _initListeners() {
     _messageSubscription = _wsService.onMessage.listen(_handleWebSocketMessage);
+    _statusSubscription = _wsService.onStatusChanged.listen(
+      _onConnectionStatus,
+    );
   }
 
   void _onSettingsChanged() {
@@ -377,13 +459,31 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _handleWebSocketMessage(Map<String, dynamic> msg) {
-    final event = msg['event'] as String?;
+    final event = msg['event'];
     if (event == 'transcription') {
-      _setTranscript(msg['text'] ?? '');
+      // Pasting types into whatever window has focus, so only a transcript
+      // this app asked for is used, and only as plain text.
+      if (!_awaitingTranscript) {
+        _logger.warning('Ignored a transcript the app did not ask for');
+
+        return;
+      }
+      _stopAwaitingTranscript();
+      final text = msg['text'];
+      if (text is! String) {
+        _logger.warning('Ignored a transcript that is not text');
+        _errorController.add('Your server sent a reply the app can’t read.');
+
+        return;
+      }
+      // Speech has no line breaks (the server joins segments with spaces),
+      // and one pasted into a console would run whatever preceded it.
+      _setTranscript(TextSanitizer.sanitize(text).replaceAll(_lineBreaks, ' '));
       notifyListeners();
       unawaited(_finishRecordingSession());
     } else if (event == 'error') {
-      final errorMsg = msg['message'] ?? 'Unknown error';
+      _stopAwaitingTranscript();
+      final errorMsg = _serverText(msg['message']);
 
       if (msg['error_code'] == 'NO_AUDIO') {
         _errorController.add(
@@ -394,6 +494,26 @@ class RecordingController extends ChangeNotifier {
       }
       _logger.error('Server error: $errorMsg');
     }
+  }
+
+  /// Line breaks with the spaces around them, joined into a single space.
+  static final RegExp _lineBreaks = RegExp(r'[ \t]*[\r\n]+[ \t]*');
+  static final RegExp _whitespaceRuns = RegExp(r'\s+');
+
+  /// Server-supplied wording, made safe to show: plain text, one line, short.
+  static String _serverText(Object? value) {
+    const maxLength = 160;
+    final text = value is String
+        ? TextSanitizer.sanitize(value).replaceAll(_whitespaceRuns, ' ')
+        : '';
+    if (text.isEmpty) return 'Unknown error';
+
+    // By code point, so an emoji is never cut in half.
+    final runes = text.runes;
+
+    return runes.length > maxLength
+        ? '${String.fromCharCodes(runes.take(maxLength))}…'
+        : text;
   }
 
   Future<void> _transcribeWithGroq() async {
@@ -439,6 +559,17 @@ class RecordingController extends ChangeNotifier {
           _isTranscribing = false;
           notifyListeners();
         }
+      }
+    }
+
+    // A polish can add line breaks a single-passage style doesn't need; one
+    // pasted into a terminal would run whatever came before it.
+    if (!profile.keepsLineBreaks) {
+      final oneLine = text.replaceAll(_lineBreaks, ' ').trim();
+      if (oneLine != text) {
+        text = oneLine;
+        _setTranscript(text);
+        notifyListeners();
       }
     }
 

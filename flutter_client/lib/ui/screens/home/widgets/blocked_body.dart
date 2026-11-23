@@ -29,6 +29,8 @@ class BlockedBody extends StatelessWidget {
         unawaited(context.read<RecordingController>().refreshHardwareStatus());
       case HomeFix.retryServer:
         unawaited(context.read<WebSocketService>().connect());
+      case HomeFix.trustServer:
+        unawaited(context.read<WebSocketService>().trustServerAndConnect());
       case HomeFix.none:
         return;
     }

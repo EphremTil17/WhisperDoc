@@ -28,6 +28,11 @@ class AppConstants {
   /// the recording path's `ensureConnected()`.
   static const Duration wsConnectTimeout = Duration(seconds: 10);
 
+  /// How long after a dictation ends the server's transcript is accepted.
+  /// Long clips on a CPU-only server can take a while; outside this window a
+  /// transcript is ignored, so a server can't paste text unasked.
+  static const Duration serverTranscriptTimeout = Duration(minutes: 2);
+
   // === Hotkey Defaults ===
   static const String defaultHotkeyDisplay = 'Ctrl+Alt+E';
 

@@ -5,6 +5,7 @@ import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
 import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
+import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
@@ -36,6 +37,10 @@ extension HomeStatusReader on BuildContext {
         ws.status == ConnectionStatus.connecting,
       ),
     );
+    final serverHost = select(
+      (WebSocketService ws) =>
+          serverProblem == ServerProblem.untrusted ? ws.serverHost : '',
+    );
     final updateStatus = select((UpdateService u) => u.status);
     final (
       inputStatus,
@@ -61,6 +66,7 @@ extension HomeStatusReader on BuildContext {
         handshakeFailed: handshakeFailed,
         isBanned: isBanned,
         serverProblem: serverProblem,
+        serverHost: serverHost,
         isConnecting: isConnecting,
         updateStatus: updateStatus,
         inputStatus: inputStatus,

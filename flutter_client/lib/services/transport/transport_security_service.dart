@@ -15,6 +15,8 @@ import 'package:flutter_client/services/utility/logging_service.dart';
 /// - Protects credentials from man-in-the-middle attacks
 /// - Allows flexible local development without SSL overhead
 class TransportSecurityService {
+  static const int _defaultWsPort = 80;
+  static const int _defaultWssPort = 443;
   static const int _shift24 = 24;
   static const int _shift16 = 16;
   static const int _shift8 = 8;
@@ -90,6 +92,19 @@ class TransportSecurityService {
 
       return uriString;
     }
+  }
+
+  /// The server's origin as `scheme://host:port`, after [normalizeUri], so
+  /// `https://example.com` and `wss://example.com:443/ws` name the same
+  /// server. Null when the address doesn't parse to a host.
+  String? serverOrigin(String uriString) {
+    final uri = Uri.tryParse(normalizeUri(uriString));
+    if (uri == null || uri.host.isEmpty) return null;
+    final scheme = uri.scheme.toLowerCase();
+    final defaultPort = scheme == 'wss' ? _defaultWssPort : _defaultWsPort;
+    final port = uri.hasPort ? uri.port : defaultPort;
+
+    return '$scheme://${uri.host.toLowerCase()}:$port';
   }
 
   /// Validate server URI and return security status
