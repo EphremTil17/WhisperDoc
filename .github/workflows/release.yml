@@ -22,9 +22,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write # create the draft release
+    # The write token is given only to the two steps that call gh, never to
+    # pub get, tests or the build, which run third-party native hooks.
     env:
       TAG: ${{ github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,6 +34,8 @@ jobs:
 
       - name: Verify tag, versions, notes, and branch
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Tag $TAG is not vMAJOR.MINOR.PATCH"
@@ -99,6 +102,7 @@ jobs:
       - name: Draft the GitHub Release
         working-directory: flutter_client
         env:
+          GH_TOKEN: ${{ github.token }}
           SYMBOLS_PASSPHRASE: ${{ secrets.SYMBOLS_PASSPHRASE }}
         run: |
           $installer = "windows\installer\WhisperDoc_Setup_v$env:VERSION.exe"

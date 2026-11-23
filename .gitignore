@@ -50,6 +50,7 @@ PROJECT_CONTEXT.md
 flutter_client/env.json
 # Inno Setup output; release installers are built by CI as GitHub Release assets
 flutter_client/windows/installer/*.exe
+win_x64_release/*.exe
 
 # Design tooling scratch: Playwright logs, impeccable decision mocks, review
 # captures and caches. The durable impeccable records (surfaces/, config.json)
