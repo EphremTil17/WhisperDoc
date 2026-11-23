@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_client/controllers/profile_controller.dart';
+import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/shared/widgets/app_link.dart';
@@ -27,6 +28,11 @@ class AccountExitLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
+    // Leaving would cut off the dictation under way.
+    final locked = context.select((RecordingController c) => c.isSessionActive);
+    final VoidCallback leave = isGroqMode
+        ? () => unawaited(_removeGroqKey(context))
+        : () => unawaited(context.read<ProfileController>().signOut());
 
     return Align(
       alignment: AlignmentDirectional.centerStart,
@@ -37,9 +43,7 @@ class AccountExitLink extends StatelessWidget {
         child: AppLink(
           label: isGroqMode ? 'Remove API key' : 'Sign out',
           color: AppColors.alert,
-          onPressed: isGroqMode
-              ? () => unawaited(_removeGroqKey(context))
-              : () => unawaited(context.read<ProfileController>().signOut()),
+          onPressed: locked ? null : leave,
         ),
       ),
     );

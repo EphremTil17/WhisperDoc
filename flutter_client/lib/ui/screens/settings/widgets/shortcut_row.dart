@@ -57,7 +57,7 @@ class ShortcutRow extends StatelessWidget {
     return PanelRow(
       icon: AppIcons.keyboard,
       label: 'Shortcut',
-      subtitle: recording ? 'Stop recording to change' : null,
+      subtitle: recording ? PanelRow.lockedWhileRecording : null,
       trailing: Keycap(hotkey.replaceAll('+', ' ')),
       chevron: true,
       enabled: !recording,

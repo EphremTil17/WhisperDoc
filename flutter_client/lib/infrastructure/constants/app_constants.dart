@@ -85,10 +85,6 @@ class AppConstants {
   /// Pulls from --dart-define OIDC_CLIENT_ID
   static const String oidcClientId = String.fromEnvironment('OIDC_CLIENT_ID');
 
-  /// Discovery URL for OIDC metadata
-  static const String oidcDiscoveryUrl =
-      '$oidcIssuer/.well-known/openid-configuration';
-
   /// Scopes required for identity verification
   static const List<String> oidcScopes = [
     'openid',

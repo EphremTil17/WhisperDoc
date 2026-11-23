@@ -26,15 +26,20 @@ class TopographyBackground extends StatefulWidget {
     required this.active,
     required this.moving,
     required this.child,
+    @visibleForTesting this._program,
   });
 
   final bool active;
   final bool moving;
   final Widget child;
 
+  /// Draws with this program instead of the app's shared one, so a test can
+  /// hand over one it loaded off the fake clock, or none at all.
+  final Future<ui.FragmentProgram?>? _program;
+
   /// Begins loading the GLSL fragment program early (e.g. during boot) so the
   /// first home-screen frame does not wait on asset IO.
-  static void preload() => unawaited(_TopographyBackgroundState._program);
+  static void preload() => unawaited(_TopographyBackgroundState._appProgram);
 
   @override
   State<TopographyBackground> createState() => _TopographyBackgroundState();
@@ -48,7 +53,7 @@ class _TopographyBackgroundState extends State<TopographyBackground>
   static const double _microsPerSecond = 1e6;
 
   /// Loaded once for the app's lifetime.
-  static final Future<ui.FragmentProgram?> _program = _load();
+  static final Future<ui.FragmentProgram?> _appProgram = _load();
 
   final TopographyMotion _motion = TopographyMotion();
   final _Frame _frame = _Frame();
@@ -84,7 +89,7 @@ class _TopographyBackgroundState extends State<TopographyBackground>
   }
 
   Future<void> _attachShader() async {
-    final program = await _program;
+    final program = await (widget._program ?? _appProgram);
     if (!mounted || program == null) return;
     setState(() => _shader = program.fragmentShader());
     _run();

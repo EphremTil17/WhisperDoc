@@ -3,6 +3,8 @@
 // ignore_for_file: prefer-moving-to-variable
 import 'package:flutter_client/ui/screens/account_panel.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
+import 'package:flutter_client/ui/shared/widgets/panel/field_panel.dart';
+import 'package:flutter_client/ui/shared/widgets/panel/panel_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:mocktail/mocktail.dart';
@@ -218,5 +220,61 @@ void main() {
         expect(saved.callCount, 1);
       },
     );
+
+    testWidgets('connection rows lock while a dictation runs', (tester) async {
+      final account = HomeOrchestrator(tester)..startRecording();
+      when(() => account.settings.isGroqMode).thenReturn(false);
+      when(() => account.profile.isAuthenticated).thenReturn(true);
+      await account.pumpPanel(const AccountPanel());
+
+      const lockedRows = 2; // Server and Developer key; signed in, no Sign in
+      expect(
+        find.text(PanelRow.lockedWhileRecording),
+        findsNWidgets(lockedRows),
+      );
+      await tester.tap(find.text('Server'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FieldPanel), findsNothing, reason: 'row is locked');
+
+      await tester.tap(find.text('Sign out'));
+      verifyNever(() => account.profile.signOut());
+    });
+
+    testWidgets('Sign out signs out when no dictation runs', (tester) async {
+      final account = HomeOrchestrator(tester);
+      when(() => account.settings.isGroqMode).thenReturn(false);
+      when(() => account.profile.isAuthenticated).thenReturn(true);
+      when(account.profile.signOut).thenAnswer((_) => Future.value());
+      await account.pumpPanel(const AccountPanel());
+
+      await tester.tap(find.text('Sign out'));
+
+      final signedOut = verify(account.profile.signOut);
+      expect(signedOut.callCount, 1);
+    });
+
+    testWidgets('Remove API key asks first and clears the key only on yes', (
+      tester,
+    ) async {
+      final account = HomeOrchestrator(tester);
+      when(() => account.settings.cachedGroqApiKey)
+          .thenReturn('gsk_abcdefghijklmnop3f2a');
+      when(() => account.settings.setGroqApiKey(any()))
+          .thenAnswer((_) => Future.value());
+      await account.pumpPanel(const AccountPanel());
+
+      await tester.tap(find.text('Remove API key'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(AppButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      verifyNever(() => account.settings.setGroqApiKey(any()));
+
+      await tester.tap(find.text('Remove API key'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(AppButton, 'Remove'));
+      await tester.pumpAndSettle();
+      final cleared = verify(() => account.settings.setGroqApiKey(''));
+      expect(cleared.callCount, 1);
+    });
   });
 }

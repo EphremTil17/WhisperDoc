@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
@@ -19,6 +20,9 @@ class GroqConnectionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final key = SecretMask.of(settings.cachedGroqApiKey);
+    // The key is used for the upload after you stop; model, language and
+    // words to expect may change until then and apply to this clip.
+    final locked = context.select((RecordingController c) => c.isSessionActive);
 
     return PanelSection(
       label: 'Connection',
@@ -27,8 +31,10 @@ class GroqConnectionSection extends StatelessWidget {
           icon: AppIcons.keyRound,
           iconColor: key.isEmpty ? AppColors.alert : null,
           label: 'API key',
+          subtitle: locked ? PanelRow.lockedWhileRecording : null,
           value: key.isEmpty ? 'Not set' : key,
           valueColor: key.isEmpty ? AppColors.alert : null,
+          enabled: !locked,
           onTap: () => unawaited(AccountFields.groqKey(context)),
         ),
         PanelRow(

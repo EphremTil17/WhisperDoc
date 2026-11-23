@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_client/controllers/profile_controller.dart';
+import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -37,6 +38,9 @@ class ServerConnectionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final profile = context.watch<ProfileController>();
+    // Each of these reconnects, which would cut off a dictation under way.
+    final locked = context.select((RecordingController c) => c.isSessionActive);
+    final lockNote = locked ? PanelRow.lockedWhileRecording : null;
     final address = Uri.tryParse(settings.serverUri);
     final hasDeveloperKey = settings.cachedApiKey?.isNotEmpty ?? false;
     // Signing in is the fix when nothing else lets the app connect.
@@ -48,9 +52,11 @@ class ServerConnectionSection extends StatelessWidget {
         PanelRow(
           icon: AppIcons.server,
           label: 'Server',
+          subtitle: lockNote,
           value: address == null || address.host.isEmpty
               ? settings.serverUri
               : address.authority,
+          enabled: !locked,
           onTap: () => unawaited(AccountFields.server(context)),
         ),
         if (!profile.isAuthenticated)
@@ -58,14 +64,18 @@ class ServerConnectionSection extends StatelessWidget {
             icon: AppIcons.logIn,
             iconColor: needsSignIn ? AppColors.alert : null,
             label: 'Sign in',
+            subtitle: lockNote,
             value: 'Passkey or Google',
             valueColor: needsSignIn ? AppColors.alert : null,
+            enabled: !locked,
             onTap: () => unawaited(_signIn(context)),
           ),
         PanelRow(
           icon: AppIcons.keyRound,
           label: 'Developer key',
+          subtitle: lockNote,
           value: hasDeveloperKey ? 'Set' : 'Not set',
+          enabled: !locked,
           onTap: () => unawaited(AccountFields.developerKey(context)),
         ),
       ],

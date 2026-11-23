@@ -18,9 +18,22 @@ class ClipboardService {
   static const _vUpIndex = 2;
   static const _ctrlUpIndex = 3;
 
+  /// Formats Windows reads to keep a copy out of clipboard history (Win+V)
+  /// and cloud clipboard sync. The first excludes it by being present; the
+  /// other two say "no" outright (a zero DWORD) to apps that read them.
+  static const _privateFormats = [
+    'ExcludeClipboardContentFromMonitorProcessing',
+    'CanIncludeInClipboardHistory',
+    'CanUploadToCloudClipboard',
+  ];
+
   /// Places [text] on the clipboard. Returns whether it actually landed there,
   /// so callers never paste stale clipboard contents after a failed copy.
-  static Future<bool> copyToClipboard(String text) async {
+  /// A [private] copy (incognito) stays out of clipboard history and sync.
+  static Future<bool> copyToClipboard(
+    String text, {
+    bool private = false,
+  }) async {
     if (text.isEmpty) return false;
 
     // Use Win32 API directly for reliability
@@ -53,6 +66,7 @@ class ClipboardService {
         EmptyClipboard();
         // On success the system owns hMem; on failure it is still ours.
         success = !SetClipboardData(CF_UNICODETEXT, HANDLE(hMem)).value.isNull;
+        if (success && private) _markPrivate();
         CloseClipboard();
         break;
       }
@@ -69,6 +83,40 @@ class ClipboardService {
     }
 
     return success;
+  }
+
+  /// Adds [_privateFormats] to the open clipboard. Each carries a zero DWORD;
+  /// the system owns a block once set, so only a refused one is freed here.
+  static void _markPrivate() {
+    var marked = 0;
+    for (final name in _privateFormats) {
+      final format = using(
+        (arena) => RegisterClipboardFormat(arena.pcwstr(name)).value,
+      );
+      if (format == 0) continue;
+
+      final hMem = GlobalAlloc(GMEM_MOVEABLE, sizeOf<Uint32>()).value;
+      if (hMem.isNull) continue;
+      final pMem = GlobalLock(hMem).value;
+      if (pMem.isNull) {
+        GlobalFree(hMem);
+        continue;
+      }
+      pMem.cast<Uint32>().value = 0;
+      GlobalUnlock(hMem);
+
+      if (SetClipboardData(format, HANDLE(hMem)).value.isNull) {
+        GlobalFree(hMem);
+      } else {
+        marked++;
+      }
+    }
+    if (marked < _privateFormats.length) {
+      _logger.warning(
+        'Incognito copy marked $marked of ${_privateFormats.length} '
+        'private formats; it may appear in clipboard history',
+      );
+    }
   }
 
   /// Simulates Ctrl+V on Windows using scan codes to avoid Flutter's

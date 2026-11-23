@@ -36,7 +36,9 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   RecordingController? _recording;
+  final FocusNode _buttonFocus = FocusNode(debugLabel: 'Output style');
   bool _isButtonHovered = false;
+  bool _isButtonFocused = false;
 
   bool get _isMenuOpen => _overlayEntry != null;
 
@@ -53,6 +55,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
   void dispose() {
     _recording?.removeListener(_closeMenuOnSessionStart);
     _removeOverlay();
+    _buttonFocus.dispose();
     super.dispose();
   }
 
@@ -87,9 +90,20 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
               targetAnchor: Alignment.topLeft,
               followerAnchor: Alignment.bottomLeft,
               offset: const Offset(0, -6),
-              child: Material(
-                color: Colors.transparent,
-                child: _buildVerticalMenu(ctx),
+              // Its own focus scope: Tab and the arrows move between styles,
+              // and Esc closes the menu.
+              child: FocusScope(
+                child: Actions(
+                  actions: {
+                    DismissIntent: CallbackAction<DismissIntent>(
+                      onInvoke: (_) => _closeMenu(),
+                    ),
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: _buildVerticalMenu(ctx),
+                  ),
+                ),
               ),
             ),
           ),
@@ -101,12 +115,11 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
     setState(() => _overlayEntry = entry);
   }
 
+  /// Focus returns to the button, so a keyboard user carries on from it.
   void _closeMenu() {
-    if (_isMenuOpen) {
-      setState(() {
-        _removeOverlay();
-      });
-    }
+    if (!_isMenuOpen) return;
+    setState(_removeOverlay);
+    _buttonFocus.requestFocus();
   }
 
   void _toggleMenu(BuildContext context) {
@@ -151,7 +164,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
     final tooltip =
         'Profile: ${activeProfile.label} (${DictationProfileUiMapper.subtitleFor(activeProfile)})';
 
-    final active = _isButtonHovered || _isMenuOpen;
+    final active = _isButtonHovered || _isButtonFocused || _isMenuOpen;
 
     return Tooltip(
       message: tooltip,
@@ -159,51 +172,66 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
       verticalOffset: ProfileActionButton._buttonTooltipOffset,
       child: CompositedTransformTarget(
         link: _layerLink,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _isButtonHovered = true),
-          onExit: (_) => setState(() => _isButtonHovered = false),
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => _toggleMenu(context),
-            behavior: HitTestBehavior.opaque,
-            child: AnimatedContainer(
-              duration: AppMotion.quick,
-              height: AppSizes.controlHeight,
-              padding: const EdgeInsets.symmetric(
-                horizontal: ProfileActionButton._padX,
+        // A button to the keyboard and screen readers too: focusable, and
+        // Enter or Space opens the menu.
+        child: Semantics(
+          button: true,
+          label: 'Output style, ${activeProfile.label}',
+          child: FocusableActionDetector(
+            focusNode: _buttonFocus,
+            mouseCursor: SystemMouseCursors.click,
+            onShowHoverHighlight: (on) => setState(() => _isButtonHovered = on),
+            onShowFocusHighlight: (on) => setState(() => _isButtonFocused = on),
+            actions: {
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (_) => _toggleMenu(context),
               ),
-              decoration: BoxDecoration(
-                color: active ? AppColors.band : Colors.transparent,
-                borderRadius: AppRadius.controlAll,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: ProfileActionButton._contentGap,
-                children: [
-                  // One glyph for the picker itself; each style's own glyph
-                  // appears in the menu rows.
-                  const Icon(
-                    AppIcons.type,
-                    size: AppSizes.smallIconSize,
-                    color: AppColors.textMuted,
-                  ),
-                  // Custom style names can be long: shrink, never overflow.
-                  Flexible(
-                    child: CrispText(
-                      activeProfile.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.caption.copyWith(
-                        fontWeight: FontWeight.w500,
+            },
+            child: GestureDetector(
+              onTap: () => _toggleMenu(context),
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: AppMotion.quick,
+                height: AppSizes.controlHeight,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ProfileActionButton._padX,
+                ),
+                decoration: BoxDecoration(
+                  color: active ? AppColors.band : Colors.transparent,
+                  borderRadius: AppRadius.controlAll,
+                ),
+                // The button's own label already says this to screen readers.
+                child: ExcludeSemantics(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: ProfileActionButton._contentGap,
+                    children: [
+                      // One glyph for the picker itself; each style's own
+                      // glyph appears in the menu rows.
+                      const Icon(
+                        AppIcons.type,
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textMuted,
                       ),
-                    ),
+                      // Custom style names can be long: shrink, never overflow.
+                      Flexible(
+                        child: CrispText(
+                          activeProfile.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.caption.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        _isMenuOpen ? AppIcons.chevronUp : AppIcons.chevronDown,
+                        size: ProfileActionButton._chevronSize,
+                        color: AppColors.textMuted,
+                      ),
+                    ],
                   ),
-                  Icon(
-                    _isMenuOpen ? AppIcons.chevronUp : AppIcons.chevronDown,
-                    size: ProfileActionButton._chevronSize,
-                    color: AppColors.textMuted,
-                  ),
-                ],
+                ),
               ),
             ),
           ),

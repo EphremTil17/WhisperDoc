@@ -1,62 +1,163 @@
-import 'dart:convert';
-
+// The managers are mocked fresh for every test; only private mocks live here.
+// ignore_for_file: avoid-late-keyword, prefer-match-file-name
+import 'package:flutter/services.dart';
+import 'package:flutter_client/services/auth/auth_service.dart';
+import 'package:flutter_client/services/auth/oidc_manager.dart';
+import 'package:flutter_client/services/auth/session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:crypto/crypto.dart';
+import 'package:mocktail/mocktail.dart';
+
+class _MockOidcManager extends Mock implements OidcManager {}
+
+class _MockSessionManager extends Mock implements SessionManager {}
 
 void main() {
-  group('AuthService - Security & Protocol Logic', () {
-    test('SECURITY: PKCE Code Verifier must use OIDC-compliant characters', () {
-      // The OIDC/PKCE spec (RFC 7636) allows unreserved characters: [A-Z] / [a-z] / [0-9] / "-" / "." / "_" / "~"
-      const chars =
-          'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~';
-      final allowedPattern = RegExp(r'^[a-zA-Z0-9\-\._~]+$');
+  const nonce = 'generated-nonce';
+  const callback = 'whisperdoc://callback';
+  late _MockOidcManager oidc;
+  late _MockSessionManager session;
+  late AuthService auth;
 
-      expect(
-        allowedPattern.hasMatch(chars),
-        isTrue,
-        reason: 'Alphabet must match RFC 7636',
+  /// The browser comes back to the app with [query].
+  void browserReturns(String query) => when(
+    () => oidc.authenticate(
+      authorizationEndpoint: any(named: 'authorizationEndpoint'),
+      state: any(named: 'state'),
+      codeChallenge: any(named: 'codeChallenge'),
+    ),
+  ).thenAnswer((_) async => '$callback?$query');
+
+  void browserThrows(Object error) => when(
+    () => oidc.authenticate(
+      authorizationEndpoint: any(named: 'authorizationEndpoint'),
+      state: any(named: 'state'),
+      codeChallenge: any(named: 'codeChallenge'),
+    ),
+  ).thenThrow(error);
+
+  void verifyNoTokenRequest() => verifyNever(
+    () => oidc.exchangeToken(
+      tokenEndpoint: any(named: 'tokenEndpoint'),
+      code: any(named: 'code'),
+      codeVerifier: any(named: 'codeVerifier'),
+    ),
+  );
+
+  setUp(() {
+    oidc = _MockOidcManager();
+    session = _MockSessionManager();
+    when(() => oidc.discover()).thenAnswer(
+      (_) async => {
+        'authorization_endpoint': 'https://idp/authorize',
+        'token_endpoint': 'https://idp/token',
+      },
+    );
+    // The verifier and the state are both drawn here.
+    when(() => oidc.generateRandomString(any())).thenReturn(nonce);
+    when(() => oidc.generateCodeChallenge(nonce)).thenReturn('challenge');
+    auth = AuthService(session: session, oidc: oidc);
+  });
+
+  group('AuthService.signIn', () {
+    test('trades the code, with its verifier, for a session', () async {
+      browserReturns('code=auth-code&state=$nonce');
+      when(
+        () => oidc.exchangeToken(
+          tokenEndpoint: any(named: 'tokenEndpoint'),
+          code: any(named: 'code'),
+          codeVerifier: any(named: 'codeVerifier'),
+        ),
+      ).thenAnswer((_) async => {'id_token': 'id.token'});
+      when(
+        () => session.saveTokens(
+          idToken: any(named: 'idToken'),
+          refreshToken: any(named: 'refreshToken'),
+        ),
+      ).thenAnswer((_) => Future.value());
+      when(() => session.extractUser('id.token')).thenReturn({'id': 'user-1'});
+
+      await auth.signIn();
+
+      expect(auth.idToken, 'id.token');
+      verify(
+        () => oidc.authenticate(
+          authorizationEndpoint: 'https://idp/authorize',
+          state: nonce,
+          codeChallenge: 'challenge',
+        ),
+      );
+      verify(
+        () => oidc.exchangeToken(
+          tokenEndpoint: 'https://idp/token',
+          code: 'auth-code',
+          codeVerifier: nonce,
+        ),
       );
     });
 
-    test('SECURITY: PKCE Code Challenge must match RFC 7636 Reference Implementation', () {
-      // Reference example from RFC 7636 Section 4.2
-      // Verifier: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
-      // Challenge (S256): E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+    test('rejects a callback carrying another state', () async {
+      browserReturns('code=auth-code&state=forged');
 
-      const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
-
-      // Replicate the AuthService hashing logic exactly
-      final bytes = utf8.encode(verifier);
-      final digest = sha256.convert(bytes);
-      // We use base64UrlEncode which is strictly OIDC compliant (No Padding)
-      final challenge = base64UrlEncode(digest.bytes).replaceAll('=', '');
-
-      expect(
-        challenge,
-        'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-        reason: 'Our S256 hashing must match the RFC standard exactly for Zitadel to accept it',
+      await expectLater(
+        auth.signIn(),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('State mismatch'),
+          ),
+        ),
       );
+      expect(auth.isAuthenticated, isFalse);
+      verifyNoTokenRequest();
     });
 
-    test('SECURITY: State Parameter Protection (Self-Validation)', () {
-      // The state parameter must be long enough to prevent brute force guessing (CSRF protection)
-      const stateLength = 16;
-      const minSecureStateLength = 8;
-      expect(
-        stateLength >= minSecureStateLength,
-        isTrue,
-        reason: 'State must be long enough to provide security',
+    test('ends quietly when the user closes the browser', () async {
+      const attempts = 2;
+      browserThrows(
+        PlatformException(code: 'CANCELED', message: 'User canceled login'),
       );
+
+      // The second attempt runs too: the first did not stay mid-sign-in.
+      for (var i = 0; i < attempts; i++) {
+        await auth.signIn();
+      }
+
+      expect(auth.isAuthenticated, isFalse);
+      verifyNoTokenRequest();
+      final discoveries = verify(() => oidc.discover());
+      expect(discoveries.callCount, attempts);
     });
 
-    test('PROTOCOL: ID Token Extraction Robustness', () {
-      final mockClaims = {'sub': '12345', 'email': 'test@example.com'};
+    test('passes any other browser failure on to the caller', () async {
+      final failure = PlatformException(code: 'EUNKNOWN', message: 'broken');
+      browserThrows(failure);
 
-      final displayName = mockClaims['name'] ?? mockClaims['email'] ?? 'User';
-      expect(
-        displayName,
-        'test@example.com',
-        reason: 'Should fallback to email if name is missing',
+      await expectLater(auth.signIn(), throwsA(same(failure)));
+      expect(auth.isAuthenticated, isFalse);
+      verifyNoTokenRequest();
+    });
+  });
+
+  group('AuthService.signIn with an incomplete token response', () {
+    test('no id_token stops sign-in and stores nothing', () async {
+      browserReturns('code=auth-code&state=$nonce');
+      when(
+        () => oidc.exchangeToken(
+          tokenEndpoint: any(named: 'tokenEndpoint'),
+          code: any(named: 'code'),
+          codeVerifier: any(named: 'codeVerifier'),
+        ),
+      ).thenAnswer((_) async => {'access_token': 'only-an-access-token'});
+
+      await expectLater(auth.signIn(), throwsA(isA<FormatException>()));
+
+      expect(auth.isAuthenticated, isFalse);
+      verifyNever(
+        () => session.saveTokens(
+          idToken: any(named: 'idToken'),
+          refreshToken: any(named: 'refreshToken'),
+        ),
       );
     });
   });

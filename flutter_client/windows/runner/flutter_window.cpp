@@ -134,6 +134,15 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case WM_ENDSESSION:
+      // Log off or shut down: Windows can end the process after this returns
+      // without WM_CLOSE or WM_DESTROY, so release the shortcut now instead
+      // of leaving the hotkey thread blocked in GetMessageW.
+      if (wparam && hotkey_thread_id_ != 0) {
+        ::PostThreadMessage(hotkey_thread_id_, WM_QUIT, 0, 0);
+        hotkey_thread_id_ = 0;
+      }
+      break;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

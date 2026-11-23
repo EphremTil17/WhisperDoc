@@ -49,6 +49,9 @@ class PanelRow extends StatelessWidget {
   /// Shows the chevron. Defaults to true for tappable rows without [trailing].
   final bool? chevron;
 
+  /// [subtitle] for a row whose change would cut off the dictation under way.
+  static const String lockedWhileRecording = 'Stop recording to change';
+
   final VoidCallback? onTap;
   final bool enabled;
 

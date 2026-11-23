@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/infrastructure/database/app_database.dart';
@@ -12,13 +13,19 @@ class HistoryService {
   static const int _gcmNonceBytes = 12;
 
   final SecureVaultService _vault;
+  final Future<AppDatabase> Function() _openDatabase;
   final LoggingService _logger = LoggingService();
 
   AppDatabase? _db;
   encrypt.Encrypter? _gcmEncrypter;
   bool _isInitialized = false;
 
-  HistoryService(this._vault);
+  /// [openDatabase] lets tests use an in-memory database instead of the
+  /// history file in the app support directory.
+  HistoryService(
+    this._vault, {
+    @visibleForTesting Future<AppDatabase> Function()? openDatabase,
+  }) : _openDatabase = openDatabase ?? AppDatabase.open;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -30,7 +37,7 @@ class HistoryService {
         encrypt.AES(key, mode: encrypt.AESMode.gcm),
       );
 
-      _db = await AppDatabase.open();
+      _db = await _openDatabase();
 
       _isInitialized = true;
       _logger.info(

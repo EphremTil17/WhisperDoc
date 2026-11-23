@@ -11,6 +11,8 @@ import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/services/utility/secure_vault_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 
+import '../../fakes/in_memory_vault.dart';
+
 class _MockSecureVaultService extends Mock implements SecureVaultService {}
 
 void main() {
@@ -402,5 +404,415 @@ void main() {
         expect(loadedSettings.customProfiles.first.name, 'Valid Profile');
       },
     );
+  });
+
+  group('SettingsService persistence', () {
+    const ctrlShift = 0x0006;
+    const vkF9 = 0x78;
+
+    var vault = InMemoryVault();
+
+    /// A fresh service over the stored preferences and [vault], as on launch.
+    Future<SettingsService> launch() async {
+      final settings = SettingsService(vault: vault);
+      await settings.load();
+
+      return settings;
+    }
+
+    setUp(() {
+      PackageInfo.setMockInitialValues(
+        appName: 'WhisperDoc',
+        packageName: 'com.whisperdoc',
+        version: '3.2.0',
+        buildNumber: '1',
+        buildSignature: '',
+      );
+      SharedPreferences.setMockInitialValues({});
+      vault = InMemoryVault();
+    });
+
+    test('a first launch uses the defaults', () async {
+      final settings = await launch();
+
+      expect(settings.serverUri, AppConstants.defaultServerUri);
+      expect(settings.globalHotkey, AppConstants.defaultHotkeyDisplay);
+      expect(settings.hotkeyModifiers, AppConstants.defaultHotkeyModifiers);
+      expect(settings.hotkeyVKey, AppConstants.defaultHotkeyVKey);
+      expect(settings.microphoneId, isNull);
+      expect(settings.autoCopy, isTrue);
+      expect(settings.autoPaste, isTrue);
+      expect(settings.showVisualizer, isTrue);
+      expect(settings.animateBackground, isTrue);
+      expect(settings.incognitoMode, isFalse);
+      expect(settings.transcriptionMode, SettingsService.backendMode);
+      expect(settings.isGroqMode, isFalse);
+      expect(settings.groqModel, AppConstants.groqDefaultModel);
+      expect(settings.cachedApiKey, isNull);
+      expect(settings.cachedGroqApiKey, isNull);
+      expect(settings.appVersion, '3.2.0');
+      expect(settings.vault, same(vault));
+      expect(vault.initializeCalls, 1);
+    });
+
+    test('display toggles survive a restart', () async {
+      final settings = await launch();
+      await settings.setShowVisualizer(false);
+      await settings.setAnimateBackground(false);
+      await settings.setIncognitoMode(true);
+
+      final reloaded = await launch();
+
+      expect(reloaded.showVisualizer, isFalse);
+      expect(reloaded.animateBackground, isFalse);
+      expect(reloaded.incognitoMode, isTrue);
+    });
+
+    test('turning copy off turns paste off too', () async {
+      final settings = await launch();
+
+      await settings.setAutoCopy(false);
+      final reloaded = await launch();
+
+      expect(settings.autoPaste, isFalse);
+      expect(reloaded.autoCopy, isFalse);
+      expect(reloaded.autoPaste, isFalse);
+    });
+
+    test('turning paste on turns copy on too', () async {
+      SharedPreferences.setMockInitialValues({
+        'auto_copy': false,
+        'auto_paste': false,
+      });
+      final settings = await launch();
+
+      await settings.setAutoPaste(true);
+      final reloaded = await launch();
+
+      expect(settings.autoCopy, isTrue);
+      expect(reloaded.autoCopy, isTrue);
+      expect(reloaded.autoPaste, isTrue);
+    });
+
+    test('turning paste off leaves copy on', () async {
+      final settings = await launch();
+
+      await settings.setAutoPaste(false);
+      final reloaded = await launch();
+
+      expect(reloaded.autoCopy, isTrue);
+      expect(reloaded.autoPaste, isFalse);
+    });
+
+    test('setting a value it already has does not notify', () async {
+      final settings = await launch();
+      var notified = 0;
+      settings.addListener(() => notified++);
+
+      await settings.setAutoCopy(true);
+      await settings.setAutoPaste(true);
+      await settings.setShowVisualizer(true);
+      await settings.setAnimateBackground(true);
+      await settings.setIncognitoMode(false);
+      await settings.setServerUri(AppConstants.defaultServerUri);
+      await settings.setTranscriptionMode(SettingsService.backendMode);
+      await settings.setGroqLanguage('');
+      await settings.setGroqPrompt('');
+      await settings.setMicrophoneSelection(null, null);
+
+      expect(notified, 0);
+    });
+
+    test('the server address survives a restart', () async {
+      final settings = await launch();
+      var notified = 0;
+      settings.addListener(() => notified++);
+
+      await settings.setServerUri('wss://whisper.example.org/ws');
+      final reloaded = await launch();
+
+      expect(notified, 1);
+      expect(reloaded.serverUri, 'wss://whisper.example.org/ws');
+    });
+
+    test('trusted servers are remembered until cleared', () async {
+      const origin = 'https://whisper.example.org:443';
+      final settings = await launch();
+      expect(settings.isTrustedServer(origin), isFalse);
+
+      await settings.trustServer(origin);
+      final reloaded = await launch();
+
+      expect(reloaded.isTrustedServer(origin), isTrue);
+      expect(reloaded.isTrustedServer('https://evil.example:443'), isFalse);
+
+      await reloaded.clearTrustedServers();
+      final cleared = await launch();
+
+      expect(reloaded.isTrustedServer(origin), isFalse);
+      expect(cleared.isTrustedServer(origin), isFalse);
+    });
+
+    test('trusting a server twice or clearing none does not notify', () async {
+      const origin = 'https://whisper.example.org:443';
+      final settings = await launch();
+      await settings.clearTrustedServers();
+      await settings.trustServer(origin);
+      var notified = 0;
+      settings.addListener(() => notified++);
+
+      await settings.trustServer(origin);
+
+      expect(notified, 0);
+    });
+
+    test('a recorded shortcut survives a restart', () async {
+      final settings = await launch();
+      var notified = 0;
+      settings.addListener(() => notified++);
+
+      await settings.setHotkey(
+        display: 'Ctrl+Shift+F9',
+        modifiers: ctrlShift,
+        vKey: vkF9,
+      );
+      final reloaded = await launch();
+
+      expect(notified, 1);
+      expect(reloaded.globalHotkey, 'Ctrl+Shift+F9');
+      expect(reloaded.hotkeyModifiers, ctrlShift);
+      expect(reloaded.hotkeyVKey, vkF9);
+    });
+
+    test('a chosen microphone survives a restart until reset', () async {
+      final settings = await launch();
+
+      await settings.setMicrophoneSelection('mic-usb', 'USB Microphone');
+      final reloaded = await launch();
+
+      expect(reloaded.microphoneId, 'mic-usb');
+      expect(reloaded.microphoneLabel, 'USB Microphone');
+
+      await reloaded.setMicrophoneSelection(null, null);
+      final reset = await launch();
+
+      expect(reset.microphoneId, isNull);
+      expect(reset.microphoneLabel, isNull);
+    });
+
+    test('API keys live in the vault, not in preferences', () async {
+      final settings = await launch();
+
+      await settings.setApiKey('wd-static-key');
+      await settings.setGroqApiKey('gsk_test');
+      final prefs = await SharedPreferences.getInstance();
+      final reloaded = await launch();
+
+      expect(vault.entries['api_key'], 'wd-static-key');
+      expect(vault.entries['groq_api_key'], 'gsk_test');
+      expect(prefs.getKeys(), isEmpty);
+      expect(reloaded.cachedApiKey, 'wd-static-key');
+      expect(reloaded.cachedGroqApiKey, 'gsk_test');
+    });
+
+    test('an empty API key deletes the stored one', () async {
+      vault.entries['api_key'] = 'old-key';
+      vault.entries['groq_api_key'] = 'gsk_old';
+      final settings = await launch();
+
+      await settings.setApiKey('');
+      await settings.setGroqApiKey('');
+
+      expect(settings.cachedApiKey, isNull);
+      expect(settings.cachedGroqApiKey, isNull);
+      expect(vault.entries, isEmpty);
+    });
+
+    test('the Groq prompt is kept in the vault', () async {
+      final settings = await launch();
+
+      await settings.setGroqPrompt('Medical terms: tachycardia');
+      final reloaded = await launch();
+
+      expect(vault.entries['groq_prompt'], 'Medical terms: tachycardia');
+      expect(reloaded.groqPrompt, 'Medical terms: tachycardia');
+
+      await reloaded.setGroqPrompt('');
+
+      expect(vault.entries.containsKey('groq_prompt'), isFalse);
+    });
+
+    test(
+      'a prompt left in preferences by older versions moves to the vault',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'groq_prompt': 'legacy prompt',
+        });
+
+        final settings = await launch();
+        final prefs = await SharedPreferences.getInstance();
+
+        expect(settings.groqPrompt, 'legacy prompt');
+        expect(vault.entries['groq_prompt'], 'legacy prompt');
+        expect(prefs.containsKey('groq_prompt'), isFalse);
+      },
+    );
+
+    test('an empty legacy prompt is dropped, not moved', () async {
+      SharedPreferences.setMockInitialValues({'groq_prompt': ''});
+
+      await launch();
+      final prefs = await SharedPreferences.getInstance();
+
+      expect(vault.entries, isEmpty);
+      expect(prefs.containsKey('groq_prompt'), isFalse);
+    });
+
+    test('Groq mode and language survive a restart', () async {
+      final settings = await launch();
+
+      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setGroqLanguage('am');
+      final reloaded = await launch();
+
+      expect(reloaded.isGroqMode, isTrue);
+      expect(reloaded.groqLanguage, 'am');
+    });
+
+    test('a chosen profile survives a restart in Groq mode', () async {
+      final settings = await launch();
+      await settings.setTranscriptionMode(SettingsService.groqMode);
+
+      await settings.setDictationProfile(DictationProfile.professional);
+      final reloaded = await launch();
+
+      expect(reloaded.dictationProfile, DictationProfile.professional);
+    });
+
+    test('leaving Groq mode stores the raw profile', () async {
+      final settings = await launch();
+      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setDictationProfile(DictationProfile.clean);
+
+      await settings.setTranscriptionMode(SettingsService.backendMode);
+      final prefs = await SharedPreferences.getInstance();
+
+      expect(prefs.getString('dictation_profile'), 'raw');
+    });
+
+    test('saved custom profiles survive a restart', () async {
+      const profile = CustomProfile(
+        storageKey: 'custom2',
+        name: 'SOAP note',
+        userPrompt: 'Format as a SOAP note',
+      );
+      final settings = await launch();
+      await settings.setTranscriptionMode(SettingsService.groqMode);
+
+      await settings.saveCustomProfile(profile);
+      await settings.setDictationProfile(profile);
+      final reloaded = await launch();
+
+      expect(reloaded.customProfiles, [profile]);
+      expect(reloaded.dictationProfile.storageKey, 'custom2');
+      expect(reloaded.nextFreeCustomSlot(), 'custom1');
+    });
+
+    test('a deleted custom profile stays deleted after a restart', () async {
+      const profile = CustomProfile(
+        storageKey: 'custom1',
+        name: 'SOAP note',
+        userPrompt: 'Format as a SOAP note',
+      );
+      final settings = await launch();
+      await settings.saveCustomProfile(profile);
+
+      await settings.deleteCustomProfile('custom1');
+      final reloaded = await launch();
+
+      expect(reloaded.customProfiles, isEmpty);
+    });
+
+    test('editing the active custom profile keeps it active', () async {
+      final settings = await launch();
+      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.saveCustomProfile(
+        const CustomProfile(
+          storageKey: 'custom1',
+          name: 'Draft',
+          userPrompt: 'Draft prompt',
+        ),
+      );
+      await settings.setDictationProfile(settings.customProfiles.single);
+
+      await settings.saveCustomProfile(
+        const CustomProfile(
+          storageKey: 'custom1',
+          name: 'Final',
+          userPrompt: 'Final prompt',
+        ),
+      );
+
+      expect(settings.dictationProfile.label, 'Final');
+    });
+
+    test('a prompt at the length limit is accepted', () async {
+      final settings = await launch();
+      final prompt = 'a' * AppConstants.customProfileMaxPromptLength;
+
+      await settings.saveCustomProfile(
+        CustomProfile(storageKey: 'custom1', name: 'Long', userPrompt: prompt),
+      );
+
+      expect(settings.customProfiles.single.userPrompt, prompt);
+    });
+
+    test('corrupt custom profile data loads as no profiles', () async {
+      SharedPreferences.setMockInitialValues({
+        'custom_profiles_json': '{not json',
+      });
+
+      final settings = await launch();
+
+      expect(settings.customProfiles, isEmpty);
+      expect(settings.nextFreeCustomSlot(), 'custom1');
+    });
+
+    test('nothing can be changed before load', () {
+      final settings = SettingsService(vault: vault);
+
+      expect(() => settings.setAutoCopy(false), throwsStateError);
+      expect(() => settings.setApiKey('key'), throwsStateError);
+      expect(
+        () => settings.trustServer('https://a.example:443'),
+        throwsStateError,
+      );
+      expect(() => settings.vault, throwsStateError);
+    });
+
+    test('a vault that fails to open fails the load', () async {
+      final broken = _MockSecureVaultService();
+      when(broken.initialize).thenThrow(StateError('credential store locked'));
+
+      await expectLater(
+        SettingsService(vault: broken).load(),
+        throwsStateError,
+      );
+    });
+  });
+
+  group('SettingsService.getTokenLabel', () {
+    test('a three-part token is a JWT', () {
+      expect(
+        SettingsService.getTokenLabel('eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl'),
+        'Access Token (JWT)',
+      );
+    });
+
+    test('anything else is an API key', () {
+      expect(SettingsService.getTokenLabel('wd_live_123'), 'API Key');
+      expect(SettingsService.getTokenLabel('a.b'), 'API Key');
+      expect(SettingsService.getTokenLabel('a.b.c.d'), 'API Key');
+    });
   });
 }

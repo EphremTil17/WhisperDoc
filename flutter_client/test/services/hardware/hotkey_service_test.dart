@@ -1,100 +1,133 @@
-// ignore_for_file: no-empty-block
-import 'dart:async';
+import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
 
+// Each start, stop or resume call is a separate request the test makes on
+// purpose (two starts, a resume before and after), so they can't share one.
+// The first class holds the fake listeners, which must be static to run as
+// isolate entry points; the file is named for the service under test.
+// ignore_for_file: prefer-moving-to-variable, prefer-match-file-name
+
+/// Listener isolates for the seam. They register nothing with Windows, so
+/// the tests never claim a real global shortcut on the machine running them.
+abstract final class _Listeners {
+  static const int threadId = 4242;
+
+  /// Accepts the shortcut, reports one press, and stays alive like the real
+  /// message loop (an open port keeps the isolate running).
+  static void accepting(HotkeyListenerConfig config) {
+    RawReceivePort();
+    config.sendPort
+      ..send(threadId)
+      ..send('HOTKEY');
+  }
+
+  /// Windows refused the combination (ERROR_HOTKEY_ALREADY_REGISTERED).
+  static void refused(HotkeyListenerConfig config) {
+    config.sendPort.send('ERROR: Failed to register hotkey (Error 1409)');
+  }
+
+  /// Never reports back, like a listener stuck before registering.
+  static void silent(HotkeyListenerConfig _) {
+    RawReceivePort();
+  }
+}
+
 void main() {
-  group('HotkeyService Singleton', () {
-    test('factory returns same instance', () {
-      final instance1 = HotkeyService();
-      final instance2 = HotkeyService();
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-      expect(identical(instance1, instance2), isTrue);
+  const binding = (id: 1, modifiers: 2, vKey: 0x45);
+
+  /// A service whose listener is [listen]; [woken] records each thread it
+  /// was asked to wake. Waking "fails" so stop ends the isolate at once.
+  HotkeyService serviceWith(HotkeyListener listen, List<int> woken) {
+    final service = HotkeyService.withListener(listen, (threadId) {
+      woken.add(threadId);
+
+      return false;
     });
-  });
+    addTearDown(service.stop);
 
-  group('HotkeyService Stream', () {
-    test('onHotkeyPressed is a broadcast stream', () {
-      final service = HotkeyService();
+    return service;
+  }
 
-      // Broadcast streams allow multiple listeners
-      final subscription1 = service.onHotkeyPressed.listen((_) {});
-      final subscription2 = service.onHotkeyPressed.listen((_) {});
+  Future<bool> startOn(HotkeyService service) => service.start(
+    id: binding.id,
+    modifiers: binding.modifiers,
+    vKey: binding.vKey,
+  );
 
-      // If this doesn't throw, it's a broadcast stream
-      expect(subscription1, isNotNull);
-      expect(subscription2, isNotNull);
-
-      unawaited(subscription1.cancel());
-      unawaited(subscription2.cancel());
-    });
-  });
-
-  group('HotkeyService Registration', () {
-    test('start() accepts valid parameters', () {
-      const testHotkeyId = 1;
-      const testModifiers = 2;
-      const testVKey = 0x45;
-      final service = HotkeyService();
-
-      // This will assume the native calls work or fail gracefully in a test environment
-      // Since we can't easily mock FFI in a unit test without a wrapper,
-      // we expect this to likely throw or return normal depending on how Isolate.spawn behaves in test.
-      // But for API compliance check:
-
-      expect(
-        () => service.start(
-          id: testHotkeyId,
-          modifiers: testModifiers,
-          vKey: testVKey,
-        ),
-        // Isolate.spawn might fail in some test environments or succeed.
-        // We mainly want to ensure the method signature is correct and it compiles.
-        // Accepting any result here as we are not testing FFI binding behavior
-        returnsNormally,
-      );
+  group('HotkeyService', () {
+    test('the app uses one shared instance', () {
+      expect(identical(HotkeyService(), HotkeyService()), isTrue);
     });
 
-    test('stop() returns normally', () {
-      final service = HotkeyService();
-      expect(() => service.stop(), returnsNormally);
-    });
-  });
+    test('an accepted shortcut runs and reports presses', () async {
+      final service = serviceWith(_Listeners.accepting, []);
+      final pressed = service.onHotkeyPressed.first;
 
-  group('Hotkey After Idle Behavior', () {
-    // These tests document the expected behavior for the hotkey
-    // registration issue after idle timeout
-
-    test('hotkey should be re-registered after start() call', () {
-      // Expected behavior:
-      // 1. HomeScreen._initHotkeys calls hotkeyService.start()
-      // 2. After start() completes, _registerCurrentHotkey is called
-      // 3. This should happen even if isolate was already running
-      //
-      // The fix ensures re-registration always happens after start()
-
-      expect(true, isTrue); // Placeholder for integration test
+      expect(await startOn(service), isTrue);
+      expect(service.isRunning, isTrue);
+      expect(await pressed.timeout(const Duration(seconds: 2)), 1);
     });
 
-    test('hotkey events should flow after WebSocket idle disconnect', () {
-      // Expected behavior:
-      // 1. WebSocket disconnects after 5m idle
-      // 2. Hotkey should still be registered with Windows
-      // 3. Pressing hotkey should trigger toggleRecording
-      // 4. toggleRecording should reconnect WebSocket and start recording
+    test('a refused shortcut says so and does not count as running', () async {
+      final service = serviceWith(_Listeners.refused, []);
+      var refusals = 0;
+      service.onRefused.listen((_) => refusals++);
 
-      expect(true, isTrue); // Placeholder for integration test
+      expect(await startOn(service), isFalse);
+      await pumpEventQueue();
+
+      expect(service.isRunning, isFalse);
+      expect(refusals, 1);
     });
 
-    test('hotkey registration survives hot reload', () {
-      // Expected behavior:
-      // 1. Isolate survives hot reload
-      // 2. start() returns early (isolate exists)
-      // 3. _registerCurrentHotkey re-registers anyway
-      // 4. Hotkey should work after hot reload
+    test('a listener that never reports back is ended and refused', () async {
+      final service = serviceWith(_Listeners.silent, []);
 
-      expect(true, isTrue); // Placeholder for integration test
+      expect(await startOn(service), isFalse);
+      expect(service.isRunning, isFalse);
+    });
+
+    test(
+      'stop during start waits for it, so nothing is left running',
+      () async {
+        final service = serviceWith(_Listeners.accepting, []);
+
+        final starting = startOn(service);
+        final stopping = service.stop();
+        await Future.wait([starting, stopping]);
+
+        expect(await starting, isTrue);
+        expect(service.isRunning, isFalse);
+      },
+    );
+
+    test('a second start replaces the first listener', () async {
+      final woken = <int>[];
+      final service = serviceWith(_Listeners.accepting, woken);
+
+      final results = await Future.wait([startOn(service), startOn(service)]);
+
+      expect(results, [true, true]);
+      expect(woken, [
+        _Listeners.threadId,
+      ], reason: 'the first listener was ended');
+      expect(service.isRunning, isTrue);
+    });
+
+    test('resume restores the last shortcut after a stop', () async {
+      final service = serviceWith(_Listeners.accepting, []);
+      expect(await service.resume(), isFalse, reason: 'nothing to restore yet');
+
+      await startOn(service);
+      await service.stop();
+      expect(service.isRunning, isFalse);
+
+      expect(await service.resume(), isTrue);
+      expect(service.isRunning, isTrue);
     });
   });
 }

@@ -29,7 +29,9 @@ class ProfileMenuItemTile extends StatefulWidget {
     horizontal: AppSpace.md,
     vertical: AppSpace.sm,
   );
-  static const double _editPadStart = AppSpace.sm;
+
+  /// The edit button's target, larger than its 16px glyph.
+  static const double _editTarget = 28;
 
   @override
   State<ProfileMenuItemTile> createState() => _ProfileMenuItemTileState();
@@ -37,6 +39,9 @@ class ProfileMenuItemTile extends StatefulWidget {
 
 class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
   bool _isHovered = false;
+  bool _isFocused = false;
+
+  void _activate() => widget.onTap?.call();
 
   @override
   Widget build(BuildContext context) {
@@ -45,85 +50,108 @@ class _ProfileMenuItemTileState extends State<ProfileMenuItemTile> {
     // Faint is for icons only; unavailable text steps down to muted.
     final ink = enabled ? AppColors.text : AppColors.textMuted;
     const meta = AppColors.textMuted;
+    final label = widget.profile.label;
+    final description = DictationProfileUiMapper.subtitleFor(
+      widget.profile,
+      isKeyBlocked: widget.isKeyBlocked,
+    );
+    final onEdit = widget.onEdit;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: AppMotion.quick,
-          padding: ProfileMenuItemTile._padding,
-          decoration: BoxDecoration(
-            color: filled ? AppColors.band : Colors.transparent,
-            borderRadius: AppRadius.controlAll,
+    // A button to the keyboard and screen readers too: focusable unless
+    // unavailable, Enter or Space picks it, and its name, description and
+    // selection are announced. The menu opens focused on the current style.
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      selected: widget.isSelected,
+      label: '$label, $description',
+      child: FocusableActionDetector(
+        enabled: enabled,
+        autofocus: widget.isSelected,
+        mouseCursor: enabled
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
+        onShowHoverHighlight: (on) => setState(() => _isHovered = on),
+        onShowFocusHighlight: (on) => setState(() => _isFocused = on),
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) => _activate(),
           ),
-          child: Row(
-            spacing: AppSpace.md,
-            children: [
-              Icon(
-                DictationProfileUiMapper.iconFor(widget.profile),
-                size: AppSizes.smallIconSize,
-                color: enabled ? AppColors.textMuted : AppColors.iconFaint,
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: AppMotion.quick,
+            padding: ProfileMenuItemTile._padding,
+            decoration: BoxDecoration(
+              color: filled ? AppColors.band : Colors.transparent,
+              borderRadius: AppRadius.controlAll,
+              // The keyboard ring stays distinct from the selected fill.
+              border: Border.all(
+                color: _isFocused ? AppColors.textMuted : Colors.transparent,
               ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CrispText(
-                      widget.profile.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.caption.copyWith(
-                        color: ink,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    CrispText(
-                      DictationProfileUiMapper.subtitleFor(
-                        widget.profile,
-                        isKeyBlocked: widget.isKeyBlocked,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.caption.copyWith(color: meta),
-                    ),
-                  ],
+            ),
+            child: Row(
+              spacing: AppSpace.md,
+              children: [
+                Icon(
+                  DictationProfileUiMapper.iconFor(widget.profile),
+                  size: AppSizes.smallIconSize,
+                  color: enabled ? AppColors.textMuted : AppColors.iconFaint,
                 ),
-              ),
-              if (widget.onEdit != null)
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: widget.onEdit,
-                    child: const Padding(
-                      padding: EdgeInsetsDirectional.only(
-                        start: ProfileMenuItemTile._editPadStart,
-                      ),
-                      child: Icon(
-                        AppIcons.pencil,
-                        size: AppSizes.smallIconSize,
-                        color: AppColors.textMuted,
-                      ),
+                Expanded(
+                  // The row's own label already says this to screen readers.
+                  child: ExcludeSemantics(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CrispText(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.caption.copyWith(
+                            color: ink,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        CrispText(
+                          description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.caption.copyWith(color: meta),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              if (widget.isSelected)
-                const Icon(
-                  AppIcons.check,
-                  size: AppSizes.smallIconSize,
-                  color: AppColors.text,
-                )
-              else if (widget.isKeyBlocked)
-                const Icon(
-                  AppIcons.keyRound,
-                  size: AppSizes.smallIconSize,
-                  color: AppColors.iconFaint,
-                ),
-            ],
+                if (onEdit != null)
+                  IconButton(
+                    onPressed: onEdit,
+                    tooltip: 'Edit $label',
+                    icon: const Icon(AppIcons.pencil),
+                    iconSize: AppSizes.smallIconSize,
+                    color: AppColors.textMuted,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: ProfileMenuItemTile._editTarget,
+                      height: ProfileMenuItemTile._editTarget,
+                    ),
+                  ),
+                if (widget.isSelected)
+                  const Icon(
+                    AppIcons.check,
+                    size: AppSizes.smallIconSize,
+                    color: AppColors.text,
+                  )
+                else if (widget.isKeyBlocked)
+                  const Icon(
+                    AppIcons.keyRound,
+                    size: AppSizes.smallIconSize,
+                    color: AppColors.iconFaint,
+                  ),
+              ],
+            ),
           ),
         ),
       ),

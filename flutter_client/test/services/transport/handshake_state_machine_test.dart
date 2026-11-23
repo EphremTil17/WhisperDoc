@@ -90,15 +90,52 @@ void main() {
     );
   });
 
+  // testWidgets runs on a fake clock, so tester.pump(duration) passes the
+  // handshake timeout without waiting for it.
   group('HandshakeStateMachine - Timeout', () {
-    test('should transition to failed after timeout', () {
-      // Note: This test uses the real Timer.
-      // In a production test suite, we'd use fake_async,
-      // but here we verify the logic exists.
+    const timeout = Duration(seconds: 15);
+    const tick = Duration(milliseconds: 1);
 
-      // Since timeout is 15s, we won't wait for it in a unit test
-      // unless using fake_async.
-      expect(true, isTrue);
+    testWidgets('authenticating fails once the server stays silent for 15 s', (
+      tester,
+    ) async {
+      machine.transitionTo(HandshakeState.authenticating);
+
+      await tester.pump(timeout - tick);
+      expect(machine.state, equals(HandshakeState.authenticating));
+
+      await tester.pump(tick);
+      expect(machine.state, equals(HandshakeState.failed));
     });
+
+    testWidgets('an answer in time keeps the session authenticated', (
+      tester,
+    ) async {
+      machine.transitionTo(HandshakeState.authenticating);
+      await tester.pump(timeout - tick);
+      machine.transitionTo(HandshakeState.authenticated);
+
+      await tester.pump(timeout);
+      expect(machine.state, equals(HandshakeState.authenticated));
+    });
+
+    testWidgets(
+      'a reset in time stays locked, a new attempt gets the full 15 s',
+      (tester) async {
+        machine.transitionTo(HandshakeState.authenticating);
+        await tester.pump(timeout - tick);
+        machine.reset();
+
+        await tester.pump(timeout);
+        expect(machine.state, equals(HandshakeState.locked));
+
+        machine.transitionTo(HandshakeState.authenticating);
+        await tester.pump(timeout - tick);
+        expect(machine.state, equals(HandshakeState.authenticating));
+
+        await tester.pump(tick);
+        expect(machine.state, equals(HandshakeState.failed));
+      },
+    );
   });
 }

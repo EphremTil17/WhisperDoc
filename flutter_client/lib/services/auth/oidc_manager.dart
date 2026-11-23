@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:characters/characters.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
@@ -15,19 +16,24 @@ class OidcManager {
   static const int _httpUnauthorized = 401; // OAuth invalid_client
   static const int _maxErrorSummaryLength = 160;
 
-  static Uri get _configuredIssuerUri =>
-      _normalizeUri(Uri.parse(AppConstants.oidcIssuer));
+  /// The server every endpoint must live on: the build's OIDC_ISSUER, which
+  /// tests replace with their own.
+  final String _issuer;
 
-  static Uri get _issuerOrigin => _configuredIssuerUri.replace(path: '');
+  OidcManager({@visibleForTesting this._issuer = AppConstants.oidcIssuer});
+
+  Uri get _configuredIssuerUri => _normalizeUri(Uri.parse(_issuer));
+
+  Uri get _issuerOrigin => _configuredIssuerUri.replace(path: '');
 
   /// Discovers OIDC endpoints from the issuer.
   Future<Map<String, dynamic>> discover() async {
     // Set at build time (--dart-define-from-file=env.json); a build without
     // it cannot sign in, and should say so rather than fail on a bad URI.
-    if (AppConstants.oidcIssuer.isEmpty) {
+    if (_issuer.isEmpty) {
       throw StateError('This build has no sign-in server (OIDC_ISSUER unset)');
     }
-    final discoveryUri = Uri.parse(AppConstants.oidcDiscoveryUrl);
+    final discoveryUri = Uri.parse('$_issuer/.well-known/openid-configuration');
     _validateTrustedUri(
       discoveryUri,
       label: 'OIDC discovery endpoint',
@@ -141,7 +147,12 @@ class OidcManager {
       );
     }
 
-    return jsonDecode(response.body);
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Token endpoint returned an invalid document');
+    }
+
+    return decoded;
   }
 
   // --- Helpers ---

@@ -62,7 +62,10 @@ class _MicrophonePanelState extends State<MicrophonePanel> {
           actions: [
             IconButton(
               tooltip: 'Refresh devices',
-              onPressed: () => setState(() => _devices = _load()),
+              // A block body: setState must not return the new Future.
+              onPressed: () => setState(() {
+                _devices = _load();
+              }),
               icon: const Icon(AppIcons.refreshCw),
             ),
           ],

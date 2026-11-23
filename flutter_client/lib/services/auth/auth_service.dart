@@ -62,7 +62,7 @@ class AuthService extends ChangeNotifier {
       final state = _oidc.generateRandomString(_stateLength);
 
       final authResult = await _oidc.authenticate(
-        authorizationEndpoint: discovery['authorization_endpoint'],
+        authorizationEndpoint: _text(discovery, 'authorization_endpoint'),
         state: state,
         codeChallenge: challenge,
       );
@@ -77,16 +77,16 @@ class AuthService extends ChangeNotifier {
       }
 
       final tokens = await _oidc.exchangeToken(
-        tokenEndpoint: discovery['token_endpoint'],
+        tokenEndpoint: _text(discovery, 'token_endpoint'),
         code: code,
         codeVerifier: verifier,
       );
 
-      final signInIdToken = tokens['id_token'] as String;
+      final signInIdToken = _text(tokens, 'id_token');
       _idToken = signInIdToken;
       await _session.saveTokens(
         idToken: signInIdToken,
-        refreshToken: tokens['refresh_token'],
+        refreshToken: _optionalText(tokens, 'refresh_token'),
       );
 
       _currentUser = _session.extractUser(signInIdToken);
@@ -140,15 +140,15 @@ class AuthService extends ChangeNotifier {
 
       final discovery = await _oidc.discover();
       final tokens = await _oidc.exchangeToken(
-        tokenEndpoint: discovery['token_endpoint'],
+        tokenEndpoint: _text(discovery, 'token_endpoint'),
         refreshToken: refreshToken,
       );
 
-      final refreshedIdToken = tokens['id_token'] as String;
+      final refreshedIdToken = _text(tokens, 'id_token');
       _idToken = refreshedIdToken;
       await _session.saveTokens(
         idToken: refreshedIdToken,
-        refreshToken: tokens['refresh_token'],
+        refreshToken: _optionalText(tokens, 'refresh_token'),
       );
 
       _currentUser = _session.extractUser(refreshedIdToken);
@@ -192,6 +192,21 @@ class AuthService extends ChangeNotifier {
   }
 
   static const int _loggedSubPrefixLength = 8;
+
+  /// A required string field of an identity-provider document. Anything else
+  /// means the provider sent something unexpected, so the flow stops here.
+  static String _text(Map<String, dynamic> json, String key) {
+    final value = json[key];
+    if (value is String && value.isNotEmpty) return value;
+    throw FormatException('Identity provider response has no $key');
+  }
+
+  /// An optional string field; a provider may omit it (no refresh token).
+  static String? _optionalText(Map<String, dynamic> json, String key) {
+    final value = json[key];
+
+    return value is String && value.isNotEmpty ? value : null;
+  }
 
   String _formatPrincipal(Map<String, dynamic>? user) {
     // Log a truncated subject prefix only — omit email and full subject so

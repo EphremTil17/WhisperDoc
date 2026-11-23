@@ -31,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _errorNotice = Duration(seconds: 4);
 
   StreamSubscription? _hotkeySubscription;
+  StreamSubscription? _refusedSubscription;
   AppLifecycleListener? _lifecycle;
   StreamSubscription? _errorSubscription;
   SettingsService? _settings;
@@ -90,6 +91,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       unawaited(controller.toggleRecording());
     });
 
+    // Every registration (launch, a new shortcut, the recorder closing)
+    // reports a refusal here, so a dead shortcut never goes unnoticed.
+    _refusedSubscription = hotkeyService.onRefused.listen((_) {
+      if (!mounted) return;
+      final shortcut = _settings?.globalHotkey ?? 'The shortcut';
+      _notify(
+        '$shortcut is taken by another app. Choose another in Settings.',
+        _errorNotice,
+      );
+    });
+
     _settings?.addListener(_onSettingsChanged);
   }
 
@@ -104,17 +116,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _restartHotkeyService(HotkeyService service) async {
-    try {
-      await service.start(
-        id: 1,
-        modifiers: _settings?.hotkeyModifiers ?? 0,
-        vKey: _settings?.hotkeyVKey ?? 0,
-      );
-    } catch (e) {
-      LoggingService().error('Failed to start/restart hotkey service: $e');
-    }
-  }
+  /// A refusal is reported through [HotkeyService.onRefused].
+  Future<void> _restartHotkeyService(HotkeyService service) => service.start(
+    id: 1,
+    modifiers: _settings?.hotkeyModifiers ?? 0,
+    vKey: _settings?.hotkeyVKey ?? 0,
+  );
 
   /// One look for every notice (set by the snackbar theme).
   void _notify(String message, Duration duration) {
@@ -160,6 +167,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _lifecycle?.dispose();
     _settings?.removeListener(_onSettingsChanged);
     unawaited(_hotkeySubscription?.cancel());
+    unawaited(_refusedSubscription?.cancel());
     unawaited(_errorSubscription?.cancel());
     super.dispose();
   }

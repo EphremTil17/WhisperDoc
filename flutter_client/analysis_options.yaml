@@ -95,6 +95,10 @@ dcm:
     - prefer-using-list-view
     - use-setstate-synchronously
 analyzer:
+  language:
+    # No implicit casts from dynamic: JSON and token claims must be checked
+    # before use, not trusted to be the type the code expects.
+    strict-casts: true
   exclude:
     - build/**
     - windows/**

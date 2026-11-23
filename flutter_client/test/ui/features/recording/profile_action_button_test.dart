@@ -1,7 +1,12 @@
-// ignore_for_file: avoid-late-keyword, prefer-match-file-name
+// Each tester.sendKeyEvent() is a separate key press the test makes on
+// purpose (Tab, then Enter, then an arrow), so they can't share one value.
+// ignore_for_file: avoid-late-keyword, prefer-match-file-name, prefer-moving-to-variable
 import 'dart:ui';
 
+import 'package:flutter/services.dart';
+
 import 'package:flutter_client/infrastructure/theme/app_icons.dart';
+import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -282,5 +287,118 @@ void main() {
 
     // Menu should be closed
     expect(verbatimTile, findsNothing);
+  });
+
+  group('keyboard and screen readers', () {
+    testWidgets('Tab, Enter, an arrow and Enter pick a style', (tester) async {
+      final orchestrator = createOrchestrator(tester);
+      await orchestrator.pumpButton();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Verbatim transcription'), findsOneWidget);
+
+      // The menu opens on the current style (Raw); the next one is Clean.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      final picked = verify(
+        () => mockSettings.setDictationProfile(DictationProfile.clean),
+      );
+      expect(picked.callCount, 1);
+      expect(find.text('Verbatim transcription'), findsNothing);
+    });
+
+    testWidgets('Tab reaches the add-style row and Enter opens the editor', (
+      tester,
+    ) async {
+      final orchestrator = createOrchestrator(tester);
+      await orchestrator.openMenu();
+
+      // From the current style (Raw) past the other four to the last row.
+      const stylesAfterRaw = 4;
+      for (var i = 0; i <= stylesAfterRaw; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ProfileEditorDialog), findsOneWidget);
+      expect(find.text('Verbatim transcription'), findsNothing);
+    });
+
+    testWidgets('hovering the add-style row fills it with the band', (
+      tester,
+    ) async {
+      // Hover highlights show only in desktop (traditional) focus mode, which
+      // the app runs in on Windows; tests otherwise start in touch mode.
+      FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.alwaysTraditional;
+      addTearDown(
+        () => FocusManager.instance.highlightStrategy =
+            FocusHighlightStrategy.automatic,
+      );
+      final orchestrator = createOrchestrator(tester);
+      await orchestrator.openMenu();
+      BoxDecoration? addRowFill() =>
+          tester
+                  .widget<AnimatedContainer>(
+                    find
+                        .ancestor(
+                          of: find.text('Custom Profile'),
+                          matching: find.byType(AnimatedContainer),
+                        )
+                        .first,
+                  )
+                  .decoration
+              as BoxDecoration?;
+      expect(addRowFill()?.color, Colors.transparent);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.text('Custom Profile')));
+      await tester.pumpAndSettle();
+
+      expect(addRowFill()?.color, AppColors.band);
+    });
+
+    testWidgets('Esc closes the menu and returns focus to the button', (
+      tester,
+    ) async {
+      final orchestrator = createOrchestrator(tester);
+      await orchestrator.openMenu();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Verbatim transcription'), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Output style');
+    });
+
+    testWidgets('the button, styles and edit action are labelled', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      when(() => mockSettings.customProfiles).thenReturn([
+        const CustomProfile(
+          storageKey: 'custom1',
+          name: 'Standup',
+          userPrompt: 'Summarise as standup notes.',
+        ),
+      ]);
+      final orchestrator = createOrchestrator(tester);
+      await orchestrator.openMenu();
+
+      expect(find.bySemanticsLabel('Output style, Raw'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Raw, Verbatim transcription')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Edit Standup'), findsOneWidget);
+      semantics.dispose();
+    });
   });
 }

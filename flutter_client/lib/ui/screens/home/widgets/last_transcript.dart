@@ -68,7 +68,10 @@ class _LastTranscriptState extends State<LastTranscript> {
   }
 
   Future<void> _copy() async {
-    final ok = await ClipboardService.copyToClipboard(widget.text);
+    final ok = await ClipboardService.copyToClipboard(
+      widget.text,
+      private: context.read<SettingsService>().incognitoMode,
+    );
     if (!ok || !mounted) return;
     setState(() => _justCopied = true);
     _confirmTimer?.cancel();

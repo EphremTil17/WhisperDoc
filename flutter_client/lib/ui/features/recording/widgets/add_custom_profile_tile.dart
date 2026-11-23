@@ -20,42 +20,57 @@ class AddCustomProfileTile extends StatefulWidget {
 
 class _AddCustomProfileTileState extends State<AddCustomProfileTile> {
   bool _isHovered = false;
+  bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
-    final ink = _isHovered ? AppColors.text : AppColors.textMuted;
+    // This row is never "selected", so keyboard focus can share the hover
+    // fill without being mistaken for the current style.
+    final lit = _isHovered || _isFocused;
+    final ink = lit ? AppColors.text : AppColors.textMuted;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: AppMotion.quick,
-          padding: AddCustomProfileTile._padding,
-          decoration: BoxDecoration(
-            color: _isHovered ? AppColors.band : Colors.transparent,
-            borderRadius: AppRadius.controlAll,
-            border: const Border(top: BorderSide(color: AppColors.rule)),
+    return Semantics(
+      button: true,
+      label: 'Add a custom style',
+      child: FocusableActionDetector(
+        mouseCursor: SystemMouseCursors.click,
+        onShowHoverHighlight: (on) => setState(() => _isHovered = on),
+        onShowFocusHighlight: (on) => setState(() => _isFocused = on),
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) => widget.onTap(),
           ),
-          child: Row(
-            spacing: AppSpace.md,
-            children: [
-              Icon(AppIcons.plus, size: AppSizes.smallIconSize, color: ink),
-              Flexible(
-                child: CrispText(
-                  'Custom Profile',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppType.caption.copyWith(
-                    color: ink,
-                    fontWeight: FontWeight.w500,
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: AppMotion.quick,
+            padding: AddCustomProfileTile._padding,
+            decoration: BoxDecoration(
+              color: lit ? AppColors.band : Colors.transparent,
+              borderRadius: AppRadius.controlAll,
+              border: const Border(top: BorderSide(color: AppColors.rule)),
+            ),
+            child: ExcludeSemantics(
+              child: Row(
+                spacing: AppSpace.md,
+                children: [
+                  Icon(AppIcons.plus, size: AppSizes.smallIconSize, color: ink),
+                  Flexible(
+                    child: CrispText(
+                      'Custom Profile',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption.copyWith(
+                        color: ink,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
