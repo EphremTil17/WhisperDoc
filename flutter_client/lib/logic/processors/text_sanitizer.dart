@@ -6,8 +6,9 @@
 /// automation path. Printable Unicode (accents, symbols, non-Latin scripts) is
 /// preserved: it cannot drive a terminal, and stripping it corrupts dictation.
 ///
-/// This is critical for the Groq Cloud path, which bypasses the backend
-/// sanitizer entirely. On the backend path it is idempotent defense-in-depth.
+/// This is critical for the cloud paths (Groq, OpenRouter), which bypass the
+/// backend sanitizer entirely. On the backend path it is idempotent
+/// defense-in-depth.
 class TextSanitizer {
   // Any ANSI CSI sequence (colors, cursor moves, screen clears: parameter
   // bytes, intermediates, one final byte) and any OSC sequence (titles,

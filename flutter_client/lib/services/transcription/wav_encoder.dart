@@ -37,8 +37,12 @@ class WavEncoder {
   static const String _dataChunkId = 'data';
 
   /// Wraps [pcmData] (raw 16-bit LE mono samples at 16 kHz) in a WAV container.
-  static Uint8List encode(Uint8List pcmData) {
-    final int dataSizeBytes = pcmData.length;
+  static Uint8List encode(Uint8List pcmData) =>
+      encodeChunks([pcmData], pcmData.length);
+
+  /// [encode] for audio captured in [chunks] totalling [dataSizeBytes]:
+  /// each chunk is copied once, straight into place after the header.
+  static Uint8List encodeChunks(List<Uint8List> chunks, int dataSizeBytes) {
     final int bytesPerSample = _bitsPerSample ~/ _bitsPerByte;
     final int riffChunkSize =
         dataSizeBytes +
@@ -68,13 +72,13 @@ class WavEncoder {
     _writeFourCc(buffer, _dataChunkIdOffset, _dataChunkId);
     buffer.setUint32(_dataChunkSizeOffset, dataSizeBytes, Endian.little);
 
-    // Copy PCM data after header
+    // PCM data after the header.
     final Uint8List bytes = buffer.buffer.asUint8List();
-    bytes.setRange(
-      _waveHeaderSizeBytes,
-      _waveHeaderSizeBytes + dataSizeBytes,
-      pcmData,
-    );
+    var offset = _waveHeaderSizeBytes;
+    for (final chunk in chunks) {
+      bytes.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
 
     return bytes;
   }

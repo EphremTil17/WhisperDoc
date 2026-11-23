@@ -16,9 +16,9 @@ import 'package:flutter_client/logic/processors/text_sanitizer.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
-import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
-import 'package:flutter_client/services/transcription/groq_transform_service.dart';
-import 'package:flutter_client/services/transcription/groq_error.dart';
+import 'package:flutter_client/services/transcription/cloud_error.dart';
+import 'package:flutter_client/services/transcription/cloud_transcription_service.dart';
+import 'package:flutter_client/services/transcription/transform_service.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/logic/processors/audio_signal_processor.dart';
 
@@ -30,8 +30,8 @@ class RecordingController extends ChangeNotifier {
 
   final AudioService _audioService;
   final WebSocketService _wsService;
-  final GroqTranscriptionService _groqService;
-  final GroqTransformService _transformService;
+  final CloudTranscriptionService _cloudService;
+  final TransformService _transformService;
   final AutomationService _automationService;
   final HistoryService _historyService;
   final SettingsService _settingsService;
@@ -65,7 +65,8 @@ class RecordingController extends ChangeNotifier {
   // Liveness check - warning if no audio signal is detected
   bool _showSilenceWarning = false;
 
-  // Groq transcription lockout — single source of truth for all UI/hotkey paths
+  // Cloud transcription lockout — single source of truth for all UI/hotkey
+  // paths.
   bool _isTranscribing = false;
 
   // Re-entry guards for overlapping start/stop requests (rapid hotkey presses).
@@ -78,8 +79,8 @@ class RecordingController extends ChangeNotifier {
   // Getters
   bool get showSilenceWarning => _showSilenceWarning;
 
-  /// A transcript is being produced: by Groq, or by the server after a
-  /// dictation ended.
+  /// A transcript is being produced: by a cloud source, or by the server
+  /// after a dictation ended.
   bool get isTranscribing => _isTranscribing || _awaitingTranscript;
   bool get incognitoMode => _settingsService.incognitoMode;
   String get currentText => _currentBuffer;
@@ -101,7 +102,7 @@ class RecordingController extends ChangeNotifier {
   RecordingController({
     required this._audioService,
     required this._wsService,
-    required this._groqService,
+    required this._cloudService,
     required this._transformService,
     required this._automationService,
     required this._historyService,
@@ -161,7 +162,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   Future<void> startRecording() async {
-    // Groq transcription lockout — prevent hotkey/capsule race during upload.
+    // Cloud transcription lockout — prevent hotkey/capsule race during upload.
     // A start already in flight must not open a second capture stream.
     if (_isTranscribing || _isStarting) return;
     _isStarting = true;
@@ -198,18 +199,21 @@ class RecordingController extends ChangeNotifier {
     _showSilenceWarning = false;
     notifyListeners();
 
-    final isGroqMode = _settingsService.isGroqMode;
+    final source = _settingsService.transcriptionSource;
 
     try {
-      // 1. Mode-aware credential check.
-      if (isGroqMode) {
-        if (!_groqService.hasValidCredentials) {
-          _errorController.add(
-            'Please configure your Groq API key in Settings.',
-          );
+      // 1. Source-aware setup check, for the hotkey as much as the button:
+      // a recording that can only fail must not start.
+      if (source.isCloud) {
+        final problem = _cloudService.setupProblem;
+        if (problem != null) {
+          _errorController.add(problem);
 
           return;
         }
+        // Clears the buffer and opens the upload's connection now, so the
+        // TLS handshake overlaps the microphone starting.
+        _cloudService.begin();
       } else {
         if (!_wsService.hasValidCredentials) {
           _errorController.add('Please authenticate in Settings first.');
@@ -236,18 +240,18 @@ class RecordingController extends ChangeNotifier {
 
       notifyListeners();
 
-      // 3. Mode-aware audio piping, on a fresh subscription: a stale one
+      // 3. Source-aware audio piping, on a fresh subscription: a stale one
       // would deliver every chunk twice.
       await _audioSubscription?.cancel();
-      if (isGroqMode) {
-        _groqService.clearBuffer();
+      if (source.isCloud) {
         _audioSubscription = _audioService.audioStream.listen((data) {
-          final accepted = _groqService.bufferAudioChunk(data);
+          final accepted = _cloudService.bufferAudioChunk(data);
           if (!accepted && _isRecording) {
             // Buffer ceiling reached — stop recording and transcribe the
             // buffered prefix so the user gets a result, not silent truncation.
             _errorController.add(
-              'Max clip length reached (~${AppConstants.groqMaxRecordingDuration.inMinutes} min). '
+              'Max clip length reached '
+              '(~${_cloudService.maxClipDuration.inMinutes} min). '
               'Transcribing captured audio.',
             );
             unawaited(stopRecording());
@@ -318,8 +322,8 @@ class RecordingController extends ChangeNotifier {
     await _audioSubscription?.cancel();
     _audioSubscription = null;
 
-    if (_settingsService.isGroqMode) {
-      unawaited(_transcribeWithGroq());
+    if (_settingsService.transcriptionSource.isCloud) {
+      unawaited(_transcribeInCloud());
     } else if (_wsService.sendEndSignal()) {
       _expectTranscript();
     } else {
@@ -373,7 +377,7 @@ class RecordingController extends ChangeNotifier {
     final lost =
         status == ConnectionStatus.disconnected ||
         status == ConnectionStatus.banned;
-    if (lost && !_settingsService.isGroqMode) {
+    if (lost && !_settingsService.transcriptionSource.isCloud) {
       unawaited(_abandonDictation());
     }
   }
@@ -509,17 +513,17 @@ class RecordingController extends ChangeNotifier {
         : text;
   }
 
-  Future<void> _transcribeWithGroq() async {
+  Future<void> _transcribeInCloud() async {
     _isTranscribing = true;
     notifyListeners();
     try {
-      final text = await _groqService.finalizeAndTranscribe();
+      final text = await _cloudService.finalizeAndTranscribe();
       _setTranscript(text);
       notifyListeners();
       await _finishRecordingSession();
-    } on GroqError catch (e) {
+    } on CloudError catch (e) {
       _errorController.add(e.userMessage);
-      _logger.error('Groq transcription failed: ${e.message}');
+      _logger.error('${e.service} transcription failed: ${e.message}');
     } finally {
       _isTranscribing = false;
       notifyListeners();
@@ -540,7 +544,7 @@ class RecordingController extends ChangeNotifier {
         text = await _transformService.transform(text, profile);
         _setTranscript(text);
         notifyListeners();
-      } on GroqError catch (e) {
+      } on CloudError catch (e) {
         _errorController.add(
           '${profile.label} polish unavailable, pasted raw text. ${e.userMessage}',
         );
@@ -587,9 +591,9 @@ class RecordingController extends ChangeNotifier {
   void _logTiming(int transcribedAt) {
     if (!_sinceStop.isRunning) return;
     _sinceStop.stop();
-    final mode = _settingsService.isGroqMode ? 'Groq' : 'server';
+    final source = _settingsService.transcriptionSource.label;
     _logger.info(
-      'Timing ($mode): transcript ${transcribedAt}ms after stop, '
+      'Timing ($source): transcript ${transcribedAt}ms after stop, '
       'pasted at ${_sinceStop.elapsedMilliseconds}ms',
     );
   }
@@ -605,7 +609,7 @@ class RecordingController extends ChangeNotifier {
     _setTranscript('');
     _history.clear();
     _historyRevision++;
-    _groqService.clearBuffer();
+    _cloudService.clearBuffer();
     _showSilenceWarning = false;
     await _historyService.clearAll();
     _logger.info('Sensitive data purged from memory and disk');

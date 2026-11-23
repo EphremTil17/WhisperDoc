@@ -2,10 +2,10 @@ import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 
 /// Client-side rate-limit tracker for the Groq free tier.
 ///
-/// Uses a sliding-window RPM counter and a daily request counter to prevent
-/// the user from sending requests that will definitely be rejected. Also
-/// parses Groq's `retry-after` and `x-ratelimit-*` response headers to
-/// honour server-side back-off signals.
+/// A sliding-window requests-per-minute counter and a daily counter keep the
+/// user from sending requests that would certainly be refused, and a
+/// server-mandated cool-down (`retry-after` on a 429) is honoured through
+/// [backOff].
 class GroqRateLimiter {
   final List<DateTime> _requestTimestamps = [];
   int _dailyCount = 0;
@@ -41,17 +41,9 @@ class GroqRateLimiter {
     _dailyCount++;
   }
 
-  /// Parses rate-limit headers from a Groq HTTP response.
-  void updateFromHeaders(Map<String, String> headers) {
-    final retryAfter = headers['retry-after'];
-    if (retryAfter != null) {
-      final seconds = int.tryParse(retryAfter);
-      if (seconds != null) {
-        _retryAfterUntil = DateTime.now().toUtc().add(
-          Duration(seconds: seconds),
-        );
-      }
-    }
+  /// Refuses requests for [cooldown], as the server asked.
+  void backOff(Duration cooldown) {
+    _retryAfterUntil = DateTime.now().toUtc().add(cooldown);
   }
 
   // -- Internals --

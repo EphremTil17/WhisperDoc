@@ -59,8 +59,8 @@ class TransformOutputGuard {
     final outputLen = cleaned.length;
     final ratio = outputLen / inputLen;
 
-    if (ratio < AppConstants.groqTransformMinLengthRatio ||
-        ratio > AppConstants.groqTransformMaxLengthRatio) {
+    if (ratio < AppConstants.transformMinLengthRatio ||
+        ratio > AppConstants.transformMaxLengthRatio) {
       return null;
     }
 

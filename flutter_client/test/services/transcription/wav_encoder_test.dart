@@ -39,6 +39,9 @@ abstract final class _WavEncoderTest {
       100; // small non-zero buffer for header-only tests
   static const int shortClipPcmSize = 3200; // 0.1 s at 16 kHz / 16-bit / mono
   static const int standardPcmSize = 6400; // 0.2 s at 16 kHz / 16-bit / mono
+  static const int chunkedPcmSize = 6; // three small chunks, 2 + 1 + 3 bytes
+  static const int splitPcmSize = 10; // one clip, encoded whole and in two
+  static const int splitAt = 4; // where the clip is split
 }
 
 void main() {
@@ -201,6 +204,49 @@ void main() {
       final wav = WavEncoder.encode(pcm);
 
       expect(wav.sublist(_WavEncoderTest.wavHeaderSizeBytes), pcm);
+    });
+  });
+
+  group('WavEncoder.encodeChunks', () {
+    test('writes the chunks in order after one header', () {
+      final wav = WavEncoder.encodeChunks([
+        Uint8List.fromList([1, 2]),
+        Uint8List.fromList([3]),
+        Uint8List.fromList([4, 5, 6]),
+      ], _WavEncoderTest.chunkedPcmSize);
+
+      expect(
+        wav.length,
+        _WavEncoderTest.wavHeaderSizeBytes + _WavEncoderTest.chunkedPcmSize,
+      );
+      expect(wav.sublist(_WavEncoderTest.wavHeaderSizeBytes), [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+      ]);
+      expect(
+        ByteData.sublistView(wav)
+            .getUint32(_WavEncoderTest.dataChunkSizeOffset, Endian.little),
+        _WavEncoderTest.chunkedPcmSize,
+      );
+    });
+
+    test('matches encode() on the same audio', () {
+      final pcm = Uint8List.fromList(
+        List.generate(_WavEncoderTest.splitPcmSize, (i) => i),
+      );
+      const at = _WavEncoderTest.splitAt;
+
+      expect(
+        WavEncoder.encodeChunks([
+          pcm.sublist(0, at),
+          pcm.sublist(at),
+        ], _WavEncoderTest.splitPcmSize),
+        WavEncoder.encode(pcm),
+      );
     });
   });
 }

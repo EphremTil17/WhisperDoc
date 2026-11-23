@@ -1,5 +1,6 @@
 // ignore_for_file: prefer-match-file-name, avoid-late-keyword, prefer-moving-to-variable
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -12,9 +13,10 @@ import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/utility/history_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
-import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
-import 'package:flutter_client/services/transcription/groq_transform_service.dart';
-import 'package:flutter_client/services/transcription/groq_error.dart';
+import 'package:flutter_client/services/transcription/cloud_error.dart';
+import 'package:flutter_client/services/transcription/cloud_transcription_service.dart';
+import 'package:flutter_client/services/transcription/transform_service.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 
@@ -30,10 +32,10 @@ class _MockSettingsService extends Mock implements SettingsService {}
 
 class _MockAudioCueService extends Mock implements AudioCueService {}
 
-class _MockGroqTranscriptionService extends Mock
-    implements GroqTranscriptionService {}
+class _MockCloudTranscriptionService extends Mock
+    implements CloudTranscriptionService {}
 
-class _MockGroqTransformService extends Mock implements GroqTransformService {}
+class _MockTransformService extends Mock implements TransformService {}
 
 class _MockAudioDeviceMonitor extends Mock implements AudioDeviceMonitor {}
 
@@ -50,8 +52,8 @@ void main() {
   late _MockHistoryService mockHistoryService;
   late _MockSettingsService mockSettingsService;
   late _MockAudioCueService mockAudioCueService;
-  late _MockGroqTranscriptionService mockGroqService;
-  late _MockGroqTransformService mockTransformService;
+  late _MockCloudTranscriptionService mockCloudService;
+  late _MockTransformService mockTransformService;
   late StreamController<Map<String, dynamic>> mockWsMessageController;
   late StreamController<ConnectionStatus> wsStatusController;
   late StreamController<void> deviceChangeController;
@@ -63,8 +65,8 @@ void main() {
       audioStateListener = inv.positionalArguments.first as void Function();
     });
     mockWsService = _MockWebSocketService();
-    mockGroqService = _MockGroqTranscriptionService();
-    mockTransformService = _MockGroqTransformService();
+    mockCloudService = _MockCloudTranscriptionService();
+    mockTransformService = _MockTransformService();
     mockAutomationService = _MockAutomationService();
     mockHistoryService = _MockHistoryService();
     mockSettingsService = _MockSettingsService();
@@ -115,19 +117,20 @@ void main() {
     when(() => mockAudioCueService.playStopCue()).thenReturn(null);
     when(() => mockAudioService.amplitudeStream)
         .thenAnswer((_) => const Stream<double>.empty());
-    // Groq mode defaults to off (backend mode)
-    when(() => mockSettingsService.isGroqMode).thenReturn(false);
+    // The server transcribes unless a test picks a cloud source.
+    when(() => mockSettingsService.transcriptionSource)
+        .thenReturn(TranscriptionSource.server);
+    when(() => mockSettingsService.openRouterModel).thenReturn(null);
     when(() => mockSettingsService.dictationProfile)
         .thenReturn(DictationProfile.raw);
-    when(() => mockGroqService.hasValidCredentials).thenReturn(false);
-    when(() => mockGroqService.status).thenReturn(GroqTranscriptionStatus.idle);
-    when(() => mockGroqService.addListener(any())).thenReturn(null);
-    when(() => mockGroqService.removeListener(any())).thenReturn(null);
+    when(() => mockCloudService.setupProblem).thenReturn(null);
+    when(() => mockCloudService.maxClipDuration)
+        .thenReturn(const Duration(minutes: 12, seconds: 30));
 
     controller = RecordingController(
       audioService: mockAudioService,
       wsService: mockWsService,
-      groqService: mockGroqService,
+      cloudService: mockCloudService,
       transformService: mockTransformService,
       automationService: mockAutomationService,
       historyService: mockHistoryService,
@@ -146,7 +149,8 @@ void main() {
   /// Ends a server-mode dictation the way the recorder does, so the
   /// controller is waiting for its transcript.
   Future<void> endServerDictation() async {
-    when(() => mockSettingsService.isGroqMode).thenReturn(false);
+    when(() => mockSettingsService.transcriptionSource)
+        .thenReturn(TranscriptionSource.server);
     when(() => mockAudioService.isRecording).thenReturn(true);
     audioStateListener();
     when(() => mockAudioService.isRecording).thenReturn(false);
@@ -584,7 +588,8 @@ void main() {
 
   group('Dictation Profile Transformation', () {
     setUp(() {
-      when(() => mockSettingsService.isGroqMode).thenReturn(true);
+      when(() => mockSettingsService.transcriptionSource)
+          .thenReturn(TranscriptionSource.groq);
     });
 
     test(
@@ -660,13 +665,14 @@ void main() {
     );
 
     test(
-      'GroqError in transform fails open to raw text and emits error stream',
+      'a failed polish fails open to raw text and emits error stream',
       () async {
         when(() => mockSettingsService.dictationProfile)
             .thenReturn(DictationProfile.clean);
         when(() => mockTransformService.transform(any(), any())).thenThrow(
-          const GroqError(
-            type: GroqErrorType.rateLimited,
+          const CloudError(
+            service: 'Groq',
+            type: CloudErrorType.rateLimited,
             message: 'Rate limit hit',
           ),
         );
@@ -779,8 +785,8 @@ void main() {
     });
 
     test('isSessionActive reflects recording state transition', () {
-      // A recorder that stops on its own hands its capture to Groq.
-      when(() => mockGroqService.finalizeAndTranscribe())
+      // A recorder that stops on its own hands its capture to the cloud.
+      when(() => mockCloudService.finalizeAndTranscribe())
           .thenAnswer((_) => Future.value(''));
       expect(controller.isSessionActive, isFalse);
 
@@ -990,6 +996,224 @@ void main() {
 
       expect(errors.single, contains('Trust this server'));
       await sub.cancel();
+    });
+  });
+
+  group('Cloud dictation', () {
+    late StreamController<Uint8List> audio;
+    late List<String> errors;
+    late StreamSubscription<String> errorSub;
+
+    /// A cloud [source] that is ready (or not, for [problem]), a microphone
+    /// that streams [audio], and every error the controller reports in
+    /// [errors].
+    void useCloud(TranscriptionSource source, {String? problem}) {
+      audio = StreamController<Uint8List>.broadcast();
+      addTearDown(audio.close);
+      errors = [];
+      errorSub = controller.onError.listen(errors.add);
+      addTearDown(errorSub.cancel);
+      when(() => mockSettingsService.transcriptionSource).thenReturn(source);
+      when(() => mockCloudService.setupProblem).thenReturn(problem);
+      when(() => mockCloudService.begin()).thenReturn(null);
+      when(() => mockCloudService.clearBuffer()).thenReturn(null);
+      when(() => mockCloudService.bufferAudioChunk(any())).thenReturn(true);
+      when(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      ).thenAnswer((_) async {
+        when(() => mockAudioService.isRecording).thenReturn(true);
+        audioStateListener();
+      });
+      when(() => mockAudioService.stopRecording()).thenAnswer((_) async {
+        when(() => mockAudioService.isRecording).thenReturn(false);
+      });
+      when(() => mockAudioService.audioStream).thenAnswer((_) => audio.stream);
+    }
+
+    setUpAll(() => registerFallbackValue(Uint8List(0)));
+
+    test('a source that isn’t ready says why and never records', () async {
+      useCloud(
+        TranscriptionSource.openRouter,
+        problem: 'Add your OpenRouter API key in Account.',
+      );
+
+      await controller.startRecording();
+      await pumpEventQueue();
+
+      expect(errors, ['Add your OpenRouter API key in Account.']);
+      verifyNever(
+        () => mockAudioService.startRecording(
+          deviceId: any(named: 'deviceId'),
+          deviceLabel: any(named: 'deviceLabel'),
+        ),
+      );
+      verifyNever(() => mockCloudService.begin());
+    });
+
+    test('the hotkey can’t record with a model known to fail', () async {
+      useCloud(
+        TranscriptionSource.openRouter,
+        problem:
+            'OpenRouter stopped serving your model. Choose another in Account.',
+      );
+
+      await controller.toggleRecording();
+      await pumpEventQueue();
+
+      expect(errors, [
+        'OpenRouter stopped serving your model. Choose another in Account.',
+      ]);
+      expect(controller.isRecording, isFalse);
+      verifyNever(() => mockCloudService.begin());
+    });
+
+    test('Groq needs no model choice', () async {
+      useCloud(TranscriptionSource.groq);
+
+      await controller.startRecording();
+      await pumpEventQueue();
+
+      expect(errors, isEmpty);
+      expect(verify(() => mockCloudService.begin()).callCount, 1);
+    });
+
+    test(
+      'the connection is warmed before audio flows, not the server',
+      () async {
+        useCloud(TranscriptionSource.openRouter);
+        when(() => mockSettingsService.openRouterModel)
+            .thenReturn('microsoft/mai-transcribe-2');
+
+        await controller.startRecording();
+        final chunk = Uint8List.fromList([1, 2, 3, 4]);
+        audio.add(chunk);
+        await pumpEventQueue();
+
+        verifyInOrder([
+          () => mockCloudService.begin(),
+          () => mockCloudService.bufferAudioChunk(chunk),
+        ]);
+        verifyNever(() => mockWsService.ensureConnected());
+        verifyNever(() => mockWsService.sendAudioChunk(any()));
+        expect(controller.isRecording, isTrue);
+      },
+    );
+
+    test(
+      'a full buffer stops the recording and transcribes what it has',
+      () async {
+        useCloud(TranscriptionSource.groq);
+        when(() => mockCloudService.bufferAudioChunk(any())).thenReturn(false);
+        when(() => mockCloudService.finalizeAndTranscribe())
+            .thenAnswer((_) async => 'the captured part');
+
+        await controller.startRecording();
+        audio.add(Uint8List(1));
+        await pumpEventQueue();
+
+        expect(errors, [
+          'Max clip length reached (~12 min). Transcribing captured audio.',
+        ]);
+        expect(verify(() => mockAudioService.stopRecording()).callCount, 1);
+        expect(
+          verify(() => mockCloudService.finalizeAndTranscribe()).callCount,
+          1,
+        );
+        expect(
+          verify(() => mockAutomationService.runAutomation('the captured part'))
+              .callCount,
+          1,
+        );
+      },
+    );
+
+    test('stopping uploads the clip and pastes its text', () async {
+      useCloud(TranscriptionSource.groq);
+      when(() => mockCloudService.finalizeAndTranscribe())
+          .thenAnswer((_) async => 'Send the invoice.');
+
+      await controller.startRecording();
+      await controller.stopRecording();
+      await pumpEventQueue();
+
+      expect(
+        verify(() => mockAutomationService.runAutomation('Send the invoice.'))
+            .callCount,
+        1,
+      );
+      verifyNever(() => mockWsService.sendEndSignal());
+      expect(controller.currentText, 'Send the invoice.');
+      expect(controller.isTranscribing, isFalse);
+    });
+
+    test(
+      'a failed upload reports the service’s message and pastes nothing',
+      () async {
+        useCloud(TranscriptionSource.openRouter);
+        when(() => mockSettingsService.openRouterModel)
+            .thenReturn('microsoft/mai-transcribe-2');
+        when(() => mockCloudService.finalizeAndTranscribe()).thenThrow(
+          const CloudError(
+            service: 'OpenRouter',
+            type: CloudErrorType.insufficientCredits,
+            message: 'Insufficient credits',
+          ),
+        );
+
+        await controller.startRecording();
+        await controller.stopRecording();
+        await pumpEventQueue();
+
+        expect(errors, [
+          'Your OpenRouter credits ran out. Add credits to keep dictating.',
+        ]);
+        verifyNever(() => mockAutomationService.runAutomation(any()));
+        expect(controller.isTranscribing, isFalse);
+      },
+    );
+
+    test('while it uploads, a new recording can’t start', () async {
+      useCloud(TranscriptionSource.groq);
+      final upload = Completer<String>();
+      when(() => mockCloudService.finalizeAndTranscribe())
+          .thenAnswer((_) => upload.future);
+
+      await controller.startRecording();
+      await controller.stopRecording();
+      await pumpEventQueue();
+      expect(controller.isTranscribing, isTrue);
+      await controller.startRecording();
+
+      expect(verify(() => mockCloudService.begin()).callCount, 1);
+      upload.complete('');
+      await pumpEventQueue();
+      expect(controller.isTranscribing, isFalse);
+    });
+
+    test(
+      'a dropped server connection leaves a cloud dictation alone',
+      () async {
+        useCloud(TranscriptionSource.groq);
+
+        await controller.startRecording();
+        wsStatusController.add(ConnectionStatus.disconnected);
+        await pumpEventQueue();
+
+        expect(errors, isEmpty);
+        expect(controller.isRecording, isTrue);
+      },
+    );
+
+    test('incognito clears audio held for an upload', () async {
+      when(() => mockCloudService.clearBuffer()).thenReturn(null);
+
+      await controller.enableIncognitoMode();
+
+      expect(verify(() => mockCloudService.clearBuffer()).callCount, 1);
     });
   });
 }

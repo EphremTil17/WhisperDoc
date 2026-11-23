@@ -33,20 +33,21 @@ void main() {
       expect(limiter.retryAfter, Duration.zero);
     });
 
-    test('parses retry-after header and blocks requests', () {
-      limiter.updateFromHeaders({'retry-after': '$retryAfterSeconds'});
+    test('a back-off blocks requests until it has passed', () {
+      limiter.backOff(const Duration(seconds: retryAfterSeconds));
 
       expect(limiter.canRequest(), isFalse);
       expect(
         limiter.retryAfter.inSeconds,
-        greaterThanOrEqualTo(retryAfterMinusOne),
+        inInclusiveRange(retryAfterMinusOne, retryAfterSeconds),
       );
     });
 
-    test('ignores malformed retry-after header', () {
-      limiter.updateFromHeaders({'retry-after': 'not-a-number'});
+    test('an elapsed back-off allows requests again', () {
+      limiter.backOff(Duration.zero);
 
       expect(limiter.canRequest(), isTrue);
+      expect(limiter.retryAfter, Duration.zero);
     });
   });
 }
