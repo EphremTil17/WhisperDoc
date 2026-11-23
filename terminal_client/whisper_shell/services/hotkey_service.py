@@ -56,7 +56,11 @@ class HotkeyService:
 
             logger.info(f"Hotkey Active (Win32): {cfg.RECORD_HOTKEY}")
             msg = wintypes.MSG()
-            while self.running and user32.GetMessageW(ctypes.byref(msg), None, 0, 0):
+            # GetMessageW returns >0 for a message, 0 for WM_QUIT and -1 on
+            # error; -1 is truthy, so a bare check would spin on an error.
+            while (
+                self.running and user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0
+            ):
                 if msg.message == 0x0312:  # WM_HOTKEY
                     logger.debug("Hotkey Triggered.")
                     self.callback()

@@ -81,11 +81,8 @@ class DictationClient:
                 sys.exit(1)
 
     def _on_hotkey(self):
-        """Bridge between threaded hotkey listener and async controller."""
-        asyncio.run_coroutine_threadsafe(
-            self.controller.toggle_recording(),
-            self.loop,
-        )
+        """Bridge from the hotkey listener's thread to the event loop's."""
+        self.loop.call_soon_threadsafe(self.controller.toggle_recording)
 
     def start(self):
         """Starts the client lifecycle."""
@@ -139,7 +136,8 @@ class DictationClient:
             except Exception as e:
                 logger.warning(f"Shutdown task timed out or failed: {e}")
 
-            self.loop.stop()
+            # From another thread: wake the loop so an idle one stops too.
+            self.loop.call_soon_threadsafe(self.loop.stop)
         elif not self.loop.is_closed():
             try:
                 self.loop.run_until_complete(self.controller.shutdown())

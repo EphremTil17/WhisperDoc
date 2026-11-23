@@ -112,11 +112,11 @@ class TestToggleRecording:
     async def test_toggle_starts_then_stops(self):
         ctrl = _make_controller()
 
-        await ctrl.toggle_recording()
+        ctrl.toggle_recording()
         assert ctrl.is_recording is True
         _as_mock(ctrl.audio.start_capture).assert_called_once()
 
-        await ctrl.toggle_recording()
+        ctrl.toggle_recording()
         assert ctrl.is_recording is False
         _as_mock(ctrl.audio.stop_capture).assert_called_once()
         await ctrl.shutdown()
@@ -124,7 +124,7 @@ class TestToggleRecording:
     @pytest.mark.asyncio
     async def test_double_start_is_noop(self):
         ctrl = _make_controller()
-        await ctrl.toggle_recording()
+        ctrl.toggle_recording()
         ctrl._start_recording_session()
         _as_mock(ctrl.audio.start_capture).assert_called_once()
         await ctrl.shutdown()

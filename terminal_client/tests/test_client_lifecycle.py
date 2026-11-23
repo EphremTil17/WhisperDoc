@@ -107,17 +107,19 @@ class TestShutdown:
             client.stop()
             MockHotkey.return_value.stop.assert_not_called()
 
-    def test_on_hotkey_bridges_to_async(self):
+    def test_on_hotkey_runs_the_toggle_on_the_event_loop(self):
         with (
             patch(
                 "whisper_shell.client.acquire_single_instance_lock", return_value="lock"
             ),
             patch("whisper_shell.client.RecordingController"),
             patch("whisper_shell.client.HotkeyService"),
-            patch("asyncio.run_coroutine_threadsafe") as mock_rcts,
         ):
             from whisper_shell.client import DictationClient
 
             client = DictationClient()
+            client.loop = MagicMock()
             client._on_hotkey()
-            mock_rcts.assert_called_once()
+            client.loop.call_soon_threadsafe.assert_called_once_with(
+                client.controller.toggle_recording
+            )

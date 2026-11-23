@@ -63,8 +63,13 @@ class RecordingController:
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
 
-    async def toggle_recording(self):
-        """Main entry point triggered by Hotkey."""
+    def toggle_recording(self) -> None:
+        """Main entry point triggered by Hotkey.
+
+        Runs on the event loop's thread: the hotkey thread schedules it there
+        (DictationClient._on_hotkey), because the sessions it starts and stops
+        create loop tasks.
+        """
         if not self.is_recording:
             self._start_recording_session()
         else:
