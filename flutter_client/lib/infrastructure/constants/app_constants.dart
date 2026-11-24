@@ -77,7 +77,7 @@ class AppConstants {
     'OIDC_REDIRECT_URI',
   );
 
-  /// Zitadel / OIDC Issuer URL
+  /// Issuer URL of the OIDC provider (any; the reference setup is Authentik)
   /// Pulls from --dart-define OIDC_ISSUER
   static const String oidcIssuer = String.fromEnvironment('OIDC_ISSUER');
 
@@ -93,11 +93,91 @@ class AppConstants {
     'offline_access',
   ];
 
+  // === Cloud services (Groq, OpenRouter) ===
+
+  /// Raw PCM per second of audio: 16 kHz, 16-bit, mono.
+  static const int pcmBytesPerSecond = 32000;
+
+  /// How long the shared connection may sit idle and still be reused. A
+  /// dictation starts it warm and uploads when it stops, so this outlasts a
+  /// long recording; the services' own keep-alive limits are minutes longer.
+  static const Duration cloudIdleTimeout = Duration(seconds: 120);
+
+  /// The warm-up request opens the connection; it never needs long.
+  static const Duration cloudWarmUpTimeout = Duration(seconds: 5);
+
+  // === OpenRouter ===
+
+  static const String openRouterOrigin = 'https://openrouter.ai';
+  static const String openRouterApiBase = '$openRouterOrigin/api/v1';
+
+  /// Every speech model OpenRouter serves takes JSON with base64 audio;
+  /// some refuse multipart, and JSON measured no slower.
+  static const String openRouterTranscriptionEndpoint =
+      '$openRouterApiBase/audio/transcriptions';
+  static const String openRouterChatEndpoint =
+      '$openRouterApiBase/chat/completions';
+  static const String openRouterModelsEndpoint = '$openRouterApiBase/models';
+
+  /// Where to compare the models before choosing: OpenRouter's own table
+  /// (latency, price, hosts) and Artificial Analysis's accuracy benchmark.
+  /// Linked, not fetched, so the app keeps no ranking to maintain.
+  static const String openRouterCompareUrl =
+      '$openRouterOrigin/models?fmt=table&output_modalities=transcription';
+  static const String speechAccuracyUrl =
+      'https://artificialanalysis.ai/speech-to-text';
+
+  /// Chosen on first use: the most accurate model with a zero-retention host
+  /// when this shipped (2.0% word error, Artificial Analysis, 2026-11-23).
+  /// If OpenRouter stops serving it, the first listed model is used.
+  static const String openRouterDefaultModel = 'microsoft/mai-transcribe-2';
+
+  /// Base64 grows audio by a third and OpenRouter takes requests up to 25 MB
+  /// (decimal): 17 MiB of PCM is 23.8 MB encoded, leaving room for the JSON
+  /// around it. About 9 min 17 s of audio.
+  static const int openRouterMaxBufferBytes = 17 * 1024 * 1024;
+
+  /// OpenRouter's hosts stop processing after 60 s; the rest is upload.
+  static const Duration openRouterHttpTimeout = Duration(seconds: 75);
+
+  /// The model list is fetched again when older than this.
+  static const Duration openRouterCatalogMaxAge = Duration(hours: 12);
+
+  /// Latency is OpenRouter's last 30 minutes of traffic, so the picker
+  /// reads it again after this.
+  static const Duration openRouterLatencyMaxAge = Duration(minutes: 10);
+
+  /// Models whose latency is fetched at once (one small request each).
+  static const int openRouterLatencyBatch = 6;
+
+  static const Duration openRouterCatalogTimeout = Duration(seconds: 15);
+
+  /// The default rewrite model on OpenRouter: the one the styles are tuned
+  /// for on Groq, with zero data retention. Of 13 models measured, smaller
+  /// ones saved at most ~0.13 s and lost the code formatting (2026-11-23).
+  /// See docs/benchmarks/rewrite_models.md.
+  static const String openRouterTransformModel = 'qwen/qwen3.8-27b';
+
+  /// How the default rewrite model is named where it is offered.
+  static const String openRouterTransformModelName = 'Qwen3.8 27B';
+
+  /// Hosts writing at least this many tokens a second (median) are tried
+  /// first, quickest to answer among them. A rewrite is ~75 tokens, so this
+  /// beat sorting by latency alone: median 0.45 s against 0.71 s for Qwen,
+  /// 0.44 s against 0.63 s for DeepSeek V4.1 Flash; 150 helped far less
+  /// (2026-11-23).
+  static const int openRouterRewriteMinThroughput = 200;
+
+  /// Room for the one-word answer that checks a rewrite model can serve.
+  static const int openRouterRewriteCheckTokens = 16;
+
   // === Groq Cloud Configuration ===
+
+  static const String groqOrigin = 'https://api.groq.com';
 
   /// Groq transcription API endpoint (OpenAI-compatible).
   static const String groqTranscriptionEndpoint =
-      'https://api.groq.com/openai/v1/audio/transcriptions';
+      '$groqOrigin/openai/v1/audio/transcriptions';
 
   /// Supported Groq ASR models.
   static const String groqModelLargeV3Turbo = 'whisper-large-v3-turbo';
@@ -116,16 +196,10 @@ class AppConstants {
   /// Default Groq ASR model.
   static const String groqDefaultModel = groqModelLargeV3Turbo;
 
-  /// Conservative buffer ceiling: 24 MB raw PCM, leaving ~1 MB headroom for
-  /// the 44-byte WAV header and multipart framing overhead against the 25 MB
-  /// free-tier API limit.
-  static const int groqMaxBufferBytes = 24 * 1024 * 1024;
-
-  /// At 16 kHz / 16-bit / mono (32 000 bytes/s), 24 MB ≈ 12 min 30 s.
-  static const Duration groqMaxRecordingDuration = Duration(
-    minutes: 12,
-    seconds: 30,
-  );
+  /// The free tier takes files up to 25 MB (decimal); 23 MiB of PCM is
+  /// 24.1 MB, leaving room for the WAV header and multipart framing (24 MiB
+  /// was 25.2 MB and could be refused). About 12 min 34 s of audio.
+  static const int groqMaxBufferBytes = 23 * 1024 * 1024;
 
   /// Free-tier rate limits (organisation-level).
   static const int groqMaxRpm = 20;
@@ -248,37 +322,37 @@ class AppConstants {
   static bool isValidGroqModel(String model) =>
       groqSupportedModels.contains(model.trim());
 
-  // === Groq LLM Transform Configuration ===
+  // === Groq output styles ===
 
   /// Groq chat completions endpoint (OpenAI-compatible).
   static const String groqChatCompletionsEndpoint =
-      'https://api.groq.com/openai/v1/chat/completions';
+      '$groqOrigin/openai/v1/chat/completions';
 
   /// Default rewrite model. Verified active via scripts/benchmark_llm_providers.py (2026-09-05).
   /// Measured latency: TTFT ~217ms, Generation ~45ms, Total ~261ms on 27B parameters.
   static const String groqTransformModel = 'qwen/qwen3.8-27b';
 
-  static const double groqTransformTemperature = 0.1;
+  // === Output styles: the LLM rewrite, on any cloud source ===
+
+  static const double transformTemperature = 0.1;
 
   /// Timeout scales with input so long dictations are not silently dropped
   /// to raw. total = base + perWord * wordCount, clamped to [base, max].
-  static const Duration groqTransformTimeoutBase = Duration(milliseconds: 1500);
-  static const Duration groqTransformTimeoutPerWord = Duration(
-    milliseconds: 25,
-  );
-  static const Duration groqTransformTimeoutMax = Duration(seconds: 8);
+  static const Duration transformTimeoutBase = Duration(milliseconds: 1500);
+  static const Duration transformTimeoutPerWord = Duration(milliseconds: 25);
+  static const Duration transformTimeoutMax = Duration(seconds: 8);
 
   /// Output token ceiling scales with input: clamp(2 * estimatedInputTokens, min, max).
   /// Rough estimate: 1 token per 3 characters.
-  static const int groqTransformMinCompletionTokens = 128;
-  static const int groqTransformMaxCompletionTokens = 4096;
-  static const int groqTransformCharsPerToken = 3;
+  static const int transformMinCompletionTokens = 128;
+  static const int transformMaxCompletionTokens = 4096;
+  static const int transformCharsPerToken = 3;
 
   /// Output length sanity bounds relative to input character count.
   /// Results outside this band are treated as hallucination/truncation and rejected.
-  /// Set to 4.5 to accommodate structured technical specifications with markdown and backticks.
-  static const double groqTransformMinLengthRatio = 0.3;
-  static const double groqTransformMaxLengthRatio = 4.5;
+  /// Set to 4.5 so a custom style may restructure and add markdown.
+  static const double transformMinLengthRatio = 0.3;
+  static const double transformMaxLengthRatio = 4.5;
 
   // === Custom Dictation Profiles ===
 

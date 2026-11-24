@@ -85,5 +85,54 @@ void main() {
       expect(find.byType(FieldPanel), findsOneWidget);
       expect(tester.widget<AppButton>(save).onPressed, isNotNull);
     });
+
+    testWidgets('a check runs before saving: while it runs Save says so, and a '
+        'rejection is shown with nothing saved', (tester) async {
+      final verdict = Completer<String?>();
+      final saved = <String>[];
+      await pumpOverPage(
+        tester,
+        FieldPanel(
+          title: title,
+          label: 'Model',
+          initialValue: 'acme/x',
+          check: (_) => verdict.future,
+          onSave: (value) async => saved.add(value),
+        ),
+      );
+
+      final save = saveButton();
+      await tester.tap(save);
+      await tester.pump();
+      expect(find.widgetWithText(AppButton, 'Checking…'), findsOneWidget);
+
+      verdict.complete('No such model.');
+      await tester.pumpAndSettle();
+
+      expect(find.text('No such model.'), findsOneWidget);
+      expect(saved, isEmpty);
+      expect(find.byType(FieldPanel), findsOneWidget);
+      expect(tester.widget<AppButton>(save).onPressed, isNotNull);
+    });
+
+    testWidgets('a value the check accepts is saved', (tester) async {
+      final saved = <String>[];
+      await pumpOverPage(
+        tester,
+        FieldPanel(
+          title: title,
+          label: 'Model',
+          initialValue: 'acme/x',
+          check: (_) async => null,
+          onSave: (value) async => saved.add(value),
+        ),
+      );
+
+      await tester.tap(saveButton());
+      await tester.pumpAndSettle();
+
+      expect(saved, ['acme/x']);
+      expect(find.text('open'), findsOneWidget);
+    });
   });
 }

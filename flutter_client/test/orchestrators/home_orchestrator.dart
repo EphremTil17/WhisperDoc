@@ -7,13 +7,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/infrastructure/theme/app_theme.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
+import 'package:flutter_client/logic/models/model_selection_problem.dart';
+import 'package:flutter_client/logic/models/speech_model.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
-import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/services/transcription/open_router_catalog.dart';
+import 'package:flutter_client/services/transcription/open_router_chat_engine.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
@@ -44,9 +49,11 @@ class _MockUpdateService extends Mock
     with ChangeNotifier
     implements UpdateService {}
 
-class _MockGroqTranscriptionService extends Mock
+class _MockOpenRouterCatalog extends Mock
     with ChangeNotifier
-    implements GroqTranscriptionService {}
+    implements OpenRouterCatalog {}
+
+class _MockOpenRouterChatEngine extends Mock implements OpenRouterChatEngine {}
 
 // AudioService.dispose returns a Future, so it cannot take the ChangeNotifier
 // mixin; the listener methods are stubbed by Mock instead.
@@ -70,7 +77,18 @@ class HomeOrchestrator {
     when(() => recording.incognitoMode).thenReturn(false);
     when(recording.toggleRecording).thenAnswer((_) => Future.value());
 
-    when(() => settings.isGroqMode).thenReturn(true);
+    when(() => settings.transcriptionSource)
+        .thenReturn(TranscriptionSource.groq);
+    when(() => settings.supportsStyles).thenReturn(true);
+    when(() => settings.hasCloudKey).thenReturn(true);
+    when(() => settings.cloudApiKey).thenReturn('test-key');
+    when(() => settings.cachedOpenRouterApiKey).thenReturn(null);
+    when(() => settings.openRouterModel).thenReturn(null);
+    when(() => settings.openRouterZdr).thenReturn(true);
+    when(() => settings.openRouterLanguage).thenReturn('');
+    when(() => settings.openRouterRewriteModel)
+        .thenReturn(AppConstants.openRouterTransformModel);
+    when(() => settings.hasCustomRewriteModel).thenReturn(false);
     when(() => settings.dictationProfile).thenReturn(DictationProfile.raw);
     when(() => settings.globalHotkey).thenReturn('Ctrl+Q');
     when(() => settings.showVisualizer).thenReturn(true);
@@ -101,7 +119,17 @@ class HomeOrchestrator {
     when(() => ws.status).thenReturn(ConnectionStatus.disconnected);
     when(() => ws.serverProblem).thenReturn(ServerProblem.none);
     when(() => update.status).thenReturn(UpdateStatus.upToDate);
-    when(() => groq.hasValidCredentials).thenReturn(true);
+    when(() => catalog.selectionProblem).thenReturn(ModelSelectionProblem.none);
+    when(() => catalog.isRefreshing).thenReturn(false);
+    when(() => catalog.latencyOf(any())).thenReturn(null);
+    when(catalog.loadLatency).thenAnswer((_) => Future.value());
+    when(() => catalog.isLoadingLatency).thenReturn(false);
+    when(() => catalog.hasList).thenReturn(false);
+    when(() => catalog.lastError).thenReturn(null);
+    when(() => catalog.choices).thenReturn(const []);
+    when(() => catalog.find(any())).thenReturn(null);
+    when(() => catalog.refresh(force: any(named: 'force')))
+        .thenAnswer((_) => Future.value());
     when(() => audio.amplitudeStream).thenAnswer((_) => levels.stream);
   }
 
@@ -113,7 +141,8 @@ class HomeOrchestrator {
   final ProfileController profile = _MockProfileController();
   final WebSocketService ws = _MockWebSocketService();
   final UpdateService update = _MockUpdateService();
-  final GroqTranscriptionService groq = _MockGroqTranscriptionService();
+  final OpenRouterCatalog catalog = _MockOpenRouterCatalog();
+  final OpenRouterChatEngine openRouterChat = _MockOpenRouterChatEngine();
   final AudioService audio = _MockAudioService();
   final StreamController<double> levels = StreamController<double>.broadcast();
   int incognitoTaps = 0;
@@ -130,13 +159,45 @@ class HomeOrchestrator {
   }
 
   void removeGroqKey() {
-    when(() => groq.hasValidCredentials).thenReturn(false);
     when(() => settings.cachedGroqApiKey).thenReturn(null);
+    when(() => settings.cloudApiKey).thenReturn(null);
+    when(() => settings.hasCloudKey).thenReturn(false);
+  }
+
+  /// OpenRouter with a key and [models] listed; [chosen] is the model in use
+  /// and [problem] what the catalog says about it.
+  void useOpenRouter({
+    List<SpeechModel> models = const [],
+    String? chosen,
+    ModelSelectionProblem problem = ModelSelectionProblem.none,
+  }) {
+    when(() => settings.transcriptionSource)
+        .thenReturn(TranscriptionSource.openRouter);
+    when(() => settings.cachedOpenRouterApiKey).thenReturn('sk-or-test');
+    when(() => settings.cloudApiKey).thenReturn('sk-or-test');
+    when(() => settings.openRouterModel).thenReturn(chosen);
+    when(() => catalog.choices).thenReturn(models);
+    when(() => catalog.hasList).thenReturn(models.isNotEmpty);
+    when(() => catalog.selectionProblem).thenReturn(problem);
+    when(() => catalog.find(any())).thenAnswer((call) {
+      final id = call.positionalArguments.first;
+
+      return models.where((m) => m.id == id).firstOrNull;
+    });
+  }
+
+  /// Self-hosted mode, not signed in.
+  void useServer() {
+    when(() => settings.transcriptionSource)
+        .thenReturn(TranscriptionSource.server);
+    when(() => settings.supportsStyles).thenReturn(false);
+    when(() => settings.hasCloudKey).thenReturn(false);
+    when(() => settings.cloudApiKey).thenReturn(null);
   }
 
   /// Self-hosted mode, signed in, with the connection closed while idle.
   void signInToServer() {
-    when(() => settings.isGroqMode).thenReturn(false);
+    useServer();
     when(() => profile.isAuthenticated).thenReturn(true);
     when(ws.connect).thenAnswer((_) async => true);
   }
@@ -219,7 +280,8 @@ class HomeOrchestrator {
           ChangeNotifierProvider<ProfileController>.value(value: profile),
           ChangeNotifierProvider<WebSocketService>.value(value: ws),
           ChangeNotifierProvider<UpdateService>.value(value: update),
-          ChangeNotifierProvider<GroqTranscriptionService>.value(value: groq),
+          ChangeNotifierProvider<OpenRouterCatalog>.value(value: catalog),
+          Provider<OpenRouterChatEngine>.value(value: openRouterChat),
           ChangeNotifierProvider<AudioService>.value(value: audio),
         ],
         child: MaterialApp(

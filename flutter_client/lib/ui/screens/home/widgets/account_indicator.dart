@@ -8,6 +8,7 @@ import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/ui/screens/home/home_navigation.dart';
 import 'package:flutter_client/ui/screens/home/home_status_reader.dart';
+import 'package:flutter_client/ui/shared/widgets/source_glyph.dart';
 
 /// Title-bar entry to the account: a bare service glyph that only grows a
 /// dot when something needs the user (amber: update, crimson: attention).
@@ -21,7 +22,7 @@ class AccountIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
+    final source = context.select((SettingsService s) => s.transcriptionSource);
     final badge = context.watchHomeStatus().badge;
 
     final (Color? dot, String tooltip) = switch (badge) {
@@ -36,11 +37,15 @@ class AccountIndicator extends StatelessWidget {
       icon: Stack(
         clipBehavior: Clip.none,
         children: [
-          Icon(
-            isGroqMode ? AppIcons.cloud : AppIcons.user,
-            color: AppColors.text,
-            size: AppSizes.iconSize,
-          ),
+          // The person for your own server; the service's mark otherwise.
+          if (source.isCloud)
+            SourceGlyph(source, size: AppSizes.iconSize, color: AppColors.text)
+          else
+            const Icon(
+              AppIcons.user,
+              color: AppColors.text,
+              size: AppSizes.iconSize,
+            ),
           if (dot != null)
             PositionedDirectional(
               end: -_dotRing,

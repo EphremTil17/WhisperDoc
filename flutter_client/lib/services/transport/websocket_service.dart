@@ -110,9 +110,9 @@ class WebSocketService extends ChangeNotifier {
       (_settingsService.cachedApiKey?.isNotEmpty ?? false);
 
   /// Server mode with credentials: a dropped or unreachable connection is
-  /// worth retrying. Groq mode, sign-out and bans end every retry.
+  /// worth retrying. A cloud source, sign-out and bans end every retry.
   bool get _wantsConnection =>
-      !_settingsService.isGroqMode &&
+      !_settingsService.transcriptionSource.isCloud &&
       hasValidCredentials &&
       !_banState.isBanned;
 
@@ -146,7 +146,7 @@ class WebSocketService extends ChangeNotifier {
         if (_status == ConnectionStatus.connected ||
             _status == ConnectionStatus.connecting) {
           // Apply the new config once this connection is gone: reconnect at
-          // once if it is still wanted (not in Groq mode, still signed in).
+          // once if it is still wanted (server still the source, signed in).
           _pendingConfigChange = true;
         }
         if (_status == ConnectionStatus.connected) {

@@ -26,7 +26,9 @@ class HomeBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = context.watchHomeStatus();
-    final isGroqMode = context.select((SettingsService s) => s.isGroqMode);
+    final supportsStyles = context.select(
+      (SettingsService s) => s.supportsStyles,
+    );
     final incognito = context.select(
       (RecordingController c) => c.incognitoMode,
     );
@@ -69,14 +71,14 @@ class HomeBottomBar extends StatelessWidget {
                       )
                     : null,
               ),
-              // Output styles rewrite text through Groq, so the picker only
-              // appears where it can act.
+              // Output styles rewrite text through a cloud source's LLM, so
+              // the picker only appears where it can act.
               // The picker takes its natural width; the rest stays empty.
               // Long custom names ellipsize instead of overflowing.
               Expanded(
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
-                  child: switch ((isGroqMode, locked)) {
+                  child: switch ((supportsStyles, locked)) {
                     (true, false) => const ProfileActionButton(),
                     // While locked the active style stays visible, read-only.
                     (true, true) => const LockedStyle(),

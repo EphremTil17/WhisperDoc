@@ -9,6 +9,7 @@ import 'package:flutter_client/services/utility/update_service.dart';
 import 'package:flutter_client/ui/screens/logs_panel.dart';
 import 'package:flutter_client/ui/shared/widgets/app_button.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/app_panel.dart';
+import 'package:flutter_client/ui/shared/widgets/panel/panel_note.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/panel_row.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/panel_section.dart';
 import 'package:material_ui/material_ui.dart';
@@ -82,6 +83,10 @@ class AppInfoSection extends StatelessWidget {
           rule: false,
           onTap: () =>
               unawaited(AppPanel.push<void>(context, const LogsPanel())),
+        ),
+        const PanelNote(
+          'OpenRouter, Groq and their logos are trademarks of their '
+          'respective owners; WhisperDoc is not affiliated with them.',
         ),
       ],
     );

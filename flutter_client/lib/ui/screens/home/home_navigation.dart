@@ -1,3 +1,4 @@
+import 'package:flutter_client/ui/screens/account/open_router_model_panel.dart';
 import 'package:flutter_client/ui/screens/account_panel.dart';
 import 'package:flutter_client/ui/screens/history_panel.dart';
 import 'package:flutter_client/ui/screens/settings_panel.dart';
@@ -18,4 +19,9 @@ abstract final class HomeNavigation {
 
   static Future<void> openHistory(BuildContext context) =>
       AppPanel.push<void>(context, const HistoryPanel());
+
+  /// OpenRouter's models, straight from a "choose a model" prompt: picking
+  /// one comes back here, ready to dictate.
+  static Future<void> chooseModel(BuildContext context) =>
+      AppPanel.push<void>(context, const OpenRouterModelPanel());
 }

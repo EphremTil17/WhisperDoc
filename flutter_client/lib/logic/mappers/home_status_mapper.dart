@@ -1,3 +1,5 @@
+import 'package:flutter_client/logic/models/model_selection_problem.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
@@ -74,19 +76,7 @@ abstract final class HomeStatusMapper {
   }
 
   static HomeStatus? _accountProblem(HomeSignals s, AccountBadge badge) {
-    if (s.isGroqMode) {
-      return s.hasGroqKey
-          ? null
-          : HomeStatus(
-              phase: HomePhase.blocked,
-              cue: 'not set up',
-              tone: CueTone.alert,
-              badge: badge,
-              headline: 'Add your Groq API key to start.',
-              fix: HomeFix.openAccount,
-              fixLabel: 'Add key',
-            );
-    }
+    if (s.source.isCloud) return _cloudProblem(s, badge);
 
     if (s.isBanned) {
       return HomeStatus(
@@ -135,6 +125,86 @@ abstract final class HomeStatusMapper {
 
     return _serverProblem(s, badge);
   }
+
+  /// A cloud source needs a key and, on OpenRouter, a model it still serves.
+  static HomeStatus? _cloudProblem(HomeSignals s, AccountBadge badge) {
+    if (!s.hasCloudKey) {
+      return HomeStatus(
+        phase: HomePhase.blocked,
+        cue: 'not set up',
+        tone: CueTone.alert,
+        badge: badge,
+        headline: 'Add your ${s.source.label} API key to start.',
+        fix: HomeFix.openAccount,
+        fixLabel: 'Add key',
+      );
+    }
+
+    // The first model is chosen as soon as the list arrives.
+    final loading = _isFirstLoad(s);
+    final failed = s.modelProblem == ModelSelectionProblem.notChosen
+        ? s.modelListError
+        : null;
+    final words = _modelWords(s.modelProblem, loading: loading, failed: failed);
+    if (words == null) return null;
+    final (cue, headline) = words;
+
+    return HomeStatus(
+      phase: HomePhase.blocked,
+      cue: cue,
+      tone: loading ? CueTone.muted : CueTone.alert,
+      badge: badge,
+      headline: headline,
+      fix: HomeFix.chooseModel,
+      fixLabel: _modelFixLabel(loading: loading, failed: failed),
+    );
+  }
+
+  /// Nothing to press while the list loads; opening the picker also retries
+  /// a list that failed to load.
+  static String? _modelFixLabel({
+    required bool loading,
+    required String? failed,
+  }) {
+    if (loading) return null;
+
+    return failed == null ? 'Choose' : 'Try again';
+  }
+
+  /// No model yet because the first list is still on its way: not a
+  /// problem, only a wait.
+  static bool _isFirstLoad(HomeSignals s) =>
+      s.modelProblem == ModelSelectionProblem.notChosen && s.isLoadingModels;
+
+  /// The cue and headline for an unusable OpenRouter model.
+  static (String, String)? _modelWords(
+    ModelSelectionProblem problem, {
+    required bool loading,
+    required String? failed,
+  }) => switch (problem) {
+    ModelSelectionProblem.none => null,
+    ModelSelectionProblem.notChosen when loading => (
+      'loading models',
+      'Fetching OpenRouter’s models.',
+    ),
+    ModelSelectionProblem.notChosen when failed != null => (
+      'can’t load models',
+      failed,
+    ),
+    ModelSelectionProblem.notChosen => (
+      'no model',
+      'Choose an OpenRouter model to start.',
+    ),
+    ModelSelectionProblem.retired => (
+      'model retired',
+      'OpenRouter stopped serving your model. Choose another.',
+    ),
+    ModelSelectionProblem.retainsData => (
+      'model keeps data',
+      'Zero data retention is on, and your model keeps data. '
+          'Choose another.',
+    ),
+  };
 
   /// Signed in, but the last attempt never reached the server. An idle
   /// disconnect is not a problem: dictation reconnects on demand.
@@ -189,8 +259,9 @@ abstract final class HomeStatusMapper {
   }
 
   static AccountBadge _badge(HomeSignals s) {
-    final accountBroken = s.isGroqMode
-        ? !s.hasGroqKey
+    final accountBroken = s.source.isCloud
+        ? !s.hasCloudKey ||
+              (s.modelProblem != ModelSelectionProblem.none && !_isFirstLoad(s))
         : (s.handshakeFailed ||
               s.isBanned ||
               !s.isSignedIn ||
@@ -215,6 +286,9 @@ enum CueTone { muted, live, alert }
 enum HomeFix {
   none,
   openAccount,
+
+  /// OpenRouter's model picker.
+  chooseModel,
   openSettings,
   retryMicrophone,
   retryServer,
@@ -227,8 +301,11 @@ enum AccountBadge { none, update, attention }
 /// Everything the service layer says that the home screen depends on.
 class HomeSignals {
   const HomeSignals({
-    required this.isGroqMode,
-    required this.hasGroqKey,
+    required this.source,
+    required this.hasCloudKey,
+    this.modelProblem = ModelSelectionProblem.none,
+    this.isLoadingModels = false,
+    this.modelListError,
     required this.isSignedIn,
     required this.handshakeFailed,
     required this.isBanned,
@@ -244,8 +321,20 @@ class HomeSignals {
     required this.styleLabel,
   });
 
-  final bool isGroqMode;
-  final bool hasGroqKey;
+  final TranscriptionSource source;
+
+  /// Cloud source: its API key is saved.
+  final bool hasCloudKey;
+
+  /// OpenRouter: whether the chosen model can be used.
+  final ModelSelectionProblem modelProblem;
+
+  /// OpenRouter: the model list is being fetched.
+  final bool isLoadingModels;
+
+  /// OpenRouter: why the last model list failed to load, as the user should
+  /// read it; null when it loaded (or hasn't been tried).
+  final String? modelListError;
 
   /// Self-hosted mode: holds a sign-in or API key. The connection itself
   /// opens on demand and closes when idle.

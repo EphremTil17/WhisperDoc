@@ -40,8 +40,25 @@ abstract final class ClockTime {
     return switch (days) {
       0 => clock,
       1 => 'Yesterday $clock',
-      _ => '${time.day} ${_months[time.month - 1]} $clock',
+      _ => '${dayMonth(time)} $clock',
     };
+  }
+
+  /// `22 Dec`.
+  static String dayMonth(DateTime time) =>
+      '${time.day} ${_months[time.month - 1]}';
+
+  /// A response time as people read it: `290 ms` to the nearest 10 ms
+  /// (`<10 ms` below that), `1.4 s` from a second up (995 ms included,
+  /// which would otherwise round to `1000 ms`).
+  static String latency(Duration latency) {
+    const tens = 10;
+    final ms = latency.inMilliseconds;
+    final rounded = (ms / tens).round() * tens;
+    if (rounded < tens) return '<$tens ms';
+    if (rounded < Duration.millisecondsPerSecond) return '$rounded ms';
+
+    return '${(ms / Duration.millisecondsPerSecond).toStringAsFixed(1)} s';
   }
 
   /// `m:ss` for an elapsed [duration], e.g. a recording timer.

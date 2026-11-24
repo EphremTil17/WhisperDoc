@@ -22,6 +22,7 @@ class FieldPanel extends StatefulWidget {
     this.secret = false,
     this.maxLines = 1,
     this.validate,
+    this.check,
   });
 
   final String title;
@@ -38,6 +39,10 @@ class FieldPanel extends StatefulWidget {
 
   /// Returns why a value cannot be saved, or null when it can.
   final String? Function(String value)? validate;
+
+  /// Asks, on Save, whether the value works (a call to the service it
+  /// names); returns why not, which keeps the panel open, or null.
+  final Future<String?> Function(String value)? check;
 
   @override
   State<FieldPanel> createState() => _FieldPanelState();
@@ -69,6 +74,17 @@ class _FieldPanelState extends State<FieldPanel> {
       _saveError = null;
     });
     try {
+      final rejected = await widget.check?.call(value);
+      if (rejected != null) {
+        if (mounted) {
+          setState(() {
+            _saving = false;
+            _saveError = rejected;
+          });
+        }
+
+        return;
+      }
       await widget.onSave(value);
     } catch (e) {
       LoggingService().error('Could not save ${widget.title}', error: e);
@@ -115,7 +131,8 @@ class _FieldPanelState extends State<FieldPanel> {
                 onPressed: () => Navigator.of(context).pop(),
               ),
               AppButton(
-                label: 'Save',
+                // A check can take a second: say what the wait is for.
+                label: _saving && widget.check != null ? 'Checking…' : 'Save',
                 onPressed: canSave ? () => unawaited(_save()) : null,
               ),
             ],

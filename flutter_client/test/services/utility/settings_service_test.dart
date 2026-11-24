@@ -8,6 +8,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:flutter_client/services/utility/secure_vault_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 
@@ -49,7 +50,7 @@ void main() {
     });
 
     test('loads groq configuration from shared preferences correctly', () {
-      expect(settings.isGroqMode, isTrue);
+      expect(settings.transcriptionSource, TranscriptionSource.groq);
       expect(settings.groqLanguage, 'en');
       expect(settings.groqModel, 'whisper-large-v3');
     });
@@ -81,7 +82,7 @@ void main() {
     });
 
     test('initializes injected vault during load', () {
-      expect(settings.isGroqMode, isTrue);
+      expect(settings.transcriptionSource, TranscriptionSource.groq);
       verify(() => mockVault.initialize()).called(1);
     });
 
@@ -346,25 +347,25 @@ void main() {
       expect(loadedSettings.dictationProfile.requiresLlm, isTrue);
     });
 
-    test(
-      'switching transcription mode to whisper reverts dictationProfile to raw',
-      () async {
-        await settings.setTranscriptionMode('groq');
-        await settings.setDictationProfile(DictationProfile.clean);
-        expect(settings.dictationProfile, DictationProfile.clean);
+    test('switching to the server reverts dictationProfile to raw', () async {
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
+      await settings.setDictationProfile(DictationProfile.clean);
+      expect(settings.dictationProfile, DictationProfile.clean);
 
-        await settings.setTranscriptionMode('whisper');
+      await settings.setTranscriptionSource(TranscriptionSource.server);
+      expect(settings.dictationProfile, DictationProfile.raw);
+    });
+
+    test(
+      'setDictationProfile enforces raw profile when the server transcribes',
+      () async {
+        await settings.setTranscriptionSource(TranscriptionSource.server);
+        expect(settings.transcriptionSource, TranscriptionSource.server);
+
+        await settings.setDictationProfile(DictationProfile.professional);
         expect(settings.dictationProfile, DictationProfile.raw);
       },
     );
-
-    test('setDictationProfile enforces raw profile when in WhisperDoc backend mode', () async {
-      await settings.setTranscriptionMode('whisper');
-      expect(settings.isGroqMode, isFalse);
-
-      await settings.setDictationProfile(DictationProfile.professional);
-      expect(settings.dictationProfile, DictationProfile.raw);
-    });
 
     test(
       'loading with stored custom key falls back to Raw when slot not present',
@@ -445,8 +446,7 @@ void main() {
       expect(settings.showVisualizer, isTrue);
       expect(settings.animateBackground, isTrue);
       expect(settings.incognitoMode, isFalse);
-      expect(settings.transcriptionMode, SettingsService.backendMode);
-      expect(settings.isGroqMode, isFalse);
+      expect(settings.transcriptionSource, TranscriptionSource.server);
       expect(settings.groqModel, AppConstants.groqDefaultModel);
       expect(settings.cachedApiKey, isNull);
       expect(settings.cachedGroqApiKey, isNull);
@@ -515,7 +515,7 @@ void main() {
       await settings.setAnimateBackground(true);
       await settings.setIncognitoMode(false);
       await settings.setServerUri(AppConstants.defaultServerUri);
-      await settings.setTranscriptionMode(SettingsService.backendMode);
+      await settings.setTranscriptionSource(TranscriptionSource.server);
       await settings.setGroqLanguage('');
       await settings.setGroqPrompt('');
       await settings.setMicrophoneSelection(null, null);
@@ -671,17 +671,17 @@ void main() {
     test('Groq mode and language survive a restart', () async {
       final settings = await launch();
 
-      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
       await settings.setGroqLanguage('am');
       final reloaded = await launch();
 
-      expect(reloaded.isGroqMode, isTrue);
+      expect(reloaded.transcriptionSource, TranscriptionSource.groq);
       expect(reloaded.groqLanguage, 'am');
     });
 
     test('a chosen profile survives a restart in Groq mode', () async {
       final settings = await launch();
-      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
 
       await settings.setDictationProfile(DictationProfile.professional);
       final reloaded = await launch();
@@ -689,12 +689,179 @@ void main() {
       expect(reloaded.dictationProfile, DictationProfile.professional);
     });
 
+    test(
+      'OpenRouter settings survive a restart, its key only in the vault',
+      () async {
+        final settings = await launch();
+        await settings.setTranscriptionSource(TranscriptionSource.openRouter);
+        await settings.setOpenRouterApiKey('sk-or-v1-abc');
+        await settings.setOpenRouterModel('microsoft/mai-transcribe-2');
+        await settings.setOpenRouterZdr(false);
+        await settings.setOpenRouterLanguage('fr');
+
+        final reloaded = await launch();
+        final prefs = await SharedPreferences.getInstance();
+
+        expect(reloaded.transcriptionSource, TranscriptionSource.openRouter);
+        expect(prefs.getString('transcription_mode'), 'openrouter');
+        expect(reloaded.cachedOpenRouterApiKey, 'sk-or-v1-abc');
+        expect(vault.entries['openrouter_api_key'], 'sk-or-v1-abc');
+        expect(
+          prefs.getKeys().where((k) => prefs.get(k) == 'sk-or-v1-abc'),
+          isEmpty,
+        );
+        expect(reloaded.openRouterModel, 'microsoft/mai-transcribe-2');
+        expect(reloaded.openRouterZdr, isFalse);
+        expect(reloaded.openRouterLanguage, 'fr');
+      },
+    );
+
+    test('OpenRouter keeps zero data by default, with no model yet', () async {
+      final settings = await launch();
+
+      expect(settings.openRouterZdr, isTrue);
+      expect(settings.openRouterModel, isNull);
+      expect(settings.openRouterLanguage, isEmpty);
+      expect(settings.cachedOpenRouterApiKey, isNull);
+    });
+
+    test(
+      'choosing a model saves it, and the same one again does nothing',
+      () async {
+        final settings = await launch();
+        var notified = 0;
+        settings.addListener(() => notified++);
+
+        await settings.setOpenRouterModel('deepgram/nova-3');
+        await settings.setOpenRouterModel('deepgram/nova-3');
+        final reloaded = await launch();
+
+        expect(notified, 1);
+        expect(reloaded.openRouterModel, 'deepgram/nova-3');
+      },
+    );
+
+    test('the rewrite model is the default until another is chosen, and that '
+        'survives a restart', () async {
+      final settings = await launch();
+      expect(
+        (settings.openRouterRewriteModel, settings.hasCustomRewriteModel),
+        (AppConstants.openRouterTransformModel, false),
+      );
+      var notified = 0;
+      settings.addListener(() => notified++);
+
+      await settings.setOpenRouterRewriteModel('deepseek/deepseek-v4.1');
+      await settings.setOpenRouterRewriteModel('deepseek/deepseek-v4.1');
+      final reloaded = await launch();
+
+      expect(notified, 1);
+      expect(
+        (reloaded.openRouterRewriteModel, reloaded.hasCustomRewriteModel),
+        ('deepseek/deepseek-v4.1', true),
+      );
+    });
+
+    test('an empty rewrite model, or the default, goes back to it', () async {
+      final settings = await launch();
+      final prefs = await SharedPreferences.getInstance();
+      final cleared = <bool>[];
+      for (final reset in ['', AppConstants.openRouterTransformModel]) {
+        await settings.setOpenRouterRewriteModel('anthropic/claude-haiku-5.5');
+        await settings.setOpenRouterRewriteModel(reset);
+        cleared.add(
+          !settings.hasCustomRewriteModel &&
+              !prefs.containsKey('openrouter_rewrite_model'),
+        );
+      }
+
+      expect(cleared, [true, true]);
+      expect(
+        settings.openRouterRewriteModel,
+        AppConstants.openRouterTransformModel,
+      );
+    });
+
+    test(
+      'a stored rewrite model that isn’t an OpenRouter id is ignored',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'openrouter_rewrite_model': '../models/x',
+        });
+
+        final settings = await launch();
+
+        expect(settings.hasCustomRewriteModel, isFalse);
+      },
+    );
+
+    test('removing the OpenRouter key deletes it from the vault', () async {
+      final settings = await launch();
+      await settings.setOpenRouterApiKey('sk-or-v1-abc');
+
+      await settings.setOpenRouterApiKey('');
+
+      expect(settings.cachedOpenRouterApiKey, isNull);
+      expect(vault.entries.containsKey('openrouter_api_key'), isFalse);
+    });
+
+    test('the cloud key is the active source’s own key', () async {
+      final settings = await launch();
+      await settings.setGroqApiKey('gsk_groq');
+      await settings.setOpenRouterApiKey('sk-or-v1-abc');
+
+      // The server has no cloud key, however many are saved.
+      expect((settings.cloudApiKey, settings.hasCloudKey), (null, false));
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
+      expect(settings.cloudApiKey, 'gsk_groq');
+      await settings.setTranscriptionSource(TranscriptionSource.openRouter);
+      expect(settings.cloudApiKey, 'sk-or-v1-abc');
+      await settings.setOpenRouterApiKey('');
+      expect(settings.hasCloudKey, isFalse);
+    });
+
+    test('settings saved before OpenRouter, or unknown, still load', () async {
+      const stored = {
+        'groq': TranscriptionSource.groq,
+        'backend': TranscriptionSource.server,
+        'whisper': TranscriptionSource.server,
+      };
+      final loaded = <String, TranscriptionSource>{};
+      for (final mode in stored.keys) {
+        SharedPreferences.setMockInitialValues({'transcription_mode': mode});
+        loaded[mode] = (await launch()).transcriptionSource;
+      }
+
+      expect(loaded, stored);
+    });
+
+    test('output styles work on OpenRouter and survive a restart', () async {
+      final settings = await launch();
+      await settings.setTranscriptionSource(TranscriptionSource.openRouter);
+
+      await settings.setDictationProfile(DictationProfile.clean);
+      final reloaded = await launch();
+
+      expect(settings.supportsStyles, isTrue);
+      expect(reloaded.dictationProfile, DictationProfile.clean);
+    });
+
+    test('moving between cloud sources keeps the chosen style', () async {
+      final settings = await launch();
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
+      await settings.setDictationProfile(DictationProfile.casual);
+
+      await settings.setTranscriptionSource(TranscriptionSource.openRouter);
+
+      expect(settings.dictationProfile, DictationProfile.casual);
+    });
+
     test('leaving Groq mode stores the raw profile', () async {
       final settings = await launch();
-      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
       await settings.setDictationProfile(DictationProfile.clean);
 
-      await settings.setTranscriptionMode(SettingsService.backendMode);
+      await settings.setTranscriptionSource(TranscriptionSource.server);
       final prefs = await SharedPreferences.getInstance();
 
       expect(prefs.getString('dictation_profile'), 'raw');
@@ -707,7 +874,7 @@ void main() {
         userPrompt: 'Format as a SOAP note',
       );
       final settings = await launch();
-      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
 
       await settings.saveCustomProfile(profile);
       await settings.setDictationProfile(profile);
@@ -735,7 +902,7 @@ void main() {
 
     test('editing the active custom profile keeps it active', () async {
       final settings = await launch();
-      await settings.setTranscriptionMode(SettingsService.groqMode);
+      await settings.setTranscriptionSource(TranscriptionSource.groq);
       await settings.saveCustomProfile(
         const CustomProfile(
           storageKey: 'custom1',

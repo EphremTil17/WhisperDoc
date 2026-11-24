@@ -6,7 +6,8 @@ import 'package:flutter_client/infrastructure/di/service_locator.dart';
 import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/hardware/audio_service.dart';
 import 'package:flutter_client/services/hardware/hotkey_service.dart';
-import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/services/transcription/open_router_catalog.dart';
+import 'package:flutter_client/services/transcription/open_router_chat_engine.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/utility/automation_service.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
@@ -31,10 +32,11 @@ class AppProviders extends StatelessWidget {
         ChangeNotifierProvider.value(value: getIt<WebSocketService>()),
         ChangeNotifierProvider.value(value: getIt<AudioService>()),
         ChangeNotifierProvider.value(value: getIt<AuthService>()),
-        ChangeNotifierProvider.value(value: getIt<GroqTranscriptionService>()),
+        ChangeNotifierProvider.value(value: getIt<OpenRouterCatalog>()),
         ChangeNotifierProvider.value(value: getIt<RecordingController>()),
         Provider.value(value: getIt<HotkeyService>()),
         Provider.value(value: getIt<AutomationService>()),
+        Provider.value(value: getIt<OpenRouterChatEngine>()),
         ChangeNotifierProvider.value(value: getIt<ProfileController>()),
         ChangeNotifierProvider.value(value: getIt<UpdateService>()),
       ],

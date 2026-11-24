@@ -23,6 +23,8 @@ class BlockedBody extends StatelessWidget {
     switch (fix) {
       case HomeFix.openAccount:
         unawaited(HomeNavigation.openAccount(context));
+      case HomeFix.chooseModel:
+        unawaited(HomeNavigation.chooseModel(context));
       case HomeFix.openSettings:
         unawaited(HomeNavigation.openSettings(context));
       case HomeFix.retryMicrophone:

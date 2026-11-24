@@ -20,9 +20,6 @@ abstract final class AppIcons {
   /// Menu open.
   static const IconData chevronUp = IconData(57456, fontFamily: _family);
 
-  /// Groq Cloud account.
-  static const IconData cloud = IconData(57480, fontFamily: _family);
-
   /// Output style: Tech.
   static const IconData code = IconData(57491, fontFamily: _family);
 
@@ -121,8 +118,11 @@ abstract final class AppIcons {
   /// Account: prompt hint.
   static const IconData textCursorInput = IconData(57957, fontFamily: _family);
 
-  /// Account: self-hosted server address.
+  /// Your own WhisperDoc server: the source, and its address.
   static const IconData server = IconData(57683, fontFamily: _family);
+
+  /// Groq, as a transcription source (its speed).
+  static const IconData zap = IconData(57780, fontFamily: _family);
 
   /// Account: sign in.
   static const IconData logIn = IconData(57613, fontFamily: _family);

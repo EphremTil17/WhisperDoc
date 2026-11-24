@@ -21,7 +21,8 @@ void main() {
           .thenReturn('gsk_abcdefghijklmnop3f2a');
       await account.pumpPanel(const AccountPanel());
 
-      expect(find.text('Groq Cloud'), findsOneWidget);
+      const selectorAndIdentity = 2;
+      expect(find.text('Groq'), findsNWidgets(selectorAndIdentity));
       expect(find.text('Transcribing with your API key'), findsOneWidget);
       expect(find.text('gsk_…3f2a'), findsOneWidget);
       expect(find.text('Large v3 Turbo'), findsOneWidget);
@@ -42,8 +43,7 @@ void main() {
     );
 
     testWidgets('self-hosted and signed out offers sign-in', (tester) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)..useServer();
       await account.pumpPanel(const AccountPanel());
 
       expect(find.text('WhisperDoc server'), findsOneWidget);
@@ -56,8 +56,7 @@ void main() {
     testWidgets('a failed sign-in says so instead of doing nothing', (
       tester,
     ) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)..useServer();
       when(() => account.profile.signIn()).thenThrow(StateError('no issuer'));
       await account.pumpPanel(const AccountPanel());
 
@@ -102,8 +101,7 @@ void main() {
     testWidgets('a server address that is not a WebSocket cannot be saved', (
       tester,
     ) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)..useServer();
       await account.pumpPanel(const AccountPanel());
 
       await tester.tap(find.text('Server'));
@@ -121,8 +119,7 @@ void main() {
     testWidgets('the default https:// address is accepted as wss://', (
       tester,
     ) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)..useServer();
       await account.pumpPanel(const AccountPanel());
 
       await tester.tap(find.text('Server'));
@@ -140,8 +137,7 @@ void main() {
     testWidgets(
       'public ws:// is blocked inline while wss:// and local ws:// save',
       (tester) async {
-        final account = HomeOrchestrator(tester);
-        when(() => account.settings.isGroqMode).thenReturn(false);
+        final account = HomeOrchestrator(tester)..useServer();
         await account.pumpPanel(const AccountPanel());
 
         final field = find.byType(TextField);
@@ -170,8 +166,7 @@ void main() {
     testWidgets('rejects non-HTTPS avatar URLs and falls back to initial', (
       tester,
     ) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)..useServer();
       when(() => account.profile.isAuthenticated).thenReturn(true);
       when(() => account.profile.currentUser).thenReturn({
         'id': 'sub-1',
@@ -222,8 +217,9 @@ void main() {
     );
 
     testWidgets('connection rows lock while a dictation runs', (tester) async {
-      final account = HomeOrchestrator(tester)..startRecording();
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)
+        ..useServer()
+        ..startRecording();
       when(() => account.profile.isAuthenticated).thenReturn(true);
       await account.pumpPanel(const AccountPanel());
 
@@ -241,8 +237,7 @@ void main() {
     });
 
     testWidgets('Sign out signs out when no dictation runs', (tester) async {
-      final account = HomeOrchestrator(tester);
-      when(() => account.settings.isGroqMode).thenReturn(false);
+      final account = HomeOrchestrator(tester)..useServer();
       when(() => account.profile.isAuthenticated).thenReturn(true);
       when(account.profile.signOut).thenAnswer((_) => Future.value());
       await account.pumpPanel(const AccountPanel());

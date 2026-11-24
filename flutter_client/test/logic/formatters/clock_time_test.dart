@@ -52,4 +52,25 @@ void main() {
       );
     });
   });
+
+  group('latency', () {
+    test('reads to the nearest 10 ms under a second, seconds above', () {
+      const cases = {
+        0: '<10 ms',
+        4: '<10 ms',
+        5: '10 ms',
+        292: '290 ms',
+        994: '990 ms',
+        995: '1.0 s',
+        1047: '1.0 s',
+        1600: '1.6 s',
+      };
+      final read = {
+        for (final ms in cases.keys)
+          ms: ClockTime.latency(Duration(milliseconds: ms)),
+      };
+
+      expect(read, cases);
+    });
+  });
 }

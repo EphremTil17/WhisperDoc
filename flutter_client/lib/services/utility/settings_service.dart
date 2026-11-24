@@ -8,6 +8,8 @@ import 'package:flutter_client/infrastructure/constants/app_constants.dart';
 import 'package:flutter_client/logic/models/dictation_profile.dart';
 import 'package:flutter_client/logic/models/dictation_profile_spec.dart';
 import 'package:flutter_client/logic/models/custom_profile.dart';
+import 'package:flutter_client/logic/models/open_router_model_id.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsService extends ChangeNotifier {
@@ -15,6 +17,7 @@ class SettingsService extends ChangeNotifier {
   static const String _vaultApiKeyKey = 'api_key';
   static const String _vaultGroqApiKey = 'groq_api_key';
   static const String _vaultGroqPrompt = 'groq_prompt';
+  static const String _vaultOpenRouterApiKey = 'openrouter_api_key';
 
   // SharedPreferences Keys (non-sensitive data)
   static const String _keyServerUri = 'server_uri';
@@ -32,6 +35,10 @@ class SettingsService extends ChangeNotifier {
   static const String _keyGroqLanguage = 'groq_language';
   static const String _keyGroqPrompt = 'groq_prompt';
   static const String _keyGroqModel = 'groq_model';
+  static const String _keyOpenRouterModel = 'openrouter_model';
+  static const String _keyOpenRouterZdr = 'openrouter_zdr';
+  static const String _keyOpenRouterLanguage = 'openrouter_language';
+  static const String _keyOpenRouterRewriteModel = 'openrouter_rewrite_model';
   static const String _keyDictationProfile = 'dictation_profile';
   static const String _keyCustomProfiles = 'custom_profiles_json';
   static const String _keyTrustedServers = 'trusted_servers';
@@ -48,10 +55,6 @@ class SettingsService extends ChangeNotifier {
   static const bool _defaultAnimateBackground = true;
   static const bool _defaultIncognitoMode = false;
 
-  /// Transcription modes: the user's own WhisperDoc server, or Groq Cloud.
-  static const String backendMode = 'backend';
-  static const String groqMode = 'groq';
-  static const String _defaultTranscriptionMode = backendMode;
   static const String _defaultGroqLanguage = '';
   static const String _defaultGroqPrompt = '';
   static const String _defaultGroqModel = AppConstants.groqDefaultModel;
@@ -76,11 +79,16 @@ class SettingsService extends ChangeNotifier {
   bool _animateBackground = _defaultAnimateBackground;
   bool _incognitoMode = _defaultIncognitoMode;
   String? _apiKey;
-  String _transcriptionMode = _defaultTranscriptionMode;
+  TranscriptionSource _source = TranscriptionSource.server;
   String? _groqApiKey;
   String _groqLanguage = _defaultGroqLanguage;
   String _groqPrompt = _defaultGroqPrompt;
   String _groqModel = _defaultGroqModel;
+  String? _openRouterApiKey;
+  String? _openRouterModel;
+  bool _openRouterZdr = true;
+  String _openRouterLanguage = '';
+  String? _openRouterRewriteModel;
   DictationProfileSpec _dictationProfile = _defaultDictationProfile;
   List<CustomProfile> _customProfiles = [];
   Set<String> _trustedServers = {};
@@ -104,12 +112,41 @@ class SettingsService extends ChangeNotifier {
   bool get incognitoMode => _incognitoMode;
   String? get cachedApiKey => _apiKey;
   SecureVaultService get vault => _requireVault();
-  String get transcriptionMode => _transcriptionMode;
-  bool get isGroqMode => _transcriptionMode == groqMode;
+  TranscriptionSource get transcriptionSource => _source;
+
+  /// Output styles rewrite text through the cloud service's LLM, so only a
+  /// cloud source offers them.
+  bool get supportsStyles => _source.isCloud;
   String? get cachedGroqApiKey => _groqApiKey;
   String get groqLanguage => _groqLanguage;
   String get groqPrompt => _groqPrompt;
   String get groqModel => _groqModel;
+  String? get cachedOpenRouterApiKey => _openRouterApiKey;
+
+  /// The chosen OpenRouter speech model's id; null until one is chosen.
+  String? get openRouterModel => _openRouterModel;
+
+  /// Zero data retention: every OpenRouter request may only reach hosts that
+  /// keep nothing. On unless the user turns it off.
+  bool get openRouterZdr => _openRouterZdr;
+  String get openRouterLanguage => _openRouterLanguage;
+
+  /// The model the output styles rewrite with on OpenRouter: the user's
+  /// own choice, else [AppConstants.openRouterTransformModel].
+  String get openRouterRewriteModel =>
+      _openRouterRewriteModel ?? AppConstants.openRouterTransformModel;
+
+  /// The user replaced the default rewrite model.
+  bool get hasCustomRewriteModel => _openRouterRewriteModel != null;
+
+  /// The API key of the active cloud source; null for the server.
+  String? get cloudApiKey => switch (_source) {
+    TranscriptionSource.server => null,
+    TranscriptionSource.groq => _groqApiKey,
+    TranscriptionSource.openRouter => _openRouterApiKey,
+  };
+
+  bool get hasCloudKey => cloudApiKey?.isNotEmpty ?? false;
   DictationProfileSpec get dictationProfile => _dictationProfile;
   List<CustomProfile> get customProfiles => List.unmodifiable(_customProfiles);
 
@@ -160,9 +197,11 @@ class SettingsService extends ChangeNotifier {
       // Load API key from secure vault (cached in memory)
       _apiKey = await vault.retrieveCredential(_vaultApiKeyKey);
 
-      // Load Groq Cloud settings
-      _transcriptionMode =
-          prefs.getString(_keyTranscriptionMode) ?? _defaultTranscriptionMode;
+      _source = TranscriptionSource.fromStorageKey(
+        prefs.getString(_keyTranscriptionMode),
+      );
+
+      // Groq
       _groqApiKey = await vault.retrieveCredential(_vaultGroqApiKey);
       _groqLanguage = prefs.getString(_keyGroqLanguage) ?? _defaultGroqLanguage;
       final storedGroqModel = prefs.getString(_keyGroqModel);
@@ -181,6 +220,19 @@ class SettingsService extends ChangeNotifier {
         }
         await prefs.remove(_keyGroqPrompt);
       }
+
+      // OpenRouter
+      _openRouterApiKey = await vault.retrieveCredential(
+        _vaultOpenRouterApiKey,
+      );
+      _openRouterModel = prefs.getString(_keyOpenRouterModel);
+      _openRouterZdr = prefs.getBool(_keyOpenRouterZdr) ?? true;
+      _openRouterLanguage = prefs.getString(_keyOpenRouterLanguage) ?? '';
+      final rewriteModel = prefs.getString(_keyOpenRouterRewriteModel);
+      _openRouterRewriteModel =
+          rewriteModel != null && OpenRouterModelId.isValid(rewriteModel)
+          ? rewriteModel
+          : null;
 
       final customJson = prefs.getString(_keyCustomProfiles);
       if (customJson != null && customJson.isNotEmpty) {
@@ -205,7 +257,7 @@ class SettingsService extends ChangeNotifier {
         _customProfiles = [];
       }
 
-      _dictationProfile = isGroqMode
+      _dictationProfile = supportsStyles
           ? _resolveProfile(prefs.getString(_keyDictationProfile))
           : DictationProfile.raw;
 
@@ -375,15 +427,13 @@ class SettingsService extends ChangeNotifier {
     LoggingService().info('Incognito mode updated to: $value');
   }
 
-  // === Groq Cloud Setters ===
-
-  Future<void> setTranscriptionMode(String mode) async {
+  Future<void> setTranscriptionSource(TranscriptionSource source) async {
     final prefs = _requirePrefs();
-    if (_transcriptionMode == mode) return;
+    if (_source == source) return;
 
-    _transcriptionMode = mode;
-    await prefs.setString(_keyTranscriptionMode, mode);
-    if (!isGroqMode && _dictationProfile != DictationProfile.raw) {
+    _source = source;
+    await prefs.setString(_keyTranscriptionMode, source.storageKey);
+    if (!supportsStyles && _dictationProfile != DictationProfile.raw) {
       _dictationProfile = DictationProfile.raw;
       await prefs.setString(
         _keyDictationProfile,
@@ -391,8 +441,10 @@ class SettingsService extends ChangeNotifier {
       );
     }
     notifyListeners();
-    LoggingService().info('Transcription mode updated to: $mode');
+    LoggingService().info('Transcription source updated to: ${source.label}');
   }
+
+  // === Groq ===
 
   Future<void> setGroqApiKey(String key) async {
     final vault = _requireVault();
@@ -444,6 +496,73 @@ class SettingsService extends ChangeNotifier {
     await prefs.setString(_keyGroqModel, normalizedModel);
     notifyListeners();
     LoggingService().info('Groq model updated to: $normalizedModel');
+  }
+
+  // === OpenRouter ===
+
+  Future<void> setOpenRouterApiKey(String key) async {
+    final vault = _requireVault();
+    if (_openRouterApiKey == key) return;
+
+    if (key.isEmpty) {
+      _openRouterApiKey = null;
+      await vault.deleteCredential(_vaultOpenRouterApiKey);
+    } else {
+      _openRouterApiKey = key;
+      await vault.storeCredential(_vaultOpenRouterApiKey, key);
+    }
+    notifyListeners();
+    LoggingService().info('OpenRouter API key updated securely');
+  }
+
+  Future<void> setOpenRouterModel(String model) async {
+    final prefs = _requirePrefs();
+    if (_openRouterModel == model) return;
+
+    _openRouterModel = model;
+    await prefs.setString(_keyOpenRouterModel, model);
+    notifyListeners();
+    LoggingService().info('OpenRouter model updated to: $model');
+  }
+
+  Future<void> setOpenRouterZdr(bool value) async {
+    final prefs = _requirePrefs();
+    if (_openRouterZdr == value) return;
+
+    _openRouterZdr = value;
+    await prefs.setBool(_keyOpenRouterZdr, value);
+    notifyListeners();
+    LoggingService().info('OpenRouter zero data retention: $value');
+  }
+
+  Future<void> setOpenRouterLanguage(String language) async {
+    final prefs = _requirePrefs();
+    if (_openRouterLanguage == language) return;
+
+    _openRouterLanguage = language;
+    await prefs.setString(_keyOpenRouterLanguage, language);
+    notifyListeners();
+    LoggingService().info('OpenRouter language updated to: $language');
+  }
+
+  /// Rewrites with [model] from now on; empty, or the default itself,
+  /// goes back to the default.
+  Future<void> setOpenRouterRewriteModel(String model) async {
+    final prefs = _requirePrefs();
+    final custom =
+        model.isEmpty || model == AppConstants.openRouterTransformModel
+        ? null
+        : model;
+    if (_openRouterRewriteModel == custom) return;
+
+    _openRouterRewriteModel = custom;
+    if (custom == null) {
+      await prefs.remove(_keyOpenRouterRewriteModel);
+    } else {
+      await prefs.setString(_keyOpenRouterRewriteModel, custom);
+    }
+    notifyListeners();
+    LoggingService().info('OpenRouter rewrite model: $openRouterRewriteModel');
   }
 
   DictationProfileSpec _resolveProfile(String? key) {
@@ -531,7 +650,7 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> setDictationProfile(DictationProfileSpec profile) async {
     final prefs = _requirePrefs();
-    final resolved = isGroqMode ? profile : DictationProfile.raw;
+    final resolved = supportsStyles ? profile : DictationProfile.raw;
     if (_dictationProfile.storageKey == resolved.storageKey) return;
 
     _dictationProfile = resolved;

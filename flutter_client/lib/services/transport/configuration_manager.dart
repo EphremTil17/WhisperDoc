@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:flutter_client/logic/models/transcription_source.dart';
+
 import '../auth/auth_service.dart';
 import '../utility/settings_service.dart';
 import '../utility/logging_service.dart';
@@ -15,7 +17,7 @@ class ConfigurationManager {
   String _lastKnownUri;
   String? _lastKnownApiKey;
   bool _lastKnownIncognito;
-  String _lastKnownMode;
+  TranscriptionSource _lastKnownSource;
 
   // OIDC identity fingerprint — tracks whether the authenticated user or
   // auth state has actually changed.  Prevents unnecessary reconnects on
@@ -30,7 +32,7 @@ class ConfigurationManager {
     : _lastKnownUri = _settingsService.serverUri,
       _lastKnownApiKey = _settingsService.cachedApiKey,
       _lastKnownIncognito = _settingsService.incognitoMode,
-      _lastKnownMode = _settingsService.transcriptionMode,
+      _lastKnownSource = _settingsService.transcriptionSource,
       _lastKnownUserId = _authService.currentUser?['id'] as String?,
       _lastKnownIsAuthenticated = _authService.isAuthenticated;
 
@@ -51,13 +53,13 @@ class ConfigurationManager {
     _settingsService.addListener(_handleSettingsChange);
 
     // CRITICAL: Initial state check for launch.
-    // In Groq mode the backend is fully dormant — skip auto-connect.
+    // With a cloud source the backend is fully dormant — skip auto-connect.
     _logger.info(
       'ConfigurationManager: Starting observation, checking initial state...',
     );
-    if (_settingsService.isGroqMode) {
+    if (_settingsService.transcriptionSource.isCloud) {
       _logger.info(
-        'ConfigurationManager: Groq mode active, backend dormant — skipping auto-connect',
+        'ConfigurationManager: cloud source active, backend dormant — skipping auto-connect',
       );
     } else if (_authService.isAuthenticated ||
         (_lastKnownApiKey?.isNotEmpty ?? false)) {
@@ -104,8 +106,8 @@ class ConfigurationManager {
     }
 
     // Auto-connect if we are authenticated and currently idle.
-    // Suppressed in Groq mode — backend is dormant.
-    if (isAuthenticated && !_settingsService.isGroqMode) {
+    // Suppressed for a cloud source — backend is dormant.
+    if (isAuthenticated && !_settingsService.transcriptionSource.isCloud) {
       _onAutoConnectDesired?.call();
     }
   }
@@ -114,32 +116,35 @@ class ConfigurationManager {
     final currentUri = _settingsService.serverUri;
     final currentIncognito = _settingsService.incognitoMode;
     final currentApiKey = _settingsService.cachedApiKey;
-    final currentMode = _settingsService.transcriptionMode;
-
-    final modeChanged = currentMode != _lastKnownMode;
+    final currentSource = _settingsService.transcriptionSource;
+    final wasCloud = _lastKnownSource.isCloud;
+    final sourceChanged = currentSource != _lastKnownSource;
     final connectionChanged =
         currentUri != _lastKnownUri ||
         currentApiKey != _lastKnownApiKey ||
         currentIncognito != _lastKnownIncognito;
 
-    // Record every value on every change, Groq mode included, so a later
+    // Record every value on every change, cloud sources included, so a later
     // unrelated change can't be mistaken for one made while dormant.
-    _lastKnownMode = currentMode;
+    _lastKnownSource = currentSource;
     _lastKnownUri = currentUri;
     _lastKnownApiKey = currentApiKey;
     _lastKnownIncognito = currentIncognito;
 
-    if (_settingsService.isGroqMode) {
-      if (modeChanged) {
-        // Switching TO Groq: tear down the backend connection, no reconnect.
-        _logger.info('ConfigurationManager: Groq mode on, backend dormant');
+    if (currentSource.isCloud) {
+      // Leaving the server tears its connection down, with no reconnect.
+      // Moving between cloud sources leaves it dormant.
+      if (sourceChanged && !wasCloud) {
+        _logger.info(
+          'ConfigurationManager: ${currentSource.label} on, backend dormant',
+        );
         _onReconnectNeeded?.call();
       }
 
       return;
     }
 
-    if (modeChanged) {
+    if (sourceChanged) {
       _logger.info('ConfigurationManager: Server mode on');
     } else if (connectionChanged) {
       _logger.info('ConfigurationManager: Server, key or incognito changed');

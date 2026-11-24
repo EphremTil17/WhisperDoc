@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
-import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
+import 'package:flutter_client/logic/models/model_selection_problem.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
+import 'package:flutter_client/services/transcription/open_router_catalog.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
@@ -16,15 +18,19 @@ import 'package:flutter_client/services/utility/update_service.dart';
 /// rebuild the stage, bottom bar or account indicator.
 extension HomeStatusReader on BuildContext {
   HomeStatus watchHomeStatus() {
-    final (isGroqMode, style, hasApiKey) = select(
+    final (source, style, hasApiKey, hasCloudKey) = select(
       (SettingsService s) => (
-        s.isGroqMode,
+        s.transcriptionSource,
         s.dictationProfile,
         s.cachedApiKey?.isNotEmpty ?? false,
+        s.hasCloudKey,
       ),
     );
-    final hasGroqKey = select(
-      (GroqTranscriptionService g) => g.hasValidCredentials,
+    // Only OpenRouter has a model list; other sources never rebuild on it.
+    final (modelProblem, isLoadingModels, modelListError) = select(
+      (OpenRouterCatalog c) => source == TranscriptionSource.openRouter
+          ? (c.selectionProblem, c.isRefreshing, c.lastError?.userMessage)
+          : (ModelSelectionProblem.none, false, null),
     );
     // Signed in means holding credentials, not holding a socket: the
     // connection closes when idle and reopens on the next dictation.
@@ -60,8 +66,11 @@ extension HomeStatusReader on BuildContext {
 
     return HomeStatusMapper.map(
       HomeSignals(
-        isGroqMode: isGroqMode,
-        hasGroqKey: hasGroqKey,
+        source: source,
+        hasCloudKey: hasCloudKey,
+        modelProblem: modelProblem,
+        isLoadingModels: isLoadingModels,
+        modelListError: modelListError,
         isSignedIn: hasSignIn || hasApiKey,
         handshakeFailed: handshakeFailed,
         isBanned: isBanned,

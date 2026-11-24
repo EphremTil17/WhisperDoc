@@ -13,6 +13,7 @@ import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
 import 'package:flutter_client/services/transport/handshake_state_machine.dart';
 import 'package:flutter_client/services/transport/configuration_manager.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:stream_channel/stream_channel.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -69,7 +70,7 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
   // Fields
   String _serverUri;
   final String? _apiKey;
-  bool _groqMode = false;
+  TranscriptionSource _source = TranscriptionSource.server;
   final Set<String> trusted = {};
 
   // Getters — must precede constructors per DCM member-ordering
@@ -83,10 +84,7 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
   bool get incognitoMode => false;
 
   @override
-  String get transcriptionMode => _groqMode ? 'groq' : 'backend';
-
-  @override
-  bool get isGroqMode => _groqMode;
+  TranscriptionSource get transcriptionSource => _source;
 
   // Constructor
   _StubSettingsService({this._apiKey, this._serverUri = 'ws://localhost'});
@@ -97,8 +95,11 @@ class _StubSettingsService extends ChangeNotifier implements SettingsService {
     notifyListeners();
   }
 
-  void setGroqMode(bool value) {
-    _groqMode = value;
+  void setGroqMode(bool value) =>
+      useSource(value ? TranscriptionSource.groq : TranscriptionSource.server);
+
+  void useSource(TranscriptionSource source) {
+    _source = source;
     notifyListeners();
   }
 
@@ -1087,6 +1088,66 @@ void main() {
 
       settings.notifyListeners();
       expect((reconnects, autoConnects), (0, 1), reason: 'nothing changed');
+      cm.stopObserving();
+    });
+  });
+
+  group('ConfigurationManager across cloud sources', () {
+    test(
+      'leaving the server for either cloud source tears down, no reconnect',
+      () {
+        for (final cloud in [
+          TranscriptionSource.groq,
+          TranscriptionSource.openRouter,
+        ]) {
+          final settings = _StubSettingsService(apiKey: 'key');
+          final cm = ConfigurationManager(_StubAuthService(), settings);
+          var reconnects = 0;
+          var autoConnects = 0;
+          cm.startObserving(
+            onReconnectNeeded: () => reconnects++,
+            onAutoConnectDesired: () => autoConnects++,
+          );
+          autoConnects = 0; // the launch auto-connect
+
+          settings.useSource(cloud);
+
+          expect((reconnects, autoConnects), (1, 0), reason: '$cloud');
+          cm.stopObserving();
+        }
+      },
+    );
+
+    test('moving between cloud sources leaves the server dormant', () {
+      final settings = _StubSettingsService(apiKey: 'key')
+        ..useSource(TranscriptionSource.groq);
+      final cm = ConfigurationManager(_StubAuthService(), settings);
+      var reconnects = 0;
+      var autoConnects = 0;
+      cm.startObserving(
+        onReconnectNeeded: () => reconnects++,
+        onAutoConnectDesired: () => autoConnects++,
+      );
+
+      settings.useSource(TranscriptionSource.openRouter);
+      settings.useSource(TranscriptionSource.groq);
+
+      expect((reconnects, autoConnects), (0, 0));
+      cm.stopObserving();
+    });
+
+    test('a launch on OpenRouter never connects to the server', () {
+      final settings = _StubSettingsService(apiKey: 'key')
+        ..useSource(TranscriptionSource.openRouter);
+      final cm = ConfigurationManager(_StubAuthService(), settings);
+      var autoConnects = 0;
+
+      cm.startObserving(
+        onReconnectNeeded: () {},
+        onAutoConnectDesired: () => autoConnects++,
+      );
+
+      expect(autoConnects, 0);
       cm.stopObserving();
     });
   });

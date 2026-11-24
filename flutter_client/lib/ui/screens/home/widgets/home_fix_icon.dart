@@ -9,6 +9,7 @@ extension HomeFixIcon on HomeFix {
   IconData get problemIcon => switch (this) {
     HomeFix.openSettings || HomeFix.retryMicrophone => AppIcons.micOff,
     HomeFix.openAccount => AppIcons.keyRound,
+    HomeFix.chooseModel => AppIcons.cpu,
     HomeFix.retryServer => AppIcons.serverOff,
     HomeFix.trustServer => AppIcons.shieldAlert,
     HomeFix.none => AppIcons.ban,
@@ -20,6 +21,7 @@ extension HomeFixIcon on HomeFix {
     HomeFix.retryMicrophone || HomeFix.retryServer => AppIcons.refreshCw,
     HomeFix.trustServer => AppIcons.shieldCheck,
     HomeFix.openAccount => AppIcons.keyRound,
+    HomeFix.chooseModel => AppIcons.cpu,
     HomeFix.none => AppIcons.ban,
   };
 }

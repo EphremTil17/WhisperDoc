@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get_it/get_it.dart';
 import 'package:flutter_client/services/utility/settings_service.dart';
 import 'package:flutter_client/services/transport/websocket_service.dart';
@@ -10,8 +12,14 @@ import 'package:flutter_client/services/auth/auth_service.dart';
 import 'package:flutter_client/services/auth/session_manager.dart';
 import 'package:flutter_client/services/hardware/audio_cue_service.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
-import 'package:flutter_client/services/transcription/groq_transcription_service.dart';
-import 'package:flutter_client/services/transcription/groq_transform_service.dart';
+import 'package:flutter_client/services/transcription/cloud_http.dart';
+import 'package:flutter_client/services/transcription/cloud_transcription_service.dart';
+import 'package:flutter_client/services/transcription/groq_chat_engine.dart';
+import 'package:flutter_client/services/transcription/groq_speech_engine.dart';
+import 'package:flutter_client/services/transcription/open_router_catalog.dart';
+import 'package:flutter_client/services/transcription/open_router_chat_engine.dart';
+import 'package:flutter_client/services/transcription/open_router_speech_engine.dart';
+import 'package:flutter_client/services/transcription/transform_service.dart';
 import 'package:flutter_client/controllers/recording_controller.dart';
 import 'package:flutter_client/controllers/profile_controller.dart';
 
@@ -65,12 +73,26 @@ class ServiceLocator {
       UpdateService(getIt<WebSocketService>()),
     );
 
-    // 3b. Groq Cloud Engine
-    getIt.registerSingleton<GroqTranscriptionService>(
-      GroqTranscriptionService(getIt<SettingsService>()),
+    // 3b. Cloud sources: one keep-alive connection pool for all of them.
+    final cloudHttp = CloudHttp();
+    final catalog = OpenRouterCatalog(settingsService, cloudHttp);
+    getIt.registerSingleton<OpenRouterCatalog>(catalog);
+    // The saved list loads in the background; startup never waits on it.
+    unawaited(catalog.load());
+    getIt.registerSingleton<CloudTranscriptionService>(
+      CloudTranscriptionService(settingsService, [
+        GroqSpeechEngine(settingsService, cloudHttp),
+        OpenRouterSpeechEngine(settingsService, cloudHttp, catalog),
+      ]),
     );
-    getIt.registerSingleton<GroqTransformService>(
-      GroqTransformService(getIt<SettingsService>()),
+    // Registered on its own too: Account checks a rewrite model with it.
+    final openRouterChat = OpenRouterChatEngine(settingsService, cloudHttp);
+    getIt.registerSingleton<OpenRouterChatEngine>(openRouterChat);
+    getIt.registerSingleton<TransformService>(
+      TransformService(settingsService, [
+        GroqChatEngine(settingsService, cloudHttp),
+        openRouterChat,
+      ]),
     );
 
     // 4. Controllers
@@ -78,8 +100,8 @@ class ServiceLocator {
       RecordingController(
         audioService: getIt<AudioService>(),
         wsService: getIt<WebSocketService>(),
-        groqService: getIt<GroqTranscriptionService>(),
-        transformService: getIt<GroqTransformService>(),
+        cloudService: getIt<CloudTranscriptionService>(),
+        transformService: getIt<TransformService>(),
         automationService: getIt<AutomationService>(),
         historyService: getIt<HistoryService>(),
         settingsService: getIt<SettingsService>(),

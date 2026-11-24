@@ -1,8 +1,8 @@
 import 'package:flutter_client/infrastructure/theme/app_icons.dart';
 import 'package:flutter_client/infrastructure/theme/app_tokens.dart';
 import 'package:flutter_client/ui/shared/widgets/caption_cue.dart';
-import 'package:flutter_client/ui/shared/widgets/crisp_text.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/app_panel.dart';
+import 'package:flutter_client/ui/shared/widgets/panel/panel_note.dart';
 import 'package:flutter_client/ui/shared/widgets/panel/panel_row.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -71,14 +71,7 @@ class ChoicePanel<T> extends StatelessWidget {
             padding: const EdgeInsets.all(AppSpace.md),
             child: Center(child: CaptionCue(status)),
           ),
-        if (footnote != null)
-          Padding(
-            padding: const EdgeInsets.all(AppSpace.sm),
-            child: CrispText(
-              footnote,
-              style: AppType.caption.copyWith(color: AppColors.textMuted),
-            ),
-          ),
+        if (footnote != null) PanelNote(footnote),
       ],
     );
   }

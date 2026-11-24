@@ -1,4 +1,6 @@
 import 'package:flutter_client/logic/mappers/home_status_mapper.dart';
+import 'package:flutter_client/logic/models/model_selection_problem.dart';
+import 'package:flutter_client/logic/models/transcription_source.dart';
 import 'package:flutter_client/services/hardware/audio_input_status.dart';
 import 'package:flutter_client/services/transport/server_problem.dart';
 import 'package:flutter_client/services/utility/update_service.dart';
@@ -6,8 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   HomeSignals signals({
-    bool isGroqMode = true,
-    bool hasGroqKey = true,
+    TranscriptionSource source = TranscriptionSource.groq,
+    bool hasCloudKey = true,
+    ModelSelectionProblem modelProblem = ModelSelectionProblem.none,
+    bool isLoadingModels = false,
+    String? modelListError,
     bool isSignedIn = true,
     bool handshakeFailed = false,
     bool isBanned = false,
@@ -21,8 +26,11 @@ void main() {
     bool isPolishing = false,
     bool showSilenceWarning = false,
   }) => HomeSignals(
-    isGroqMode: isGroqMode,
-    hasGroqKey: hasGroqKey,
+    source: source,
+    hasCloudKey: hasCloudKey,
+    modelProblem: modelProblem,
+    isLoadingModels: isLoadingModels,
+    modelListError: modelListError,
     isSignedIn: isSignedIn,
     handshakeFailed: handshakeFailed,
     isBanned: isBanned,
@@ -82,7 +90,7 @@ void main() {
 
     test('an active session wins over setup problems', () {
       final status = HomeStatusMapper.map(
-        signals(isRecording: true, hasGroqKey: false),
+        signals(isRecording: true, hasCloudKey: false),
       );
 
       expect(status.phase, HomePhase.listening);
@@ -109,30 +117,150 @@ void main() {
 
     test('a microphone problem wins over an account problem', () {
       final status = HomeStatusMapper.map(
-        signals(inputStatus: AudioInputStatus.noDevice, hasGroqKey: false),
+        signals(inputStatus: AudioInputStatus.noDevice, hasCloudKey: false),
       );
 
       expect(status.cue, 'no microphone');
       expect(status.badge, AccountBadge.attention);
     });
 
-    test('Groq mode without a key blocks and points at the account', () {
-      final status = HomeStatusMapper.map(signals(hasGroqKey: false));
+    test('a cloud source without its key names the service to add it for', () {
+      for (final source in [
+        TranscriptionSource.groq,
+        TranscriptionSource.openRouter,
+      ]) {
+        final status = HomeStatusMapper.map(
+          signals(source: source, hasCloudKey: false),
+        );
+
+        expect(status.phase, HomePhase.blocked);
+        expect(status.cue, 'not set up');
+        expect(status.headline, 'Add your ${source.label} API key to start.');
+        expect(status.fix, HomeFix.openAccount);
+        expect(status.fixLabel, 'Add key');
+        expect(status.badge, AccountBadge.attention);
+      }
+    });
+
+    test('OpenRouter blocks on a model it can’t use, with a way to choose', () {
+      const cases = {
+        ModelSelectionProblem.notChosen: (
+          'no model',
+          'Choose an OpenRouter model to start.',
+        ),
+        ModelSelectionProblem.retired: (
+          'model retired',
+          'OpenRouter stopped serving your model. Choose another.',
+        ),
+        ModelSelectionProblem.retainsData: (
+          'model keeps data',
+          'Zero data retention is on, and your model keeps data. '
+              'Choose another.',
+        ),
+      };
+      for (final MapEntry(key: problem, value: (cue, headline))
+          in cases.entries) {
+        final status = HomeStatusMapper.map(
+          signals(
+            source: TranscriptionSource.openRouter,
+            modelProblem: problem,
+          ),
+        );
+
+        expect(status.phase, HomePhase.blocked, reason: '$problem');
+        expect(status.cue, cue);
+        expect(status.headline, headline);
+        expect(status.tone, CueTone.alert);
+        expect(status.fix, HomeFix.chooseModel);
+        expect(status.fixLabel, 'Choose');
+        expect(status.badge, AccountBadge.attention);
+      }
+    });
+
+    test('while the first model list loads it waits quietly, no button', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          source: TranscriptionSource.openRouter,
+          modelProblem: ModelSelectionProblem.notChosen,
+          isLoadingModels: true,
+        ),
+      );
 
       expect(status.phase, HomePhase.blocked);
-      expect(status.fix, HomeFix.openAccount);
+      expect(status.cue, 'loading models');
+      expect(status.tone, CueTone.muted);
+      expect(status.fixLabel, isNull);
+      expect(status.fix, HomeFix.chooseModel); // its glyph on the cue
+      expect(status.canRecord, isFalse);
+    });
+
+    test('the first load is a wait, not a fault: no attention dot', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          source: TranscriptionSource.openRouter,
+          modelProblem: ModelSelectionProblem.notChosen,
+          isLoadingModels: true,
+        ),
+      );
+
+      expect(status.badge, AccountBadge.none);
+    });
+
+    test('a list that failed to load says why and offers to try again', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          source: TranscriptionSource.openRouter,
+          modelProblem: ModelSelectionProblem.notChosen,
+          modelListError: 'Cannot reach OpenRouter. Check your connection.',
+        ),
+      );
+
+      expect(status.cue, 'can’t load models');
+      expect(
+        status.headline,
+        'Cannot reach OpenRouter. Check your connection.',
+      );
+      expect(status.tone, CueTone.alert);
+      expect(status.fix, HomeFix.chooseModel);
+      expect(status.fixLabel, 'Try again');
       expect(status.badge, AccountBadge.attention);
+    });
+
+    test('a usable OpenRouter model is ready, even mid-refresh', () {
+      final status = HomeStatusMapper.map(
+        signals(source: TranscriptionSource.openRouter, isLoadingModels: true),
+      );
+
+      expect(status.phase, HomePhase.ready);
+      expect(status.badge, AccountBadge.none);
+    });
+
+    test('server problems never block a cloud source', () {
+      final status = HomeStatusMapper.map(
+        signals(
+          source: TranscriptionSource.openRouter,
+          isSignedIn: false,
+          handshakeFailed: true,
+          serverProblem: ServerProblem.unreachable,
+        ),
+      );
+
+      expect(status.phase, HomePhase.ready);
+      expect(status.badge, AccountBadge.none);
     });
 
     test('self-hosted mode: signed out, failed handshake, required update', () {
       final signedOut = HomeStatusMapper.map(
-        signals(isGroqMode: false, isSignedIn: false),
+        signals(source: TranscriptionSource.server, isSignedIn: false),
       );
       final failed = HomeStatusMapper.map(
-        signals(isGroqMode: false, handshakeFailed: true),
+        signals(source: TranscriptionSource.server, handshakeFailed: true),
       );
       final tooOld = HomeStatusMapper.map(
-        signals(isGroqMode: false, updateStatus: UpdateStatus.required),
+        signals(
+          source: TranscriptionSource.server,
+          updateStatus: UpdateStatus.required,
+        ),
       );
 
       expect(signedOut.cue, 'not signed in');
@@ -146,7 +274,10 @@ void main() {
 
     test('signed in with the server offline says so and offers a retry', () {
       final status = HomeStatusMapper.map(
-        signals(isGroqMode: false, serverProblem: ServerProblem.unreachable),
+        signals(
+          source: TranscriptionSource.server,
+          serverProblem: ServerProblem.unreachable,
+        ),
       );
 
       expect(status.phase, HomePhase.blocked);
@@ -159,7 +290,7 @@ void main() {
     test('a retry under way shows connecting without a button', () {
       final status = HomeStatusMapper.map(
         signals(
-          isGroqMode: false,
+          source: TranscriptionSource.server,
           serverProblem: ServerProblem.unreachable,
           isConnecting: true,
         ),
@@ -173,7 +304,10 @@ void main() {
 
     test('a refused address points at the account', () {
       final status = HomeStatusMapper.map(
-        signals(isGroqMode: false, serverProblem: ServerProblem.insecure),
+        signals(
+          source: TranscriptionSource.server,
+          serverProblem: ServerProblem.insecure,
+        ),
       );
 
       expect(status.cue, 'address not allowed');
@@ -183,7 +317,10 @@ void main() {
 
     test('a server not yet trusted asks, naming it, before any sign-in', () {
       final status = HomeStatusMapper.map(
-        signals(isGroqMode: false, serverProblem: ServerProblem.untrusted),
+        signals(
+          source: TranscriptionSource.server,
+          serverProblem: ServerProblem.untrusted,
+        ),
       );
 
       expect(status.phase, HomePhase.blocked);
@@ -197,7 +334,7 @@ void main() {
     test('connecting after trusting shows connecting, not the question', () {
       final status = HomeStatusMapper.map(
         signals(
-          isGroqMode: false,
+          source: TranscriptionSource.server,
           serverProblem: ServerProblem.untrusted,
           isConnecting: true,
         ),
@@ -210,7 +347,7 @@ void main() {
     test('signing out wins over an offline server', () {
       final status = HomeStatusMapper.map(
         signals(
-          isGroqMode: false,
+          source: TranscriptionSource.server,
           isSignedIn: false,
           serverProblem: ServerProblem.unreachable,
         ),
@@ -220,14 +357,16 @@ void main() {
     });
 
     test('signed in with an idle, closed connection is ready', () {
-      final status = HomeStatusMapper.map(signals(isGroqMode: false));
+      final status = HomeStatusMapper.map(
+        signals(source: TranscriptionSource.server),
+      );
 
       expect(status.phase, HomePhase.ready);
     });
 
     test('a banned connection is paused without a fix button', () {
       final status = HomeStatusMapper.map(
-        signals(isGroqMode: false, isBanned: true),
+        signals(source: TranscriptionSource.server, isBanned: true),
       );
 
       expect(status.phase, HomePhase.blocked);

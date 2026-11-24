@@ -1,0 +1,4 @@
+# Tags used by the test suite. `live` tests call real cloud APIs and skip
+# themselves without a key; see test/live.
+tags:
+  live:

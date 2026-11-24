@@ -64,6 +64,10 @@ abstract final class AppType {
   static const String monoFamily = 'JetBrains Mono';
 
   static const double _captionSize = 12;
+
+  /// Between caption and body; 14.4 keeps the whole-pixel baseline rule
+  /// (14 would not: 1.25 × 14 is not a whole number).
+  static const double _figureSize = 14.4;
   static const double _bodySize = 16;
   static const double _titleSize = 20;
   static const double _displaySize = 28;
@@ -85,6 +89,18 @@ abstract final class AppType {
     leadingDistribution: TextLeadingDistribution.even,
     fontWeight: FontWeight.w500,
     color: AppColors.textMuted,
+  );
+
+  /// 14.4/20: a figure that should read before its caption but stay below
+  /// the body text it sits beside (the model picker's word error rate).
+  static const TextStyle figure = TextStyle(
+    fontFamily: family,
+    fontSize: _figureSize,
+    height: 20 / _figureSize,
+    leadingDistribution: TextLeadingDistribution.even,
+    color: AppColors.text,
+    // Equal-width digits, so right-aligned figures line up exactly.
+    fontFeatures: [FontFeature.tabularFigures()],
   );
 
   /// 16/24: body, values, buttons.
