@@ -18,7 +18,7 @@ class DictationProfileUiMapper {
     DictationProfile.clean: 'Clean disfluencies',
     DictationProfile.professional: 'Executive prose',
     DictationProfile.casual: 'Team chat style',
-    DictationProfile.technical: 'Zero-omission spec',
+    DictationProfile.technical: 'Exact code terms',
   };
 
   static IconData iconFor(DictationProfileSpec spec) {
@@ -34,7 +34,7 @@ class DictationProfileUiMapper {
     bool isKeyBlocked = false,
   }) {
     if (isKeyBlocked) {
-      return 'Requires Groq API key';
+      return 'Requires your API key';
     }
 
     if (spec is DictationProfile) {

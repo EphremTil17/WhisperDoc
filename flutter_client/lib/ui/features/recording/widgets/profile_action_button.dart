@@ -244,7 +244,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
   Widget _buildVerticalMenu(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final activeProfile = settings.dictationProfile;
-    final hasGroqKey = settings.cachedGroqApiKey?.isNotEmpty ?? false;
+    final hasCloudKey = settings.hasCloudKey;
     final freeSlot = settings.nextFreeCustomSlot();
 
     final List<DictationProfileSpec> allProfiles = [
@@ -266,7 +266,7 @@ class _ProfileActionButtonState extends State<ProfileActionButton> {
           ...allProfiles.map((profile) {
             final isSelected = activeProfile.storageKey == profile.storageKey;
             final bool isLlm = profile.requiresLlm;
-            final bool isKeyBlocked = isLlm && !hasGroqKey;
+            final bool isKeyBlocked = isLlm && !hasCloudKey;
             final bool isEnabled = !isKeyBlocked;
 
             return Padding(

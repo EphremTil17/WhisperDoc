@@ -12,7 +12,7 @@ enum DictationProfile implements DictationProfileSpec {
     keepsLineBreaks: true,
   ),
   casual(storageKey: 'casual', label: 'Casual', systemPrompt: _casualPrompt),
-  // Specs: sections and bullet points.
+  // Exact code terms; a numbered list when steps are dictated.
   technical(
     storageKey: 'technical',
     label: 'Tech',
@@ -61,14 +61,17 @@ Remove spoken artifacts and awkward pauses while keeping the tone warm, modern, 
   static const String _techPrompt =
       '''
 ${DictationProfile.sharedPreamble}
-PROFILE: Technical Specification & Engineering Prompting
-Transform the spoken transcript into a precise, highly structured, and grammatically rigorous technical specification or prompt optimized for engineering execution and large language model interpretation.
+PROFILE: Technical Dictation
+The speaker is a developer talking to a coding agent or a colleague. Write down what they said, cleaned up, with every technical term written exactly as it appears in code, documentation or a terminal.
 
-CRITICAL REQUIREMENTS:
-1. ZERO OMISSION & EXHAUSTIVE DETAIL: You must retain 100% of the user's technical information. Under NO circumstances should you summarize, abbreviate, generalize, or drop any parameters, flags, constraints, edge cases, error conditions, architectural choices, environment variables, or specific nuances mentioned by the user.
-2. PRECISE TECHNICAL LANGUAGE: Translate informal, stream-of-consciousness explanations into unambiguous, authoritative, and grammatically flawless technical language suitable for direct interpretation by AI models and senior engineers.
-3. IDENTIFIERS & CODE FORMATTING: Wrap all function names, classes, variables, file paths, endpoints, CLI commands, and code symbols in inline backticks (`symbol`). Strictly preserve exact casing (e.g., camelCase, snake_case, PascalCase, kebab-case, SCREAMING_SNAKE_CASE).
-4. LOGICAL STRUCTURE: If the speaker dictates multiple requirements, steps, criteria, or constraints, organize them into clean, structured sections or markdown bullet points while preserving every detail and sub-clause from the source transcript.
+1. KEEP THEIR WORDS: Remove filler words and spoken lead-ins (such as "um", "uh", "okay", "so", "basically", "like", "you know", "I mean"), false starts and repetitions, and fix punctuation and grammar. Keep the speaker's sentences, order and level of detail. Do not summarize, expand, explain, add headings, or add anything they did not say.
+2. CODE IN BACKTICKS: Wrap code symbols in backticks: function and method names, classes, variables, file names and paths, endpoints, CLI commands and flags, environment variables, config keys, error codes and literal values. Speech recognition writes these as plain words, so rebuild them:
+- Spoken symbols become characters inside identifiers, paths, URLs and versions: "dot" is ".", "slash" is "/", "underscore" is "_", "dash" is "-", "colon" is ":". For example, "user underscore repo dot pie" is `user_repo.py` and "dash dash force" is `--force`.
+- Use the casing the speaker names ("camel case", "snake case", "all caps"). Otherwise use the convention of the language or file in context: snake_case in Python, camelCase in JavaScript, TypeScript and Dart, PascalCase for classes, SCREAMING_SNAKE_CASE for environment variables. If no convention applies, keep the words as spoken.
+3. NAMES SPELLED RIGHT: Write frameworks, libraries, platforms, services, languages and protocols as their makers spell them, without backticks: FastAPI, Next.js, Postgres, Kubernetes, GitHub, OAuth 2.0, gRPC, WebSocket, JSON, HTTP/2. Keep the name the speaker chose ("postgres" is Postgres, not PostgreSQL). Correct a name speech recognition misheard only when the context makes the intended one clear ("cube control" is `kubectl`, "jason" is JSON).
+4. NUMBERS AS DIGITS: Write numbers, versions, ports, status codes, sizes and durations as digits with their units: "four oh four" is 404, "three point two point one" is 3.2.1, "five hundred milliseconds" is 500 ms.
+5. SYSTEM DESIGN AS STATED: Keep every component, connection, direction, protocol and limit the speaker names, in their order. Do not add components, reasons or best practices.
+6. LISTS ONLY WHEN DICTATED: When the speaker counts off separate steps or requirements ("first", "second", "three things"), write them as a numbered list, one item each, with any lead-in sentence above it. Otherwise keep their paragraphs. Never add a title.
 ''';
 
   @override

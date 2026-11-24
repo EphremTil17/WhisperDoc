@@ -39,7 +39,7 @@ void main() {
     mockController = _MockRecordingController();
 
     when(() => mockSettings.dictationProfile).thenReturn(DictationProfile.raw);
-    when(() => mockSettings.cachedGroqApiKey).thenReturn('gsk_test123');
+    when(() => mockSettings.hasCloudKey).thenReturn(true);
     when(() => mockSettings.customProfiles).thenReturn([]);
     when(() => mockSettings.nextFreeCustomSlot()).thenReturn('custom1');
     when(() => mockSettings.setDictationProfile(any()))
@@ -82,7 +82,7 @@ void main() {
       expect(find.text('Clean disfluencies'), findsOneWidget);
       expect(find.text('Executive prose'), findsOneWidget);
       expect(find.text('Team chat style'), findsOneWidget);
-      expect(find.text('Zero-omission spec'), findsOneWidget);
+      expect(find.text('Exact code terms'), findsOneWidget);
     },
   );
 
@@ -93,13 +93,13 @@ void main() {
       await orchestrator.openMenu();
 
       // Select 'Technical'
-      await orchestrator.selectProfile('Zero-omission spec');
+      await orchestrator.selectProfile('Exact code terms');
 
       verify(() => mockSettings.setDictationProfile(DictationProfile.technical))
           .called(1);
 
       // Menu should be closed
-      expect(find.text('Zero-omission spec'), findsNothing);
+      expect(find.text('Exact code terms'), findsNothing);
     },
   );
 
@@ -108,7 +108,7 @@ void main() {
   ) async {
     final orchestrator = createOrchestrator(tester);
     await orchestrator.openMenu();
-    final technicalProfileTile = find.text('Zero-omission spec');
+    final technicalProfileTile = find.text('Exact code terms');
     expect(technicalProfileTile, findsOneWidget);
 
     // Session starts
@@ -205,12 +205,12 @@ void main() {
   testWidgets('shows blocked state for LLM profile when Groq key is missing', (
     tester,
   ) async {
-    when(() => mockSettings.cachedGroqApiKey).thenReturn(null);
+    when(() => mockSettings.hasCloudKey).thenReturn(false);
 
     final orchestrator = createOrchestrator(tester);
     await orchestrator.openMenu();
 
-    expect(find.text('Requires Groq API key'), findsWidgets);
+    expect(find.text('Requires your API key'), findsWidgets);
 
     // Tap Pro
     await orchestrator.selectProfile('Pro');
