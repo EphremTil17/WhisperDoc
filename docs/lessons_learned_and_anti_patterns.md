@@ -252,3 +252,11 @@ This document serves as the project's living ledger of architectural corrections
 - **The Mistake / Issue**: WebSocket tests constructed a service whose launch auto-connect dialled `ws://localhost` and then disposed it. The suite passed only because it finished before those connects failed.
 - **The Root Cause**: The real socket was opened inside the service with no seam, so tests could not avoid it. Adding a test that took two seconds let the stray connects fail mid-run and write to closed streams, failing unrelated tests.
 - **The Core Corrective Rule**: Inject the I/O boundary (here a `ChannelOpener`) so unit tests never touch the network, and make services ignore work that settles after `dispose()`. A test that fails only when the suite runs longer is a leak, not a flake.
+
+---
+
+## 32. Tests That Never See the Platform's Rules
+
+- **The Mistake / Issue**: Three tooltips inside one merged semantics node left two tooltip bubbles without a parent. Windows rejected every accessibility update that touched them and logged "Failed to update ui::AXTree … will not be in the tree", so a screen reader read a stale screen. Every widget test passed.
+- **The Root Cause**: Flutter's test binding accepts any semantics update; only the Windows embedder checks that each new node has a parent in the same update. The failure existed only where no test looked.
+- **The Core Corrective Rule**: When a platform layer enforces rules the framework does not, model those rules in a test seam (here `AccessibilityTreeBinding`) and prove the test fails on the broken code before trusting it passes on the fix. Give each tooltip its own semantics container.

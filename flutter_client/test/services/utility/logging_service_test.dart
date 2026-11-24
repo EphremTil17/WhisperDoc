@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/services/utility/logging_service.dart';
 
@@ -96,6 +97,24 @@ void main() {
       service.debug('Test debug');
       final debugEntry = service.logs.last;
       expect(debugEntry.level, equals('DEBUG'));
+    });
+
+    test('a release build keeps debug lines out of the logs', () async {
+      final service = LoggingService();
+      service.keepDebug = false;
+      addTearDown(() => service.keepDebug = kDebugMode);
+      final emitted = <LogEntry>[];
+      final sub = service.onLog.listen(emitted.add);
+      addTearDown(sub.cancel);
+      final before = service.logs.length;
+
+      service.debug('Frame sent');
+      service.info('Recording started');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(service.logs.length, before + 1);
+      expect(service.logs.last.message, 'Recording started');
+      expect(emitted.map((e) => e.level), ['INFO']);
     });
   });
 

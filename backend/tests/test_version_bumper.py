@@ -101,6 +101,26 @@ def test_bump_manifest_accumulates_rules_and_preserves_crlf(tmp_path, monkeypatc
     assert target.read_bytes() == b"Product: 2.25.2\r\nClient: 2.25.2\r\n"
 
 
+def test_readme_build_example_is_bumped_and_its_template_kept(tmp_path, monkeypatch):
+    readme = tmp_path / "flutter_client" / "README.md"
+    readme.parent.mkdir()
+    readme.write_text(
+        "   flutter build windows --build-name=<version> --build-number=<n>\n"
+        "   # Example for current v1.0.0 release:\n"
+        "   flutter build windows --build-name=1.0.0 --build-number=1\n"
+    )
+    rules = [r for r in TARGET_MANIFEST if "build example" in r.description]
+    monkeypatch.setattr(bump_version, "TARGET_MANIFEST", rules)
+
+    bump_version.bump_manifest(tmp_path, "2.25.2")
+
+    assert readme.read_text() == (
+        "   flutter build windows --build-name=<version> --build-number=<n>\n"
+        "   # Example for current v2.25.2 release:\n"
+        "   flutter build windows --build-name=2.25.2 --build-number=1\n"
+    )
+
+
 def test_check_passes_on_workspace():
     """The committed repository must carry one version everywhere."""
     assert bump_version.main(["--check"]) == 0

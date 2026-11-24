@@ -125,10 +125,10 @@ packages:
     dependency: transitive
     description:
       name: cli_util
-      sha256: "89b8801ba49f8b593fbf2d3e59efd0f566c46cd4ba6837ae2610c72b52a0f899"
+      sha256: da2a2b22f919995eb427edab07725e2be0b1281ef26770f6ce3a213355565262
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.0"
+    version: "0.6.1"
   clock:
     dependency: transitive
     description:
@@ -141,10 +141,10 @@ packages:
     dependency: transitive
     description:
       name: cnativeapi
-      sha256: "510107ee007a7b4a01aa1eaec3ed097007d65760be6b272f093c4ca34a0d12ff"
+      sha256: "49662734cdf3dd1707b1ee35102ac1754e0ab3d450a2d30b066730f219dacc86"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1"
+    version: "0.6.2"
   code_assets:
     dependency: transitive
     description:
@@ -356,18 +356,18 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_web_auth_2
-      sha256: "946e73f40472820742e0d27d1b7a8d5208ea31be59c45b35f3ff2724a2859914"
+      sha256: "05c0b09cbdb0f98b528d21fb4ba5711652e9d92697412f96ad4c327ed5090f9f"
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.0"
+    version: "6.1.0"
   flutter_web_auth_2_desktop_webview:
     dependency: transitive
     description:
       name: flutter_web_auth_2_desktop_webview
-      sha256: c8f015c53f87645c766052da7cf8dcf92fdc1470f99a155c838bc696e91c1775
+      sha256: "461aa4a80bb99e9344ac3536fc80a3f79773d96c38575eb7363e7b3e95044f7d"
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.0"
+    version: "6.0.1"
   flutter_web_auth_2_platform_interface:
     dependency: transitive
     description:
@@ -617,18 +617,18 @@ packages:
     dependency: transitive
     description:
       name: nativeapi
-      sha256: c0c566cf6788a6b6a32ce2666f02364b7fb50133f07a744bc1e793b5b8bb2c78
+      sha256: "339b7a91a27ce5c33659cab92cf8e76736142985433652f91a63cc5348135bfb"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1"
+    version: "0.6.2"
   nativeapi_flutter:
     dependency: transitive
     description:
       name: nativeapi_flutter
-      sha256: "3bb647f299932a4a19aa066051aabc6872f6876fa50c38a0ef132da414e9db26"
+      sha256: b0507253748ba9690a295bc162208a91d348809185409e5aee7b09e77ab5d8a3
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1"
+    version: "0.6.2"
   nested:
     dependency: transitive
     description:
@@ -958,10 +958,10 @@ packages:
     dependency: transitive
     description:
       name: sqlite3
-      sha256: "8765980411f9b6733534efe9d014fad0750fa649590598772c04692deb34886b"
+      sha256: "1ae2e821614e7b69628ecb64273e8bc5401b14ab166ee7ea0035c35bb136cbd7"
       url: "https://pub.dev"
     source: hosted
-    version: "3.9.1"
+    version: "3.9.2"
   sqlparser:
     dependency: transitive
     description:
@@ -1158,10 +1158,10 @@ packages:
     dependency: "direct main"
     description:
       name: window_manager
-      sha256: "43fc05da6cf670b456a758c88b60e2c1371fc32e1030aac308d0087d87c9368d"
+      sha256: "9504ae37e618d31524e337ad3cf9600d252acf11fffa3ddb9b0b5ced634542d9"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.0"
+    version: "0.7.1"
   window_to_front:
     dependency: transitive
     description:

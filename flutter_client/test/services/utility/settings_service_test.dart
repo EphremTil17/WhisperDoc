@@ -27,7 +27,7 @@ void main() {
       PackageInfo.setMockInitialValues(
         appName: 'WhisperDoc',
         packageName: 'com.whisperdoc',
-        version: '3.2.0',
+        version: '3.3.0',
         buildNumber: '1',
         buildSignature: '',
       );
@@ -425,7 +425,7 @@ void main() {
       PackageInfo.setMockInitialValues(
         appName: 'WhisperDoc',
         packageName: 'com.whisperdoc',
-        version: '3.2.0',
+        version: '3.3.0',
         buildNumber: '1',
         buildSignature: '',
       );
@@ -450,7 +450,8 @@ void main() {
       expect(settings.groqModel, AppConstants.groqDefaultModel);
       expect(settings.cachedApiKey, isNull);
       expect(settings.cachedGroqApiKey, isNull);
-      expect(settings.appVersion, '3.2.0');
+      // The installed version, whatever the release.
+      expect(settings.appVersion, (await PackageInfo.fromPlatform()).version);
       expect(settings.vault, same(vault));
       expect(vault.initializeCalls, 1);
     });

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter_client/logic/formatters/clock_time.dart';
 
@@ -37,7 +38,13 @@ class LoggingService {
     _addToBuffer('ERROR', '$message${error != null ? ' - $error' : ''}');
   }
 
+  /// Debug lines are kept only in a debug build (`flutter run`). A release
+  /// build drops them, so the Logs panel shows only what a user can act on.
+  @visibleForTesting
+  bool keepDebug = kDebugMode;
+
   void debug(String message) {
+    if (!keepDebug) return;
     _logger.d(message);
     _addToBuffer('DEBUG', message);
   }

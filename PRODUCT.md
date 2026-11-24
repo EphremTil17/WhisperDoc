@@ -20,7 +20,7 @@ WhisperDoc turns speech into text anywhere on the desktop. A global hotkey (defa
 
 ## Positioning
 
-Two transcription routes behind one window: Groq Cloud with the user's own API key, or a self-hosted, hardened WhisperDoc backend (faster-whisper / NVIDIA Parakeet) reached over an authenticated, encrypted connection. Privacy controls (incognito mode, local-only history) are first-class.
+Three transcription routes behind one window: Groq or OpenRouter with the user's own API key (OpenRouter offering any speech model it serves, shown with its live latency and accuracy, with zero data retention by default), or a self-hosted, hardened WhisperDoc backend (faster-whisper / NVIDIA Parakeet) reached over an authenticated, encrypted connection. Privacy controls (incognito mode, local-only history, zero data retention) are first-class.
 
 ## Operating Context
 
@@ -31,9 +31,9 @@ Two transcription routes behind one window: Groq Cloud with the user's own API k
 ## Capabilities and Constraints
 
 - Fixed 420×600 frameless window on Windows; custom title bar with minimize/close. Size is binding.
-- Modes: Groq Cloud (needs API key) or self-hosted backend (needs server URI plus API key or OIDC sign-in). Connection states include ready, connecting, deep sleep, auth failed, banned (cooldown), update required.
+- Sources: Groq (needs API key), OpenRouter (needs API key and a model; the model list is live, and a retired model blocks with a way to choose another) or self-hosted backend (needs server URI plus API key or OIDC sign-in). Connection states include ready, connecting, deep sleep, auth failed, banned (cooldown), update required.
 - Recording states: idle, recording (with live audio level), transcribing, polishing (LLM output styles), result. Silence warning if no audio is detected; microphone missing/unplugged detection with default-device fallback.
-- Output styles: Raw (no LLM), Clean, Pro, Casual, Tech, plus custom styles; LLM styles require a Groq key.
+- Output styles: Raw (no LLM), Clean, Pro, Casual, Tech, plus custom styles; LLM styles need a cloud source (Groq or OpenRouter) with its key.
 - Automation toggles: auto-copy, auto-paste, show visualizer.
 - Other surfaces: history (recent transcripts), debug logs, settings, profile hub/account, incognito confirmation, auth error dialog, ban countdown overlay.
 - Text renders in Flutter (Skia/Impeller), not native Win32 text.

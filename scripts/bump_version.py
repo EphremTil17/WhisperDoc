@@ -131,6 +131,19 @@ TARGET_MANIFEST: list[TargetRule] = [
         replacement_template=r"\g<1>{version}",
         description="Flutter Client README title version",
     ),
+    TargetRule(
+        path="flutter_client/README.md",
+        pattern=r"(?m)^(\s*# Example for current v)[^\s]+( release:)",
+        replacement_template=r"\g<1>{version}\g<2>",
+        description="Flutter Client README release build example comment",
+    ),
+    TargetRule(
+        # Digits only, so the `--build-name=<version>` template stays as it is.
+        path="flutter_client/README.md",
+        pattern=r"(--build-name=)\d+\.\d+\.\d+(?=\s)",
+        replacement_template=r"\g<1>{version}",
+        description="Flutter Client README release build example version",
+    ),
     # --- Terminal Client ---
     TargetRule(
         path="terminal_client/pyproject.toml",

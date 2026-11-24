@@ -1,5 +1,36 @@
 # WhisperDoc Technical Changelog
 
+## [3.3.0] - 2026-11-23
+### OpenRouter Source
+- **Three Sources**: `TranscriptionSource` (server, Groq, OpenRouter) replaces the Groq/server mode flag. A segmented `SourceSelector` heads Account and replaces **Switch service**; the saved choice carries over.
+- **Live Model List**: `OpenRouterCatalog` reads OpenRouter's speech models and their zero-data-retention endpoints, caches the last list, and loads each model's 30-minute latency when the picker opens. WER comes from a fixed Artificial Analysis snapshot (`speech_model_accuracy.dart`, 23 Nov 2026).
+- **Zero Data Retention**: On by default, and then every speech and chat request carries `provider.zdr`; turning it off asks first.
+- **No Silent Switch**: `ModelSelectionProblem` (not chosen, retired, retains data) blocks a dictation before the microphone opens, and the home screen offers **Choose**.
+- **Rewrite Model**: Output styles run on OpenRouter with `qwen/qwen3.8-27b` (reasoning off), routed by `sort: latency` with `preferred_min_throughput` p50 200. **Rewrite model** takes any model id and checks it with a one-word rewrite before saving.
+
+### Cloud Engine Layer
+- **One Path for Both Clouds**: `SpeechEngine`/`ChatEngine` with Groq and OpenRouter implementations behind `CloudTranscriptionService` and `TransformService`, replacing the five `groq_*` services. Buffering, the 25 MB cap, sanitizing and `CloudError` are shared.
+- **Warm Upload**: Starting a dictation pre-opens the HTTPS connection; one keep-alive client serves every cloud call, and only a stale kept-alive connection is retried.
+- **Off the UI Thread**: OpenRouter clips above 1 MiB are base64-, JSON- and UTF-8-encoded in an isolate, and `WavEncoder` writes the captured chunks once.
+
+### Output Styles
+- **Tech Prompt**: Keeps the speaker's words, writes code terms exactly in backticks, spells frameworks and protocols as their makers do, and lists only counted steps. Median 487 → 262 ms on Groq, length 2.59× → 0.90× the input, cut-off rewrites 3/8 → 0/8.
+
+### Accessibility
+- **Tooltips in the Windows Tree**: Each `SourceSegment` is its own semantics container holding its tooltip, and declares its tap. Merged tooltips had left bubbles without a parent, so Windows rejected every later update ("will not be in the tree"; flutter/flutter#197194).
+- **Engine-Faithful Tests**: `AccessibilityTreeBinding` applies each semantics update as the Windows bridge does and records rejections across Account, home and the model picker.
+
+### Server Setup
+- **`setup.sh`**: Generates the API key, picks GPU or CPU (`docker-compose.cpu.yml` resets the GPU reservation), builds, starts and waits for `/health`. Flags `--engine`, `--cpu`/`--gpu`, `--dev`, `--yes`; the backend workflow runs it on every change.
+- **Client Version Gate**: `.env.template` sets `MIN_CLIENT_VERSION=3.0.0` and `SEC_CLIENT_VERSION=3.1.0`.
+
+### Tooling
+- **Release Logs**: `LoggingService` drops debug lines outside debug builds.
+- **Benchmarks**: `scripts/benchmark_prompts.py` reads the shipped prompts, routing and model from the Dart source; results live in `docs/benchmarks/`.
+- **DCM**: `missing-test-assertion` counts only `expect()`; its `verify` option and `avoid-missing-image-alt` need a paid plan, so they are removed.
+- **Terminal Client**: Message listeners are plain callables, no longer awaited.
+- **Tests**: 709 Flutter, 268 terminal client and 295 backend tests.
+
 ## [3.2.0] - 2026-11-22
 ### Security Hardening
 - **Sign-In Scope**: The OIDC token is sent only to the built-in server or one the user approved with **Trust server**, compared by normalized `scheme://host:port`. Trusted servers are forgotten on sign-out or an account switch. Developer keys are unaffected.

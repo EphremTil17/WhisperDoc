@@ -50,12 +50,9 @@ dcm:
     - avoid-unused-parameters
     - binary-expression-operand-order
     - double-literal-format
-    # mocktail's verify calls are assertions too.
-    - missing-test-assertion:
-        include-assertions:
-          - verify
-          - verifyNever
-          - verifyInOrder
+    # Counts only expect(); rule options need a paid DCM plan, so mocktail's
+    # verify is asserted as expect(verify(...).callCount, 1).
+    - missing-test-assertion
     - newline-before-return
     - no-boolean-literal-compare
     - no-empty-block
@@ -78,7 +75,6 @@ dcm:
     - avoid-expanded-as-spacer
     - avoid-incomplete-copy-with
     - avoid-incorrect-image-opacity
-    - avoid-missing-image-alt
     - avoid-returning-widgets
     - avoid-shrink-wrap-in-lists
     - avoid-unnecessary-setstate

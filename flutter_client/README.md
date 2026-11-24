@@ -1,12 +1,12 @@
-# WhisperDoc Flutter Client v3.2.0
+# WhisperDoc Flutter Client v3.3.0
 
-A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with an alternative **Groq Cloud** direct transcription path that works independently of the backend.
+A native Windows desktop application for real-time speech-to-text dictation powered by the WhisperDoc multi-engine ASR backend, with two direct cloud paths that work independently of the backend: **Groq** and **OpenRouter**.
 
 ## Purpose
 
 WhisperDoc Client provides a lightweight, always-ready interface for voice dictation. It captures audio from your microphone, streams it to a local Whisper backend server, and receives transcriptions in real-time. The transcribed text can be automatically copied to your clipboard and pasted into any application.
 
-When the backend is unavailable, under maintenance, or by user preference, the client can transcribe directly via **Groq Cloud** using the same `whisper-large-v3-turbo` model — no backend required. Switch between modes with **Switch service** in Account.
+When the backend is unavailable, under maintenance, or by user preference, the client can transcribe directly with your own API key: via **Groq** (free tier, `whisper-large-v3-turbo`), or via **OpenRouter**, where you pick any speech-to-text model it serves (with its live latency and accuracy), with zero data retention enforced by default. Pick the source with the three-way selector at the top of Account.
 
 This client is designed for users who need fast, accurate dictation without leaving their current workflow. Press a global hotkey, speak, and your words appear wherever your cursor is.
 
@@ -35,7 +35,7 @@ lib/
 ├── services/         # Functional domain specialized services
 │   ├── auth/         # OIDC & Session management
 │   ├── hardware/     # Audio capture & Hotkey listeners
-│   ├── transcription/# Groq Cloud STT and LLM post-processing transformation
+│   ├── transcription/# Cloud STT (Groq, OpenRouter), model catalog, LLM styles
 │   ├── transport/    # WebSocket orchestration & Handshake
 │   └── utility/      # Logging, Secure Vault, Settings
 ├── ui/               # Presentation layer
@@ -62,12 +62,14 @@ lib/
 | Database         | Drift / SQLite (AES-GCM entries) |
 | Secure Storage   | flutter_secure_storage (WinCred) |
 | Networking       | WebSocket (web_socket_channel)   |
-| Cloud STT        | Groq REST API (http)             |
+| Cloud STT        | Groq and OpenRouter REST (http)  |
 | Native APIs      | Win32 via ffi/win32 packages     |
 | Encryption       | encrypt (AES-256-GCM)            |
 
 - **Client-Edge Dictation Profiles & Custom LLM Prompts**: Built-in factory standards (**Raw**, **Clean Polish**, **Professional**, **Casual**, **Technical**) and up to three user-authored **Custom Profiles** (`CustomProfile` implementing `DictationProfileSpec`). Features an in-menu modal editor (`ProfileEditorDialog` on `AppDialog`) with sequential default naming (`Custom 1..3`), user renaming, a 2,000 character cap, automatic safety preamble prepending, and length-based truncation rejection. Secondary controls are uniformly locked during active recording.
-- **Groq Cloud Direct Transcription**: Backend-independent speech-to-text via Groq's `whisper-large-v3-turbo` REST API with local WAV encoding, client-side rate-limit tracking, language validation, and a conservative 24 MB (~12.5 min) buffer guard. Switch between WhisperDoc backend and Groq Cloud with **Switch service** in Account.
+- **Three Transcription Sources**: Your WhisperDoc server, **Groq** or **OpenRouter**, chosen from one selector in Account. Cloud sources share one engine interface (`SpeechEngine`): the clip is WAV-encoded on-device and uploaded when you stop, over a keep-alive connection that is warmed while you talk, so the upload skips the TLS handshake.
+- **Groq Direct Transcription**: `whisper-large-v3-turbo` or `whisper-large-v3` with client-side rate-limit tracking, language validation and a 23 MiB (~12.5 min) buffer guard that keeps the upload under the 25 MB limit.
+- **OpenRouter Model Choice**: The model picker lists every speech model OpenRouter serves right now (nothing about availability is hard-coded): each with its maker, OpenRouter's live latency, and its word error rate from a fixed Artificial Analysis snapshot (2026-11-23, in `speech_model_accuracy.dart`; unmeasured models show "—"), most accurate first. Models being retired are marked by date and a retired choice is flagged on the home screen. Links open OpenRouter's model table and Artificial Analysis to compare further. Zero data retention is on by default (only models with a zero-retention host are offered, and every request enforces it). Output styles run on OpenRouter too.
 - **Instantaneous Connection**: Implements a "Zero-Latency" recording flow. Audio capture and UI feedback initiate instantly while the WebSocket handshake completes in parallel.
 - **Background Auto-Wake**: The transport layer automatically resumes connectivity when a recording is initiated, removing the need for manual connection management.
 - **Advanced Security Indicators**: Visual feedback (Lock/Warning/Block) for connection security status.
@@ -75,9 +77,9 @@ lib/
 - **Deep Sleep Proof Hotkeys**: Native `GetMessage` blocking loop ensures hotkeys work after system sleep.
 - **Global Hotkey**: Trigger recording from any application (default: Ctrl+Alt+E).
 - **Auto Copy/Paste**: Automatically insert transcriptions at your cursor.
-- **WebSocket Resilience**: Retries back off from 2 s to once a minute and stop on sign-out, in Groq mode, or after a ban. An unreachable server shows `[ server offline ]` with **Try again**.
+- **WebSocket Resilience**: Retries back off from 2 s to once a minute and stop on sign-out, with a cloud source active, or after a ban. An unreachable server shows `[ server offline ]` with **Try again**.
 - **Intelligent Idle Timeout**: Connection auto-closes after inactivity to save resources.
-- **Incognito Mode**: Protocol-level privacy flag with memory hygiene. In Groq mode, Incognito is Local Only — local history is disabled but audio is processed by Groq Cloud.
+- **Incognito Mode**: Protocol-level privacy flag with memory hygiene. With a cloud source, Incognito is Local Only — local history is disabled but audio is processed by the cloud service.
 - **Verification Suite**: Modular security tests (`auth_service_test.dart`) validating PKCE integrity and state-parameter protection.
 - **Captions UI**: Crimson on near-black in a borderless 420×600 window: one status cue, a live pixel meter, the last transcript set as captions, and an optional moving contour map. Lexend type sits on whole pixels for crisp rendering.
 
@@ -85,7 +87,7 @@ lib/
 
 - Windows 10/11
 - Flutter SDK 3.50+ (Dart 3.14; the client uses the separate `material_ui` package)
-- A running WhisperDoc backend server **or** a [Groq API key](https://console.groq.com) (free tier)
+- A running WhisperDoc backend server, **or** a [Groq API key](https://console.groq.com) (free tier), **or** an [OpenRouter API key](https://openrouter.ai/keys) with credits
 
 ## Quick Start
 
@@ -105,8 +107,8 @@ lib/
    # Templatized production build command:
    flutter build windows --release --build-name=<version> --build-number=<build_number> --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
 
-   # Example for current v3.2.0 release:
-   flutter build windows --release --build-name=3.2.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
+   # Example for current v3.3.0 release:
+   flutter build windows --release --build-name=3.3.0 --build-number=1 --obfuscate --split-debug-info=build/symbols --dart-define-from-file=env.json
    ```
 
 5. **Package Windows Installer**
@@ -123,9 +125,10 @@ Two full-window panels hold every setting. Each change saves on its own.
 
 **Account** (the person icon, top right):
 
-- **Switch service**: Choose **WhisperDoc** (self-hosted backend) or **Groq Cloud** (direct API).
-  - _WhisperDoc_: **Server address** (e.g. `ws://localhost:9989/ws`; `http(s)://` and bare hosts are accepted), **Sign in**, and an optional **Developer key**. A custom server you sign in to asks once before your sign-in is sent to it.
-  - _Groq Cloud_: **Groq API key** (stored in Windows Credential Manager), **Model**, **Language** (picked by name), and **Words to expect** for names and domain terms.
+- **Source selector** (top of Account): **Self-hosted**, **Groq** or **OpenRouter**. Switching to a cloud source without its key opens the key field.
+  - _Self-hosted_: **Server address** (e.g. `ws://localhost:9989/ws`; `http(s)://` and bare hosts are accepted), **Sign in**, and an optional **Developer key**. A custom server you sign in to asks once before your sign-in is sent to it.
+  - _Groq_: **Groq API key** (stored in Windows Credential Manager), **Model**, **Language** (picked by name), and **Words to expect** for names and domain terms.
+  - _OpenRouter_: **OpenRouter API key** (Credential Manager), **Model** (the live list, with latency and word error rate), **Rewrite model** for output styles (Qwen3.8 27B unless you enter another OpenRouter model id; it is checked with a one-word rewrite before it is saved), **Zero data retention** (on by default; turning it off asks first) and **Language**.
 - **App**: Version, update when one is available, and **Logs**.
 
 **Settings** (the sliders icon, bottom right):
@@ -149,7 +152,14 @@ Due to the use of native Win32 blocking calls (`GetMessage`) in the hotkey isola
 
 > **Note**: This limitation only affects development. Production builds are unaffected.
 
-## Recent Improvements (v3.2.0)
+## Recent Improvements (v3.3.0)
+
+- **OpenRouter Source**: A third source beside the server and Groq, chosen from a selector at the top of Account. The model list is live, ordered by accuracy with each model's latency, and zero data retention is on by default.
+- **Rewrite Model**: Output styles run on OpenRouter too, with Qwen3.8 27B by default or any model id, checked with a one-word rewrite before it is saved.
+- **Tech Style**: Keeps your words and writes code terms, frameworks and protocols exactly; a numbered list only for steps you count off.
+- **Accessibility**: The source selector no longer breaks Windows' accessibility tree, and each source can be pressed from a screen reader.
+
+## Improvements in v3.2.0
 
 ### Captions Interface
 

@@ -1,6 +1,6 @@
-# WhisperDoc - Speech-to-Text System v3.2.0
+# WhisperDoc - Speech-to-Text System v3.3.0
 
-A high-performance, **multi-layered secure**, and production-ready speech-to-text system. It features a **pluggable multi-engine ASR architecture** (faster-whisper, NVIDIA Parakeet) with GPU acceleration within a **hardened, read-only enclosure**, paired with modern, zero-trust client applications for seamless, identity-verified dictation.
+Press a hotkey, speak, and your words appear wherever your cursor is. WhisperDoc is private, fast dictation for the desktop. Run it on your own GPU server, or send it straight to Groq or OpenRouter with your own key.
 
 <img width="3375" height="3363" alt="WhisperDoc Github Preview" src="https://github.com/user-attachments/assets/c2c3037a-171c-42dc-a3e6-e72b8ef94d09" />
 
@@ -8,377 +8,74 @@ A high-performance, **multi-layered secure**, and production-ready speech-to-tex
 
 https://github.com/user-attachments/assets/906170ee-6d2a-4bf5-a881-926f03e0862a
 
-## Prerequisites
+## Highlights
 
-Before starting, ensure your system meets the following requirements:
+- **Your choice of engine.** Self-host Whisper or NVIDIA Parakeet in Docker (on a GPU or the CPU), or use Groq or any of OpenRouter's speech models. You pick with one selector in the app.
+- **Fast.** On a desktop GPU, Parakeet turns a 9-second clip into text in about 75 ms. Groq has text back about 0.2–0.3 s after you let go of the hotkey. The connection opens while you talk, so the upload never waits on it.
+- **Models picked on evidence.** The OpenRouter list is live, with each model's current latency and its word error rate. New models appear and retired ones are flagged, without an app update.
+- **Output styles.** Clean, Pro, Casual, Tech (exact function names, file paths and commands for coding agents) or your own. A rewrite takes about 0.26 s on Groq. On OpenRouter you choose the rewrite model.
+- **Private by design.** The server never logs what you said. Incognito keeps nothing, zero data retention on OpenRouter is on by default, keys stay in Windows Credential Manager, and history is encrypted.
+- **A hardened server.** It runs in a read-only container, with OIDC sign-in with PKCE, a handshake before any audio is accepted, and automatic bans.
+- **Yours to shape.** Every server setting lives in one `.env`, the engine layer is pluggable, and you can write your own styles. [Open benchmarks](docs/benchmarks/README.md) back every default.
 
-### Standard Server Requirements
+## Quick start
 
-- **Linux/Ubuntu** (Tested on Ubuntu 22.04/24.04) for automated setup
-- **Windows/MacOS/Linux** for manual setup
-- **Python 3.10+** and [uv](https://docs.astral.sh/uv/)
-  - Use **Python 3.12** for local backend development (`backend/pyproject.toml`)
-- **Docker** and **Docker Compose**
+**Just the app:** install the latest [Windows release](https://github.com/EphremTil17/WhisperDoc/releases/latest), open **Account**, choose **Groq** (free) or **OpenRouter**, and paste your key.
 
-### GPU Requirements (Optional, but Recommended)
-
-For high-performance transcription, an NVIDIA GPU is required [VRAM>4GB]:
-
-- **NVIDIA Drivers** (Run `nvidia-smi` to verify)
-- **NVIDIA Container Toolkit**: Required for Docker to access the GPU.
-  - [Installation Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-  - After installing, run: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
-
-## Quick Start
-
-### Option 1: Automated Setup (Recommended) - Linux Only
-
-1. **Check Prerequisites**: Ensure Docker and (optionally) NVIDIA drivers are installed.
-2. **Run Setup**:
-   - First make sure to have a Python virtual environment activated
-   ```bash
-   uv venv
-   source .venv/bin/activate
-   # Run the setup script to choose a backend engine, sync the backend UV
-   # environment, and create the root .env file from backend/.env.template
-   ./setup.sh
-   ```
-3. **Build and Start**:
-   ```bash
-   # Build and start the backend service
-   sudo docker compose build backend
-   sudo docker compose up -d backend
-   ```
-4. **Secure the .env file**
-   ```bash
-   chmod 600 .env
-   ```
-
-### Option 2: Manual Setup - Windows/MacOS/Linux
-
-1. **Configure Environment**
-
-   ```bash
-   # Create .env file from template and secure it
-   cp backend/.env.template .env
-   chmod 600 .env   # Linux/Mac only
-
-   # Choose whisper or parakeet with ASR_ENGINE in .env. That is the only
-   # switch: COMPOSE_PROFILES=${ASR_ENGINE} starts the parakeet container
-   # only when the parakeet engine is selected.
-   ```
-
-2. **Build and Start the Backend** (Docker handles all backend dependencies via native UV)
-
-   ```bash
-   # Build and start using Dockerfile.${ASR_ENGINE} (default: Whisper).
-   # The images install from backend/pyproject.toml + backend/uv.lock.
-   # For parakeet, first provision its digest-verified model:
-   uv run --project backend python backend/tools/provision_parakeet.py
-
-   docker compose build backend
-   docker compose up -d backend
-   ```
-
-   To use Parakeet, set the engine; the profile follows it:
-
-   ```dotenv
-   ASR_ENGINE=parakeet
-   COMPOSE_PROFILES=${ASR_ENGINE}
-   ```
-
-   With `whisper`, only the `backend` container runs and holds the model.
-   With `parakeet`, `backend` is a model-free API and the `parakeet` container
-   runs the native model, so exactly one model is loaded either way.
-
-3. **(Optional) Local Backend Setup** - Linux/WSL recommended
-
-   ```bash
-   cd backend
-
-   # Whisper includes its local model runtime dependencies:
-   uv sync --group dev --extra whisper
-   # Parakeet's model runtime is isolated in Docker:
-   uv sync --group dev
-   ```
-
-4. **(Optional) Local Terminal Client Setup**
-
-   ```bash
-   # Lightweight Windows fallback/debug client if the Flutter app is unavailable
-   # (separate from the backend setup.sh flow)
-   cd terminal_client
-   uv sync --group dev
-   ```
-
-5. **Test the API**
-   You can run the test suite locally or directly inside the running Docker container.
-
-**Run Inside Docker (Recommended):**
+**Your own server** (Linux, Docker):
 
 ```bash
-# Run all tests inside the active container
-docker compose exec backend python -m pytest tests/
-
-# To run a specific test file:
-docker compose exec backend python -m pytest tests/test_api.py
+git clone https://github.com/EphremTil17/WhisperDoc.git
+cd WhisperDoc
+./setup.sh
 ```
 
-**Run Locally:**
-
-```bash
-cd backend
-
-# Choose the matching local dependency set, then run the quality gates
-uv sync --group dev --extra whisper
-# or, for Parakeet:
-uv sync --group dev
-
-uv run pyright .
-uv run pytest tests
-```
-
-**Developer Recommendation: Install repo-wide pre-commit hooks**
-
-```bash
-# Install the shared hooks once from the repository root
-uvx pre-commit install
-
-# Run all configured hooks across the repo on demand
-uvx pre-commit run --all-files
-```
-
-The shared pre-commit config runs Ruff separately for `backend/` and
-`terminal_client/`, using each project's own `pyproject.toml`. The
-`ruff` hook runs with `--fix`, then `ruff format` runs after it. If
-files still need manual attention after auto-fixes, the commit fails.
-Read-only checks also reject merge markers, invalid YAML/TOML/JSON,
-private keys, files over 2 MB, and version drift between the files
-`scripts/bump_version.py` manages (`bump_version.py --check`).
-If you're actively developing in this repository, install these hooks.
-
-**API Endpoints:**
-
-- `GET /health` - Check API status and model readiness
-- `POST /transcribe` - Upload an audio file for transcription (`Authorization: Bearer <key>` required; requests need a `Content-Length` and are capped at 25 MB, both checked before the body is read)
-- `GET /ws` - WebSocket connection (JSON handshake with token required)
-
-## CI/CD
-
-GitHub Actions runs on every push. Each component's workflow runs only when that component changes.
-
-| Workflow | Runner | Checks |
-| -------- | ------ | ------ |
-| **Pre-commit** | Ubuntu | Every pre-commit hook on every file |
-| **Backend** | Ubuntu | Pyright and pytest. Then it builds the Whisper and Parakeet images and runs the Whisper image on CPU (`tiny.en`) with the production isolation flags. It transcribes `assets/jfk.flac`, asserts the 401 / 411 / 404 rejections and the read-only root filesystem, and runs the live API and WebSocket tests |
-| **Terminal client** | Windows | Pyright and pytest |
-| **Flutter client** | Windows | `dart format`, `flutter analyze`, `flutter test`, and a release build of the native runner |
-| **Release** | Windows | On a `vX.Y.Z` tag: checks versions, release notes, and mainline ancestry, builds the obfuscated installer, and creates a **draft** GitHub Release |
-
-**Cutting a release**: run `scripts/bump_version.py`, write `docs/release_notes/vX.Y.Z.md` and the changelog entry, commit, then push a signed tag:
-
-```bash
-git tag -s vX.Y.Z -m "Release vX.Y.Z - <theme>"
-git push origin mainline vX.Y.Z
-```
-
-Review the draft on the Releases page, then publish it. Installed clients learn about updates from `releases/latest`, which ignores drafts, so nobody is prompted until you publish.
-
-**Repository secrets** (Settings → Secrets and variables → Actions):
-
-- `FLUTTER_ENV_JSON` (required for releases): the full contents of `flutter_client/env.json`.
-- `SYMBOLS_PASSPHRASE` (optional): attaches the debug symbols as an encrypted `.7z`, so crash traces from CI builds can be deobfuscated.
-
-## 🛡️ Architecture & Security Deep-Dive (Hardened v2.14.0)
-
-- **Backend Core**: Dockerized FastAPI server with a **pluggable ASR engine layer** (faster-whisper or isolated parakeet.cpp) and GPU acceleration, operating within a **read-only container runtime** for maximum enclosure security.
-  WhisperDoc v2.13.0 represents a significant leap in enterprise-grade security, moving beyond simple API keys to a comprehensive **Zero-Trust Identity Federation**.
-
-### 1. Identity Federation & Cryptographic Hardening
-
-- **OIDC with PKCE (Zitadel)**: Transitioned to industry-standard OAuth2 with **Proof Key for Code Exchange (PKCE)**. The system enforces strict identity verification via **Asymmetrical RS256 signing**.
-- **Cryptographic Mathematical Verification**: The implementation has been rigorously audited and mathematically verified to reject **Algorithm Confusion attacks** (HS256) and `none` algorithm bypass attempts.
-- **System Browser Integration**: OIDC flows are executed via the native system browser, leveraging the OS's existing security posture and preventing "In-App Webview" credential interception.
-
-### 2. The "Handshake Cage" Protocol
-
-- **Strict Sequencing**: A rigid WebSocket state machine that prevents any data processing or audio ingestion until a valid handshake is acknowledged.
-- **Server-Side Enforcement**: The backend is hardened to immediately drop and black-list IPs that attempt to stream audio before a successful identity verification.
-
-### 3. Native Instance Integrity (Single Instance Mutex)
-
-- **Win32 Named Mutex**: Implemented a native Windows Mutex (`WhisperDocSingleInstanceMutex`) to ensure only one instance of the application is active.
-- **Resource Protection**: This prevents critical resource contention on global hotkeys and microphone handles, ensuring a deterministic and stable environment during system sleep/wake cycles.
-
-### 4. Active Defense & Infrastructure Hardening
-
-- **Circuit Breaker Circuitry**: An automated **Active Defense** system that issues `1008 (Policy Violation)` codes to clients attempting flood attacks or protocol violations.
-- **Read-Only Enclosure**: The backend operates in a strictly **read-only container runtime**, making the environment resistant to unauthorized filesystem modifications.
-- **Dynamic VRAM Scaling**: Intelligent engine orchestration that unloads models from VRAM after periods of inactivity, optimizing performance for multi-tenant GPU environments.
-
-### 5. Privacy-First (Ghost Mode)
-
-- **Incognito State**: Protocol-level privacy flag that enforces zero-disk persistence and turns off local history. Since v3.2.0 the server log never holds transcript text in either mode; it records only each transcript's length.
-
-### 6. "Weight Shedding" & Performance (v2.14.0)
-
-- **Digital Liposuction (Docker Slimming)**: **Static FFmpeg** binaries keep the image lean, and v3.1.0 removed PyTorch entirely: Faster-Whisper runs on GPU-accelerated `ctranslate2`, which frees its own CUDA memory on unload. The Whisper image dropped from 5.23 GB to 4.3 GB.
-- **High-Performance Infrastructure**: Integrated **uvloop** (high-speed C-based event loop) to minimize I/O latency and CPU overhead during heavy concurrency.
-- **Memory Hygiene (malloc_trim)**: Aggressive RAM reclamation using `malloc_trim` to force the Linux kernel to reclaim heap memory immediately after models are unloaded from VRAM.
-- **Drift-Proof Security Tracking**: Re-engineered the security maintenance loop to be time-interval based rather than clock-modulo based, ensuring robust IP-ban cleanup regardless of event-loop timing.
-
-### 7. Structured Error Codes & Update Controls
-
-- **Structured Error Protocol**: All WebSocket error payloads include both a numeric `code` (for backwards compatibility) and a structured `error_code` string (e.g., `AUTH_FAILED`, `VERSION_OUTDATED`, `IP_BANNED`) for precise client-side error routing.
-- **Standardized 1008 Rejections**: Full support for the backend's JSON-to-Close protocol, ensuring descriptive error messages for bans or version mismatches.
-- Added **Profile-Based Logic** to prevent "Update Available" notifications from appearing during active transcription sessions and ensures that if a security patch is available, the user is immediately notified and blocked from using the service until updated.
-
-### 8. Request & Identity Hardening (v3.1.0)
-
-- **Pre-Parse Upload Guard**: `POST /transcribe` authenticates and size-checks on headers alone (401 / 411 / 413) before any multipart body is read, and ffmpeg conversion runs under a wall-clock timeout and a duration cap.
-- **Trusted Proxy Hops Only**: uvicorn honours `X-Forwarded-For` only from Docker bridge networks (`FORWARDED_ALLOW_IPS`), so clients cannot spoof their address to dodge or redirect IP bans.
-- **Unicode-Safe Sanitization**: Transcript sanitizers in all three components strip ANSI sequences and C0/C1 control characters while preserving accents, typographic punctuation, and non-Latin scripts.
-- **Non-Blocking Identity Checks**: OIDC and API-key validation run off the event loop; an unknown signing key id triggers one rate-limited JWKS refetch, so key rotation works without a restart.
-
-## Configuration
-
-WhisperDoc is entirely configuration-driven via the `.env` file. These variables are passed to the backend during startup.
-
-### Core Settings
-
-| Variable       | Description                                        | Default          |
-| -------------- | -------------------------------------------------- | ---------------- |
-| `ASR_ENGINE`   | ASR backend (`whisper` or `parakeet`). | `whisper` |
-| `BACKEND_IMAGE_NAME` | Optional Docker image repository/name override. | `whisperdoc-backend` |
-| `API_PORT`     | Port the backend server will listen on.            | `9989`           |
-| `MODEL_NAME`   | Whisper model (e.g., `tiny.en`, `large-v3-turbo`). | `large-v3-turbo` |
-| `PARAKEET_ACCELERATOR` | Native parakeet.cpp device (`CUDA0` for the first NVIDIA GPU). | `CUDA0` |
-| `PARAKEET_MAX_AUDIO_SECONDS` | Maximum duration of each native Parakeet request; longer recordings are split at quiet boundaries with timestamp-aware overlap. | `30` |
-| `MODEL_DEVICE` | Hardware allocation (`cuda` or `cpu`).             | `cuda`           |
-| `LOG_LEVEL`    | Logging verbosity (DEBUG, INFO, SUCCESS).          | `INFO`           |
-
-### Security & Hardening Config Variables (Refer to `backend/.env.template`)
-
-## Docker Commands
-
-```bash
-# View logs of the main backend service
-docker compose logs -f backend
-
-# Stop all services
-docker compose down
-
-# Rebuild and restart the backend after changes
-docker compose build backend && docker compose up -d --force-recreate backend
-```
-
-## Performance
-
-### ASR Engine Benchmarks
-
-The table below contains published model-level figures and is not directly
-comparable to end-to-end WhisperDoc latency. The local RTX 3060 Ti evaluation,
-including HTTP overhead, VRAM, long-form behavior, and rejected approaches, is
-recorded in [the parakeet.cpp benchmark report](backend/engine/PARAKEET_BENCHMARK.md).
-
-Benchmarks from the [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard) on standardized evaluation datasets:
-
-| Engine       | Model                           | WER (%) ↓ | RTFx ↑    | Language     | VRAM (fp16) |
-| ------------ | ------------------------------- | --------- | --------- | ------------ | ----------- |
-| **Parakeet** | `nvidia/parakeet-tdt-0.6b-v2`   | **6.05**  | **3,386** | English      | ~2.4 GB     |
-| **Whisper**  | `openai/whisper-large-v3-turbo` | 7.83      | 200       | Multilingual | ~3.5 GB     |
-
-- **WER** (Word Error Rate): Lower is better. Parakeet achieves 23% lower WER than Whisper Turbo.
-- **RTFx** (Real-Time Factor): Higher is better. Parakeet is ~17x faster than Whisper Turbo due to its non-autoregressive TDT architecture.
-- Both engines run in **float16** precision with negligible accuracy loss vs float32.
-
-> **Research to watch**:
->
-> - [LiteASR](https://github.com/efeslab/LiteASR) (EMNLP 2025) — PCA-based encoder compression that reduces Whisper encoder size by ~33-40% with near-zero WER degradation. Currently requires HuggingFace Transformers inference, but if CTranslate2 adds low-rank layer support, this could meaningfully reduce VRAM for the Whisper engine.
-> - [CrisperWhisper](https://github.com/nyrahealth/CrisperWhisper) (INTERSPEECH 2024) — Fine-tuned Whisper Large v3 for verbatim transcription (6.66% avg WER vs 7.7% for standard v3) with filler detection (`[UM]`, `[UH]`) and hallucination mitigation. An official [CTranslate2 conversion](https://huggingface.co/nyrahealth/faster_CrisperWhisper) exists for faster-whisper, though word-level timestamp precision degrades outside their custom pipeline. Licensed CC-BY-NC-4.0 (non-commercial only).
-
-### Infrastructure
-
-- **Model Loading**: First time is slow (downloads model). Subsequent starts are fast due to caching in the `./model-cache` directory.
-- **Transcription**: Engine-dependent; the local 9.16-second RTX 3060 Ti test measured 74.6 ms median end-to-end with parakeet.cpp and 319.4 ms with Whisper Turbo. See the linked benchmark report for methodology and limits.
-- **GPU Acceleration**: CUDA-enabled using CTranslate2 for Whisper or parakeet.cpp/ggml in an isolated sidecar.
-- **Weight Efficiency**: Multi-stage build with aggressive layer pruning of static libraries and bytecode to ensure a minimal runtime environment.
+It picks GPU or CPU, generates an API key, builds and starts the server, and waits until it is healthy. Other systems, manual steps and configuration are in the [Setup guide](docs/setup.md).
 
 ## Clients
 
-### Flutter Client (Windows) v3.2.0
+### Flutter Client (Windows) v3.3.0
 
-A high-performance Windows desktop application built with a **Smart Modular Architecture**. Features include:
+The main app: a quiet window with a global hotkey and auto-paste, three sources (your server, Groq, OpenRouter), output styles, local encrypted history, and microphone hot-plug. → [Flutter client guide](flutter_client/README.md)
 
-- **Standalone Release Package**: Verified 64-bit production distribution installer packaged with Inno Setup by the Release workflow and published on [GitHub Releases](https://github.com/EphremTil17/WhisperDoc/releases/latest).
-- **Captions Interface (v3.2.0)**: A quiet crimson-on-black window with one status cue, one fix for anything blocking dictation, a live pixel meter, the last transcript set as captions, and an optional moving contour map. Account and Settings are full-window panels.
-- **Trusted Servers & Safe Paste (v3.2.0)**: Your sign-in goes only to the built-in server or one you trust. The client pastes only a transcript it asked for, as plain text, and tells you when a dictation is lost.
-- **Client-Edge Dictation Profiles & LLM Transformation**: Contextual post-processing rewrites (Raw, Clean Polish, Professional, Casual, Technical) powered by high-speed Groq `qwen/qwen3.8-27b` inference (~260ms latency, zero CoT tokens). Works across both WhisperDoc backend and Groq transcription modes with fail-open fallback, ASCII typographic normalization, input-scaled timeouts, and zero-stalling latency SLA.
-- **Groq Cloud Direct Transcription**: Backend-independent speech-to-text with runtime model selection between `whisper-large-v3-turbo` (lowest latency) and `whisper-large-v3` (maximum depth and verbatim accuracy). Works as a standalone fallback when the backend is down, under maintenance, or by user preference. Free-tier compliant with local rate-limit tracking and conservative buffer guards.
-- **Zero-Latency Recording**: Parallelized initialization of audio capture and transport layers for instant dictation.
-- **Microphone Hot-Plug Recovery**: Native Core Audio notifications re-check input devices the moment a microphone is plugged in or removed, falling back to the system default when the selected device disappears.
-- **Enterprise Security**: Windows Credential Manager enclave storage, Encrypted local history (AES-256), and automated JWT expiry warnings.
-- **Handshake Cage Protocol**: Native implementation of the buffer-then-flush security strategy to ensure zero-data leakage before identity verification.
-- **Native System Integration**: Single-instance enforcement via Win32 Named Mutex and deep-sleep resilient global hotkeys.
-- **Privacy Core**: Integrated **Incognito Mode** with explicit memory hygiene and protocol-level log redaction (Local Only in Groq mode).
-- **Verification Suite**: Bundled security tests validating PKCE cryptographic integrity and state-parameter protection.
+### Python Terminal Client v3.3.0
 
-📖 **[Flutter Client Documentation](flutter_client/README.md)** | 📋 **[Technical Release Notes](docs/release_notes/v3.2.0.md)**
+A lightweight Windows client for your own server, for fallback and debugging. → [Terminal client guide](terminal_client/README.md)
 
-### Python Terminal Client v3.2.0
+## Documentation
 
-A secure, modular, and production-ready Windows terminal client for high-performance dictation.
-
-- **Secure API Key Storage** (OS Enclave)
-- **Structured Error Handling** (Routes all 12 `error_code` types with user-specific guidance)
-- **Keepalive Ping** (Prevents Cloudflare Tunnel idle drops)
-- **Exponential Backoff Reconnection** (Jittered retries, max 10 attempts)
-- **Granular Handshake State Machine** (BANNED, VERSION_OUTDATED, FAILED states)
-- **Fail-Secure Handshake**
-- **Auto Copy/Paste**
-- **Automated First-Time Setup**
-- **Incognito Mode** (Ghost Mode)
-- **Pytest + Pyright + Ruff Quality Gates** for the fallback/debug client
-
-This client is intended for Windows desktop use. Linux/WSL users should treat it as an unsupported runtime and use the Flutter client or direct backend tooling instead.
-
-📖 **[Terminal Client Documentation](terminal_client/README.md)**
-
-## Common Troubleshooting
-
-### Error: "Read-only file system"
-
-This is expected behavior if you try to open a shell and write to root. The container is locked down. Write to `/tmp` if strictly necessary for testing.
-
-### Error: "unknown or invalid runtime name: nvidia"
-
-This means Docker cannot find the NVIDIA runtime.
-
-1. Ensure the **NVIDIA Container Toolkit** is installed.
-2. Configure Docker to use the toolkit:
-   ```bash
-   sudo nvidia-ctk runtime configure --runtime=docker
-   sudo systemctl restart docker
-   ```
-3. If you do not have a GPU, remove `runtime: nvidia` from `docker-compose.yml` and change `MODEL_DEVICE` to `cpu` in your `.env` file.
+| Guide | What's in it |
+|---|---|
+| [Setup](docs/setup.md) | Installing the app, running a server (script or manual), configuration, troubleshooting |
+| [Architecture and security](docs/architecture.md) | How the pieces fit, identity, active defense, the container, privacy |
+| [Benchmarks](docs/benchmarks/README.md) | Speech engines, OpenRouter speech and rewrite models, style prompts, and how to rerun them |
+| [Development](docs/development.md) | Local development, tests, pre-commit hooks, CI/CD, releases, contributing |
+| [Backend](backend/README.md) | API endpoints, code layout, engines |
+| [Release notes](docs/release_notes/) and [changelog](docs/CHANGELOG.md) | What changed in each version |
+| [Roadmap](docs/roadmap.md) | What's planned further out |
 
 ## Project Phases
 
-| Phase    | Description                                            | Status         |
-| -------- | ------------------------------------------------------ | -------------- |
-| Phase 1  | Core Backend & REST API                                | ✅ Complete    |
-| Phase 2  | WebSocket Streaming                                    | ✅ Complete    |
-| Phase 3  | Robust Dev Terminal Client                             | ✅ Complete    |
-| Phase 4  | Flutter Windows Client                                 | ✅ Complete    |
-| Phase 5  | Dynamic Model Loading                                  | ✅ Complete    |
-| Phase 6  | Architecture Refactoring                               | ✅ Complete    |
-| Phase 7  | Infrastructure Hardening                               | ✅ Complete    |
-| Phase 8  | Client and Backend Hardening                           | ✅ Complete    |
-| Phase 9  | OIDC Identity Hardening & Verification Suite (v2.13.0) | ✅ Complete    |
-| Phase 10 | Optimization and Weight Shedding (v2.14.0)             | ✅ Complete    |
-| Phase 11 | Error Handling & Update Controls (v2.20.0)             | ✅ Complete    |
-| Phase 12 | UI and Functional Improvements                         | 🚧 In Progress |
-| Phase 13 | Multi-Engine ASR Abstraction (v2.23.0)                 | ✅ Complete    |
-| Phase 14 | Multi-Connection Path [Groq Cloud] (v2.24.0)           | ✅ Complete    |
-| Phase 15 | Client-Edge Dictation Profiles (v3.0.0)                | ✅ Complete    |
-| Phase 16 | Security Maintenance, Audits & Pen Testing (v3.1.0)    | 🚧 In Progress |
+| Phase | Description | Status |
+|---|---|---|
+| Phase 1 | Core Backend & REST API | ✅ Complete |
+| Phase 2 | WebSocket Streaming | ✅ Complete |
+| Phase 3 | Robust Dev Terminal Client | ✅ Complete |
+| Phase 4 | Flutter Windows Client | ✅ Complete |
+| Phase 5 | Dynamic Model Loading | ✅ Complete |
+| Phase 6 | Architecture Refactoring | ✅ Complete |
+| Phase 7 | Infrastructure Hardening | ✅ Complete |
+| Phase 8 | Client and Backend Hardening | ✅ Complete |
+| Phase 9 | OIDC Identity Hardening & Verification Suite (v2.13.0) | ✅ Complete |
+| Phase 10 | Optimization and Weight Shedding (v2.14.0) | ✅ Complete |
+| Phase 11 | Error Handling & Update Controls (v2.20.0) | ✅ Complete |
+| Phase 12 | UI and Functional Improvements | 🚧 In Progress |
+| Phase 13 | Multi-Engine ASR Abstraction (v2.23.0) | ✅ Complete |
+| Phase 14 | Multi-Connection Path [Groq Cloud] (v2.24.0) | ✅ Complete |
+| Phase 15 | Client-Edge Dictation Profiles (v3.0.0) | ✅ Complete |
+| Phase 16 | Security Maintenance, Audits & Pen Testing (v3.1.0) | 🚧 In Progress |
+| Phase 17 | OpenRouter Source, Model Choice & Open Benchmarks (v3.3.0) | ✅ Complete |
+
+## License
+
+[GNU General Public License v3.0](LICENSE). Groq, OpenRouter, OpenAI Whisper, NVIDIA Parakeet and other names are trademarks of their owners; WhisperDoc is not affiliated with them.
