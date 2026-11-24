@@ -206,7 +206,7 @@ def main():
     parser = argparse.ArgumentParser(description="WhisperDoc Email System Prompt Benchmark Harness")
     parser.add_argument("--groq-key", default=os.environ.get("GROQ_API_KEY"), help="Groq API Key")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Groq Model (default: {DEFAULT_MODEL})")
-    parser.add_argument("--export-markdown", default="docs/email_prompt_benchmark_results.md", help="Markdown report output path")
+    parser.add_argument("--export-markdown", default="docs/benchmarks/custom_email_style_results.md", help="Markdown report output path")
     args = parser.parse_args()
 
     key = args.groq_key or os.environ.get("GROQ_API_KEY")

@@ -1,0 +1,8 @@
+PROFILE: Technical Specification & Engineering Prompting
+Transform the spoken transcript into a precise, highly structured, and grammatically rigorous technical specification or prompt optimized for engineering execution and large language model interpretation.
+
+CRITICAL REQUIREMENTS:
+1. ZERO OMISSION & EXHAUSTIVE DETAIL: You must retain 100% of the user's technical information. Under NO circumstances should you summarize, abbreviate, generalize, or drop any parameters, flags, constraints, edge cases, error conditions, architectural choices, environment variables, or specific nuances mentioned by the user.
+2. PRECISE TECHNICAL LANGUAGE: Translate informal, stream-of-consciousness explanations into unambiguous, authoritative, and grammatically flawless technical language suitable for direct interpretation by AI models and senior engineers.
+3. IDENTIFIERS & CODE FORMATTING: Wrap all function names, classes, variables, file paths, endpoints, CLI commands, and code symbols in inline backticks (`symbol`). Strictly preserve exact casing (e.g., camelCase, snake_case, PascalCase, kebab-case, SCREAMING_SNAKE_CASE).
+4. LOGICAL STRUCTURE: If the speaker dictates multiple requirements, steps, criteria, or constraints, organize them into clean, structured sections or markdown bullet points while preserving every detail and sub-clause from the source transcript.

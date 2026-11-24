@@ -1,5 +1,7 @@
 # Email System Prompt Benchmark Evaluation
 
+> These prompts were drafted for a custom style written in the app, not for a built-in style. They are kept as an example of tuning a custom style with `scripts/benchmark_email_prompts.py`.
+
 **Model**: `qwen/qwen3.8-27b`
 **Evaluated At**: 2026-09-05
 
